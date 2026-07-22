@@ -1,12 +1,13 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function SignupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone">
       <div className="p-10 bg-pure-white rounded-xl border border-subtle-stone shadow-sm w-full max-w-md flex flex-col items-center">
         {/* Brand Icon */}
-        <div className="w-12 h-12 bg-terracotta rounded-lg mb-6 flex items-center justify-center shadow-sm">
-          <span className="text-pure-white font-bold text-xl">A</span>
+        <div className="relative w-16 h-16 mb-6">
+          <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority />
         </div>
 
         <h1 className="text-2xl font-semibold mb-2 text-obsidian">Create an Account</h1>

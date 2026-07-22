@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Sidebar() {
@@ -10,20 +11,25 @@ export default function Sidebar() {
   return (
     <aside className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}>
       {/* Toggle Button */}
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className="absolute -right-3 top-6 bg-pure-white text-muted-clay p-1 rounded-full hover:bg-cream hover:text-obsidian transition-colors shadow-sm z-30 flex items-center justify-center border border-subtle-stone"
         aria-label="Toggle Sidebar"
       >
         {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
       </button>
-      
+
       {/* Brand */}
       <div className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}>
-        <div className={`bg-terracotta rounded flex items-center justify-center shrink-0 shadow-sm transition-all ${isOpen ? 'w-8 h-8 mr-3' : 'w-10 h-10'}`}>
-          <span className={`font-bold text-pure-white ${isOpen ? 'text-lg' : 'text-xl'}`}>A</span>
-        </div>
-        {isOpen && <span className="font-semibold text-lg tracking-wide whitespace-nowrap overflow-hidden text-obsidian">Arachnix EMS</span>}
+        {isOpen ? (
+          <div className="relative w-48 h-12">
+            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain object-left" priority />
+          </div>
+        ) : (
+          <div className="relative w-10 h-10">
+            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority />
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -45,7 +51,7 @@ export default function Sidebar() {
 function NavItem({ href, icon, label, isOpen, active = false, isLogout = false }: { href: string; icon: React.ReactNode; label: string; isOpen: boolean; active?: boolean; isLogout?: boolean; }) {
   const baseClasses = "group relative flex items-center rounded-md font-medium transition-colors w-full";
   const sizeClasses = isOpen ? "px-3 py-2.5 gap-3" : "justify-center w-10 h-10";
-  
+
   let colorClasses = "";
   if (isLogout) {
     colorClasses = "text-muted-clay hover:text-terracotta hover:bg-cream";
@@ -59,7 +65,7 @@ function NavItem({ href, icon, label, isOpen, active = false, isLogout = false }
     <Link href={href} className={`${baseClasses} ${sizeClasses} ${colorClasses}`}>
       {icon}
       {isOpen && <span className="whitespace-nowrap overflow-hidden">{label}</span>}
-      
+
       {/* Custom Tooltip - Dark mode tooltip on light theme */}
       {!isOpen && (
         <div className="absolute left-full ml-3 px-3 py-1.5 bg-obsidian text-pure-white text-sm font-semibold rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-md z-50">
