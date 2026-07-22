@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian: #18181B;
+  --color-terracotta: #C2410C;
+  --color-terracotta-hover: #A0350A;
+  --color-cream: #FAFAF9;
+  --color-stone: #F5F5F4;
+  --color-pure-white: #FFFFFF;
+  --color-subtle-stone: #E7E5E4;
+  --color-forest: #0F5132;
+  --color-oxblood: #721C24;
+  --color-ochre: #B45309;
+  --color-deep-ink: #0C0A09;
+  --color-muted-clay: #57534E;
+}
