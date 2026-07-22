@@ -1,54 +1,72 @@
+"use client";
+
+import { useState } from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, Users, FileText, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Sidebar() {
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
-    <aside className="w-64 bg-obsidian text-pure-white flex flex-col h-screen fixed top-0 left-0 border-r border-obsidian">
+    <aside className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}>
+      {/* Toggle Button */}
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="absolute -right-3 top-6 bg-pure-white text-muted-clay p-1 rounded-full hover:bg-cream hover:text-obsidian transition-colors shadow-sm z-30 flex items-center justify-center border border-subtle-stone"
+        aria-label="Toggle Sidebar"
+      >
+        {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+      </button>
+      
       {/* Brand */}
-      <div className="h-16 flex items-center px-6 border-b border-white/10">
-        <div className="w-8 h-8 bg-terracotta rounded flex items-center justify-center mr-3 shadow-sm">
-          <span className="font-bold text-lg">A</span>
+      <div className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}>
+        <div className={`bg-terracotta rounded flex items-center justify-center shrink-0 shadow-sm transition-all ${isOpen ? 'w-8 h-8 mr-3' : 'w-10 h-10'}`}>
+          <span className={`font-bold text-pure-white ${isOpen ? 'text-lg' : 'text-xl'}`}>A</span>
         </div>
-        <span className="font-semibold text-lg tracking-wide">Arachnix EMS</span>
+        {isOpen && <span className="font-semibold text-lg tracking-wide whitespace-nowrap overflow-hidden text-obsidian">Arachnix EMS</span>}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-6 px-4 flex flex-col gap-2">
-        <Link href="/dashboard" className="flex items-center gap-3 px-3 py-2.5 bg-terracotta/20 text-terracotta rounded-md font-medium transition-colors border border-terracotta/20">
-          <LayoutDashboard className="w-5 h-5" />
-          Dashboard
-        </Link>
-        <Link href="/dashboard/employees" className="flex items-center gap-3 px-3 py-2.5 text-muted-clay hover:text-pure-white hover:bg-white/5 rounded-md font-medium transition-colors">
-          <Users className="w-5 h-5" />
-          Employees
-        </Link>
-        <Link href="/dashboard/payroll" className="flex items-center gap-3 px-3 py-2.5 text-muted-clay hover:text-pure-white hover:bg-white/5 rounded-md font-medium transition-colors">
-          <FileText className="w-5 h-5" />
-          Payroll
-        </Link>
-        <Link href="/dashboard/settings" className="flex items-center gap-3 px-3 py-2.5 text-muted-clay hover:text-pure-white hover:bg-white/5 rounded-md font-medium transition-colors">
-          <Settings className="w-5 h-5" />
-          Settings
-        </Link>
+      <nav className={`flex-1 py-6 flex flex-col gap-2 ${isOpen ? 'px-4' : 'px-3 items-center'}`}>
+        <NavItem href="/dashboard" icon={<LayoutDashboard className="w-5 h-5 shrink-0" />} label="Dashboard" isOpen={isOpen} active />
+        <NavItem href="/dashboard/employees" icon={<Users className="w-5 h-5 shrink-0" />} label="Employees" isOpen={isOpen} />
+        <NavItem href="/dashboard/payroll" icon={<FileText className="w-5 h-5 shrink-0" />} label="Payroll" isOpen={isOpen} />
+        <NavItem href="/dashboard/settings" icon={<Settings className="w-5 h-5 shrink-0" />} label="Settings" isOpen={isOpen} />
       </nav>
 
-      {/* Footer / User */}
-      <div className="p-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-3 py-3 mb-2">
-          <div className="w-8 h-8 bg-muted-clay rounded-full overflow-hidden flex items-center justify-center">
-            {/* Placeholder avatar */}
-            <span className="text-sm font-medium text-pure-white">JD</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-pure-white">John Doe</span>
-            <span className="text-xs text-muted-clay">Admin</span>
-          </div>
-        </div>
-        <Link href="/login" className="flex items-center gap-3 px-3 py-2 text-muted-clay hover:text-terracotta hover:bg-terracotta/10 rounded-md font-medium transition-colors mt-2">
-          <LogOut className="w-5 h-5" />
-          Sign out
-        </Link>
+      {/* Footer / Logout */}
+      <div className={`p-4 border-t border-subtle-stone flex flex-col ${isOpen ? '' : 'items-center'} transition-all`}>
+        <NavItem href="/login" icon={<Power className="w-5 h-5 shrink-0" />} label="Log out" isOpen={isOpen} isLogout />
       </div>
     </aside>
+  );
+}
+
+function NavItem({ href, icon, label, isOpen, active = false, isLogout = false }: { href: string; icon: React.ReactNode; label: string; isOpen: boolean; active?: boolean; isLogout?: boolean; }) {
+  const baseClasses = "group relative flex items-center rounded-md font-medium transition-colors w-full";
+  const sizeClasses = isOpen ? "px-3 py-2.5 gap-3" : "justify-center w-10 h-10";
+  
+  let colorClasses = "";
+  if (isLogout) {
+    colorClasses = "text-muted-clay hover:text-terracotta hover:bg-cream";
+  } else if (active) {
+    colorClasses = "bg-cream text-terracotta";
+  } else {
+    colorClasses = "text-muted-clay hover:text-obsidian hover:bg-cream";
+  }
+
+  return (
+    <Link href={href} className={`${baseClasses} ${sizeClasses} ${colorClasses}`}>
+      {icon}
+      {isOpen && <span className="whitespace-nowrap overflow-hidden">{label}</span>}
+      
+      {/* Custom Tooltip - Dark mode tooltip on light theme */}
+      {!isOpen && (
+        <div className="absolute left-full ml-3 px-3 py-1.5 bg-obsidian text-pure-white text-sm font-semibold rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-md z-50">
+          <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 border-y-[6px] border-y-transparent border-r-[6px] border-r-obsidian"></div>
+          {label}
+        </div>
+      )}
+    </Link>
   );
 }
