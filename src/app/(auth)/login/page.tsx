@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useLoginForm } from "@/hooks/useAuth";
 
@@ -35,11 +34,10 @@ export default function LoginPage() {
               value={formik.values.email}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/50 transition-all bg-pure-white text-deep-ink placeholder:text-muted-clay/50 ${
-                formik.touched.email && formik.errors.email 
-                  ? "border-red-500 focus:border-red-500" 
+              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/50 transition-all bg-pure-white text-deep-ink placeholder:text-muted-clay/50 ${formik.touched.email && formik.errors.email
+                  ? "border-red-500 focus:border-red-500"
                   : "border-subtle-stone focus:border-terracotta"
-              }`}
+                }`}
             />
             {formik.touched.email && formik.errors.email && (
               <div className="text-red-500 text-xs mt-1">{formik.errors.email}</div>
@@ -55,28 +53,23 @@ export default function LoginPage() {
               value={formik.values.password}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/50 transition-all bg-pure-white text-deep-ink placeholder:text-muted-clay/50 ${
-                formik.touched.password && formik.errors.password 
-                  ? "border-red-500 focus:border-red-500" 
+              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/50 transition-all bg-pure-white text-deep-ink placeholder:text-muted-clay/50 ${formik.touched.password && formik.errors.password
+                  ? "border-red-500 focus:border-red-500"
                   : "border-subtle-stone focus:border-terracotta"
-              }`}
+                }`}
             />
             {formik.touched.password && formik.errors.password && (
               <div className="text-red-500 text-xs mt-1">{formik.errors.password}</div>
             )}
           </div>
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={isPending}
             className="w-full bg-terracotta text-pure-white py-2.5 rounded-md font-medium hover:bg-[#A0350A] transition-colors mt-2 shadow-sm disabled:opacity-50 flex justify-center"
           >
             {isPending ? "Signing in..." : "Sign In"}
           </button>
         </form>
-
-        <div className="mt-6 text-sm text-muted-clay text-center">
-          Don't have an account? <Link href="/signup" className="text-terracotta hover:underline font-medium">Sign up</Link>
-        </div>
       </div>
     </div>
   );
