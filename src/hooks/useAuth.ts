@@ -22,7 +22,7 @@ export const useSignup = () => {
   return useMutation({
     mutationFn: (credentials: SignupCredentials) => authApi.signup(credentials),
     onSuccess: (data) => {
-      if (typeof window !== 'undefined') {
+      if (data.token && typeof window !== 'undefined') {
         localStorage.setItem('token', data.token);
       }
     },

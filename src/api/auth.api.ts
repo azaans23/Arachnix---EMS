@@ -1,4 +1,4 @@
-import axiosInstance from '@/lib/axios';
+import { supabase } from '@/lib/supabase';
 
 // Interfaces for Auth Requests and Responses
 export interface LoginCredentials {
@@ -11,29 +11,69 @@ export interface SignupCredentials extends LoginCredentials {
 }
 
 export interface AuthResponse {
-  token: string;
-  user: {
+  token?: string;
+  user?: {
     id: string;
     name: string;
     email: string;
   };
+  emailVerificationRequired?: boolean;
 }
 
 export const authApi = {
   // Login Endpoint
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
-    const response = await axiosInstance.post<AuthResponse>('/auth/login', credentials);
-    return response.data;
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: credentials.email,
+      password: credentials.password || '',
+    });
+
+    if (error) throw error;
+    if (!data.session) throw new Error("No session generated");
+
+    return {
+      token: data.session.access_token,
+      user: {
+        id: data.user.id,
+        name: data.user.user_metadata?.name || '',
+        email: data.user.email || '',
+      }
+    };
   },
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
-    const response = await axiosInstance.post<AuthResponse>('/auth/signup', credentials);
-    return response.data;
+    const { data, error } = await supabase.auth.signUp({
+      email: credentials.email,
+      password: credentials.password || '',
+      options: {
+        data: {
+          name: credentials.name,
+        }
+      }
+    });
+
+    if (error) throw error;
+    
+    if (!data.session) {
+      return {
+        emailVerificationRequired: true,
+      };
+    }
+
+    return {
+      token: data.session.access_token,
+      user: {
+        id: data.user!.id,
+        name: data.user!.user_metadata?.name || credentials.name,
+        email: data.user!.email || '',
+      }
+    };
   },
 
   // Logout Endpoint
   logout: async (): Promise<void> => {
-    await axiosInstance.post('/auth/logout');
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   },
 };
