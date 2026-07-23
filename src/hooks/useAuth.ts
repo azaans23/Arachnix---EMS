@@ -14,9 +14,7 @@ export const useLogin = () => {
         localStorage.setItem('token', data.token);
       }
     },
-    onError: (error) => {
-      console.error('Login failed:', error);
-    },
+    onError: (error) => {},
   });
 };
 
@@ -29,9 +27,7 @@ export const useSignup = () => {
         localStorage.setItem('token', data.token);
       }
     },
-    onError: (error) => {
-      console.error('Signup failed:', error);
-    },
+    onError: (error) => {},
   });
 };
 

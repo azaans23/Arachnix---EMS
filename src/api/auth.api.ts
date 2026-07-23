@@ -58,6 +58,23 @@ export const authApi = {
     });
 
     if (error) throw error;
+
+    // Send user details to n8n webhook on successful creation via internal proxy (avoids CORS)
+    if (data.user) {
+      fetch('/api/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: data.user.id,
+          name: credentials.name,
+          email: credentials.email,
+          role: credentials.role,
+          created_at: data.user.created_at || new Date().toISOString(),
+        }),
+      }).catch(() => {});
+    }
     
     if (!data.session) {
       return {

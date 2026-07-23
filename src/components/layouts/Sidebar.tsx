@@ -31,11 +31,11 @@ export default function Sidebar() {
       <div className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}>
         {isOpen ? (
           <div className="relative w-48 h-12">
-            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain object-left" priority />
+            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain object-left" priority sizes="192px" />
           </div>
         ) : (
           <div className="relative w-10 h-10">
-            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority />
+            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority sizes="40px" />
           </div>
         )}
       </div>
