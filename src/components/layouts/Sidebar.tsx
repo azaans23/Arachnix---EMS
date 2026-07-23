@@ -4,9 +4,17 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLogout } from '@/hooks/useAuth';
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
+
+  const logoutMutation = useLogout();
+
+  const handleLogout = (e: React.MouseEvent) => {
+    e.preventDefault();
+    logoutMutation.mutate();
+  };
 
   return (
     <aside className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}>
@@ -42,7 +50,24 @@ export default function Sidebar() {
 
       {/* Footer / Logout */}
       <div className={`p-4 border-t border-subtle-stone flex flex-col ${isOpen ? '' : 'items-center'} transition-all`}>
-        <NavItem href="/login" icon={<Power className="w-5 h-5 shrink-0" />} label="Log out" isOpen={isOpen} isLogout />
+        <button
+          onClick={handleLogout}
+          disabled={logoutMutation.isPending}
+          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${
+            isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
+          } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
+        >
+          <Power className="w-5 h-5 shrink-0" />
+          {isOpen && <span className="whitespace-nowrap overflow-hidden">Log out</span>}
+
+          {/* Custom Tooltip */}
+          {!isOpen && (
+            <div className="absolute left-full ml-3 px-3 py-1.5 bg-obsidian text-pure-white text-sm font-semibold rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-md z-50">
+              <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 border-y-[6px] border-y-transparent border-r-[6px] border-r-obsidian"></div>
+              Log out
+            </div>
+          )}
+        </button>
       </div>
     </aside>
   );
