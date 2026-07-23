@@ -88,6 +88,30 @@ export default function SignupPage() {
             )}
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-obsidian" htmlFor="role">Role</label>
+            <select
+              id="role"
+              name="role"
+              value={formik.values.role}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/50 transition-all bg-pure-white text-deep-ink ${
+                formik.touched.role && formik.errors.role 
+                  ? "border-red-500 focus:border-red-500" 
+                  : "border-subtle-stone focus:border-terracotta"
+              }`}
+            >
+              <option value="" disabled>Select your role</option>
+              <option value="admin">Admin</option>
+              <option value="HR">HR</option>
+              <option value="finance">Finance</option>
+            </select>
+            {formik.touched.role && formik.errors.role && (
+              <div className="text-red-500 text-xs mt-1">{formik.errors.role}</div>
+            )}
+          </div>
+
           <button 
             type="submit" 
             disabled={isPending}

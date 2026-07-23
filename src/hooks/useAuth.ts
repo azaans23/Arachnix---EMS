@@ -91,6 +91,7 @@ export const useSignupForm = () => {
       name: '',
       email: '',
       password: '',
+      role: '' as 'admin' | 'HR' | 'finance',
     },
     validationSchema: signupValidationSchema,
     onSubmit: (values) => {

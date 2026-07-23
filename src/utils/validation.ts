@@ -19,4 +19,7 @@ export const signupValidationSchema = Yup.object({
   password: Yup.string()
     .min(6, 'Password must be at least 6 characters')
     .required('Password is required'),
+  role: Yup.string()
+    .oneOf(['admin', 'HR', 'finance'], 'Invalid Role')
+    .required('Role is required'),
 });

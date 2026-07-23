@@ -8,6 +8,7 @@ export interface LoginCredentials {
 
 export interface SignupCredentials extends LoginCredentials {
   name: string;
+  role: 'admin' | 'HR' | 'finance';
 }
 
 export interface AuthResponse {
@@ -16,6 +17,7 @@ export interface AuthResponse {
     id: string;
     name: string;
     email: string;
+    role?: string;
   };
   emailVerificationRequired?: boolean;
 }
@@ -37,6 +39,7 @@ export const authApi = {
         id: data.user.id,
         name: data.user.user_metadata?.name || '',
         email: data.user.email || '',
+        role: data.user.user_metadata?.role || '',
       }
     };
   },
@@ -49,6 +52,7 @@ export const authApi = {
       options: {
         data: {
           name: credentials.name,
+          role: credentials.role,
         }
       }
     });
@@ -67,6 +71,7 @@ export const authApi = {
         id: data.user!.id,
         name: data.user!.user_metadata?.name || credentials.name,
         email: data.user!.email || '',
+        role: data.user!.user_metadata?.role || credentials.role,
       }
     };
   },
