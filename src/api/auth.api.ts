@@ -46,6 +46,30 @@ export const authApi = {
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
+    // 1. Call n8n webhook first. If this fails, user creation is aborted.
+    try {
+      const webhookRes = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: credentials.name,
+          email: credentials.email,
+          role: credentials.role,
+          created_at: new Date().toISOString(),
+        }),
+      });
+
+      const webhookData = await webhookRes.json();
+      if (!webhookRes.ok || !webhookData.success) {
+        throw new Error(webhookData.error || "Failed to trigger n8n workflow. User creation aborted.");
+      }
+    } catch (err: any) {
+      throw new Error(err.message || "Webhook call failed. User creation aborted.");
+    }
+
+    // 2. If webhook succeeds, proceed to create the user in Supabase
     const { data, error } = await supabase.auth.signUp({
       email: credentials.email,
       password: credentials.password || '',
@@ -58,23 +82,6 @@ export const authApi = {
     });
 
     if (error) throw error;
-
-    // Send user details to n8n webhook on successful creation via internal proxy (avoids CORS)
-    if (data.user) {
-      fetch('/api/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: data.user.id,
-          name: credentials.name,
-          email: credentials.email,
-          role: credentials.role,
-          created_at: data.user.created_at || new Date().toISOString(),
-        }),
-      }).catch(() => {});
-    }
     
     if (!data.session) {
       return {
