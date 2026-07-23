@@ -1,15 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { authApi, LoginCredentials, SignupCredentials } from '@/api/auth.api';
+import { useFormik } from 'formik';
+import { useRouter } from 'next/navigation';
+import { toast } from 'react-hot-toast';
+import { loginValidationSchema, signupValidationSchema } from '@/utils/validation';
 
 // Hook for Login
 export const useLogin = () => {
   return useMutation({
     mutationFn: (credentials: LoginCredentials) => authApi.login(credentials),
     onSuccess: (data) => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && data.token) {
         localStorage.setItem('token', data.token);
       }
-
     },
     onError: (error) => {
       console.error('Login failed:', error);
@@ -47,4 +50,70 @@ export const useLogout = () => {
       window.location.href = '/login';
     },
   });
+};
+
+// Hook wrapping Formik + Login Mutation
+export const useLoginForm = () => {
+  const router = useRouter();
+  const loginMutation = useLogin();
+
+  const formik = useFormik({
+    initialValues: {
+      email: '',
+      password: '',
+    },
+    validationSchema: loginValidationSchema,
+    onSubmit: (values) => {
+      loginMutation.mutate(values, {
+        onSuccess: () => {
+          toast.success("Welcome back! Logging you in...");
+          router.push("/dashboard");
+        },
+      });
+    },
+  });
+
+  return {
+    formik,
+    isPending: loginMutation.isPending,
+    isError: loginMutation.isError,
+    error: loginMutation.error,
+  };
+};
+
+// Hook wrapping Formik + Signup Mutation
+export const useSignupForm = () => {
+  const router = useRouter();
+  const signupMutation = useSignup();
+
+  const formik = useFormik({
+    initialValues: {
+      name: '',
+      email: '',
+      password: '',
+    },
+    validationSchema: signupValidationSchema,
+    onSubmit: (values) => {
+      signupMutation.mutate(values, {
+        onSuccess: (data) => {
+          if (data.emailVerificationRequired) {
+            toast.success("Signup successful! Please check your email to verify your account.", {
+              duration: 6000,
+            });
+            router.push("/login");
+          } else {
+            toast.success("Welcome! Account created successfully.");
+            router.push("/dashboard");
+          }
+        },
+      });
+    },
+  });
+
+  return {
+    formik,
+    isPending: signupMutation.isPending,
+    isError: signupMutation.isError,
+    error: signupMutation.error,
+  };
 };

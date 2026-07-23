@@ -2,39 +2,10 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useFormik } from "formik";
-import { signupValidationSchema } from "@/utils/validation";
-import { useSignup } from "@/hooks/useAuth";
-import { toast } from "react-hot-toast";
+import { useSignupForm } from "@/hooks/useAuth";
 
 export default function SignupPage() {
-  const router = useRouter();
-  const signupMutation = useSignup();
-
-  const formik = useFormik({
-    initialValues: {
-      name: "",
-      email: "",
-      password: "",
-    },
-    validationSchema: signupValidationSchema,
-    onSubmit: (values) => {
-      signupMutation.mutate(values, {
-        onSuccess: (data) => {
-          if (data.emailVerificationRequired) {
-            toast.success("Signup successful! Please check your email to verify your account.", {
-              duration: 6000,
-            });
-            router.push("/login");
-          } else {
-            toast.success("Welcome! Account created successfully.");
-            router.push("/dashboard");
-          }
-        }
-      });
-    },
-  });
+  const { formik, isPending, isError, error } = useSignupForm();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone">
@@ -47,9 +18,9 @@ export default function SignupPage() {
         <h1 className="text-2xl font-semibold mb-2 text-obsidian">Create an Account</h1>
         <p className="text-muted-clay text-center mb-8">Join Arachnix Employee Management System.</p>
 
-        {signupMutation.isError && (
+        {isError && (
           <div className="w-full mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
-            {(signupMutation.error as any).message || "Failed to sign up"}
+            {(error as any).message || "Failed to sign up"}
           </div>
         )}
 
@@ -119,10 +90,10 @@ export default function SignupPage() {
 
           <button 
             type="submit" 
-            disabled={signupMutation.isPending}
+            disabled={isPending}
             className="w-full bg-terracotta text-pure-white py-2.5 rounded-md font-medium hover:bg-[#A0350A] transition-colors mt-2 shadow-sm disabled:opacity-50 flex justify-center"
           >
-            {signupMutation.isPending ? "Signing up..." : "Sign Up"}
+            {isPending ? "Signing up..." : "Sign Up"}
           </button>
         </form>
 
