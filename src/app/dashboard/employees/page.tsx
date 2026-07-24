@@ -54,6 +54,7 @@ export default function EmployeesPage() {
         email: u.Email || u.email || '',
         role: u.Role || u.role || 'Employee',
         employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
+        raw: u,
       }));
       console.log("Mapped users:", mapped);
 
@@ -136,8 +137,12 @@ export default function EmployeesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle-stone text-sm text-deep-ink">
-                {users.map((user, idx) => (
-                  <tr key={idx} className="hover:bg-cream/40 transition-colors">
+                 {users.map((user, idx) => (
+                  <tr 
+                    key={idx} 
+                    onClick={() => openModal('employeeDetails', { user, onSuccess: fetchUsers })}
+                    className="hover:bg-cream/40 transition-colors cursor-pointer"
+                  >
                     <td className="px-6 py-4 font-semibold">{user.name || 'N/A'}</td>
                     <td className="px-6 py-4 text-muted-clay">{user.email}</td>
                     <td className="px-6 py-4">
@@ -147,7 +152,10 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => openModal('registerEmployee', { user, onSuccess: fetchUsers })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openModal('registerEmployee', { user, onSuccess: fetchUsers });
+                        }}
                         className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5" /> Register Account

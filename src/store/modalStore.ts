@@ -1,4 +1,4 @@
-export type ModalName = 'registerEmployee' | null;
+export type ModalName = 'registerEmployee' | 'employeeDetails' | null;
 
 export interface ModalState {
   name: ModalName;
