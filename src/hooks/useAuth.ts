@@ -14,7 +14,7 @@ export const useLogin = () => {
         localStorage.setItem('token', data.token);
       }
     },
-    onError: (error) => {},
+    onError: (error) => { },
   });
 };
 
@@ -27,7 +27,7 @@ export const useSignup = () => {
         localStorage.setItem('token', data.token);
       }
     },
-    onError: (error) => {},
+    onError: (error) => { },
   });
 };
 
@@ -94,15 +94,8 @@ export const useSignupForm = () => {
     onSubmit: (values) => {
       signupMutation.mutate(values, {
         onSuccess: (data) => {
-          if (data.emailVerificationRequired) {
-            toast.success("Signup successful! Please check your email to verify your account.", {
-              duration: 6000,
-            });
-            router.push("/login");
-          } else {
-            toast.success("Welcome! Account created successfully.");
-            router.push("/dashboard");
-          }
+          toast.success("Welcome! Account created successfully.");
+          router.push("/dashboard");
         },
       });
     },

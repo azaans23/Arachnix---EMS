@@ -5,6 +5,7 @@ import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
 import { useSignup } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   Database,
   RefreshCw,
@@ -154,11 +155,8 @@ export default function EmployeesPage() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-deep-ink flex items-center gap-3">
             <Database className="w-8 h-8 text-terracotta" />
-            Employees Sync
+            Employees
           </h1>
-          <p className="text-muted-clay/70 text-sm mt-2">
-            Fetch external user rows from Google Sheets, verify details, and create system credentials.
-          </p>
         </div>
 
         <button
@@ -167,23 +165,9 @@ export default function EmployeesPage() {
           className="flex items-center justify-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Syncing...' : 'Sync from Sheet'}
+          {loading ? 'Syncing...' : 'Sync Employee'}
         </button>
       </div>
-
-      {/* Main Content Layout */}
-      {errorText && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-850 rounded-lg text-sm flex gap-3 items-start animate-fade-in-up">
-          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold block">External Synchronization Alert</span>
-            <span className="text-xs text-amber-700 block mt-1">{errorText}</span>
-            <span className="text-xs text-stone-500 block mt-2">
-              If using a local test workflow, please ensure n8n has the <strong>'Execute workflow'</strong> active state.
-            </span>
-          </div>
-        </div>
-      )}
 
       {loading && users.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 bg-pure-white border border-subtle-stone rounded-xl shadow-sm">
@@ -191,21 +175,14 @@ export default function EmployeesPage() {
           <span className="text-muted-clay font-medium">Fetching users from external sheet...</span>
         </div>
       ) : users.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-pure-white border border-subtle-stone rounded-xl shadow-sm text-center px-4">
-          <div className="w-16 h-16 rounded-full bg-cream flex items-center justify-center mb-4">
-            <Database className="w-8 h-8 text-muted-clay/60" />
-          </div>
-          <h3 className="text-lg font-bold text-deep-ink">No Sheet Users Found</h3>
-          <p className="text-muted-clay/60 text-sm max-w-sm mt-2">
-            No pending user rows were retrieved. Trigger your n8n integration workflow or add users in the spreadsheet.
-          </p>
-          <button
-            onClick={fetchUsers}
-            className="mt-6 text-sm text-terracotta font-semibold hover:underline flex items-center gap-1.5 cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" /> Retry Sync
-          </button>
-        </div>
+        <EmptyState
+          icon={<Database className="w-8 h-8 text-muted-clay/60" />}
+          title="No Users Found"
+          description="No pending employee profiles were retrieved. Ensure your spreadsheet contains new records and trigger a synchronization."
+          actionLabel="Retry Sync"
+          onAction={fetchUsers}
+          actionIcon={<RefreshCw className="w-4 h-4" />}
+        />
       ) : (
         <div className="bg-pure-white border border-subtle-stone rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -353,8 +330,8 @@ export default function EmployeesPage() {
                     onBlur={formik.handleBlur}
                     autoFocus
                     className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${formik.touched.password && formik.errors.password
-                        ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
-                        : "border-subtle-stone focus:border-terracotta"
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
+                      : "border-subtle-stone focus:border-terracotta"
                       }`}
                   />
                   <button
