@@ -15,6 +15,7 @@ interface SheetUser {
   email: string;
   role: string;
   employeeId?: string;
+  raw?: any;
 }
 
 export default function EmployeesPage() {
