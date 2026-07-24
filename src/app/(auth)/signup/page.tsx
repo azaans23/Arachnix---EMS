@@ -162,9 +162,10 @@ export default function SignupPage() {
               touched={formik.submitCount > 0}
               icon={<Shield className="w-5 h-5 text-muted-clay/60" />}
               options={[
-                { label: "Admin", value: "admin" },
-                { label: "HR", value: "HR" },
-                { label: "Finance", value: "finance" },
+                { label: "Super Admin", value: "admin" },
+                { label: "HR Manager", value: "HR" },
+                { label: "Finance Manager", value: "finance" },
+                { label: "Director", value: "director" },
               ]}
             />
             {formik.submitCount > 0 && formik.errors.role && (

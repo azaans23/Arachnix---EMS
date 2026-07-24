@@ -8,7 +8,7 @@ export interface LoginCredentials {
 
 export interface SignupCredentials extends LoginCredentials {
   name: string;
-  role: 'admin' | 'HR' | 'finance';
+  role: 'admin' | 'HR' | 'finance' | 'director';
 }
 
 export interface AuthResponse {
