@@ -22,11 +22,6 @@ export const useLogin = () => {
 export const useSignup = () => {
   return useMutation({
     mutationFn: (credentials: SignupCredentials) => authApi.signup(credentials),
-    onSuccess: (data) => {
-      if (data.token && typeof window !== 'undefined') {
-        localStorage.setItem('token', data.token);
-      }
-    },
     onError: (error) => { },
   });
 };
@@ -75,36 +70,5 @@ export const useLoginForm = () => {
     isPending: loginMutation.isPending,
     isError: loginMutation.isError,
     error: loginMutation.error,
-  };
-};
-
-// Hook wrapping Formik + Signup Mutation
-export const useSignupForm = () => {
-  const router = useRouter();
-  const signupMutation = useSignup();
-
-  const formik = useFormik({
-    initialValues: {
-      name: '',
-      email: '',
-      password: '',
-      role: '' as 'admin' | 'HR' | 'finance' | 'director',
-    },
-    validationSchema: signupValidationSchema,
-    onSubmit: (values) => {
-      signupMutation.mutate(values, {
-        onSuccess: (data) => {
-          toast.success("Welcome! Account created successfully.");
-          router.push("/dashboard");
-        },
-      });
-    },
-  });
-
-  return {
-    formik,
-    isPending: signupMutation.isPending,
-    isError: signupMutation.isError,
-    error: signupMutation.error,
   };
 };
