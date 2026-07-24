@@ -20,7 +20,7 @@ import {
 interface SheetUser {
   name: string;
   email: string;
-  role: 'admin' | 'HR' | 'finance' | 'director';
+  role: string;
   employeeId?: string;
 }
 
@@ -38,22 +38,12 @@ export default function RegisterEmployeeModal({
   const [showPassword, setShowPassword] = useState(false);
   const signupMutation = useSignup();
 
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'admin': return 'Super Admin';
-      case 'HR': return 'HR Manager';
-      case 'finance': return 'Finance Manager';
-      case 'director': return 'Director';
-      default: return role;
-    }
-  };
-
   // Wait, let's use import { useFormik } from 'formik';
   const formik = useFormik({
     initialValues: {
       name: user.name || '',
       email: user.email || '',
-      role: user.role || 'admin',
+      role: user.role || 'Employee',
       password: '',
     },
     validationSchema: signupValidationSchema,
@@ -155,7 +145,7 @@ export default function RegisterEmployeeModal({
               </div>
               <input
                 type="text"
-                value={getRoleLabel(formik.values.role)}
+                value={user.role}
                 disabled
                 className="pl-10 pr-4 py-2 w-full bg-cream border border-subtle-stone rounded-lg text-sm text-muted-clay cursor-not-allowed opacity-80"
               />

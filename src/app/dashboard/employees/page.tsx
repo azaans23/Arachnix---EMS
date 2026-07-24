@@ -13,7 +13,7 @@ import {
 interface SheetUser {
   name: string;
   email: string;
-  role: 'admin' | 'HR' | 'finance' | 'director';
+  role: string;
   employeeId?: string;
 }
 
@@ -22,16 +22,6 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const { openModal } = useModal();
-
-  // Helper to map and normalize roles from sheet to system values
-  const normalizeRole = (role: string): 'admin' | 'HR' | 'finance' | 'director' => {
-    const r = (role || '').toLowerCase().trim();
-    if (r.includes('super') || r === 'admin') return 'admin';
-    if (r.includes('hr') || r === 'hr') return 'HR';
-    if (r.includes('finance')) return 'finance';
-    if (r.includes('director')) return 'director';
-    return 'admin';
-  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -62,7 +52,7 @@ export default function EmployeesPage() {
       const mapped = rawUsers.map((u: any) => ({
         name: u.FullName || u.fullName || u.name || u.Name || '',
         email: u.Email || u.email || '',
-        role: normalizeRole(u.Role || u.role || ''),
+        role: u.Role || u.role || 'Employee',
         employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
       }));
       console.log("Mapped users:", mapped);
@@ -79,28 +69,23 @@ export default function EmployeesPage() {
   };
 
   const getRoleBadgeClasses = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-terracotta/10 text-terracotta border-terracotta/20';
-      case 'HR':
-        return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-      case 'finance':
-        return 'bg-amber-50 text-amber-800 border-amber-200';
-      case 'director':
-        return 'bg-purple-50 text-purple-800 border-purple-200';
-      default:
-        return 'bg-stone text-muted-clay border-subtle-stone';
+    const r = (role || '').toLowerCase().trim();
+    if (r.includes('admin') || r === 'super admin') {
+      return 'bg-terracotta/10 text-terracotta border-terracotta/20';
     }
-  };
-
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'admin': return 'Super Admin';
-      case 'HR': return 'HR Manager';
-      case 'finance': return 'Finance Manager';
-      case 'director': return 'Director';
-      default: return role;
+    if (r === 'hr' || r.includes('hr manager')) {
+      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     }
+    if (r.includes('finance')) {
+      return 'bg-amber-50 text-amber-800 border-amber-200';
+    }
+    if (r.includes('director')) {
+      return 'bg-purple-50 text-purple-800 border-purple-200';
+    }
+    if (r.includes('employee')) {
+      return 'bg-blue-50 text-blue-800 border-blue-200';
+    }
+    return 'bg-stone-50 text-stone-800 border-stone-200';
   };
 
   return (
@@ -157,7 +142,7 @@ export default function EmployeesPage() {
                     <td className="px-6 py-4 text-muted-clay">{user.email}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getRoleBadgeClasses(user.role)}`}>
-                        {getRoleLabel(user.role)}
+                        {user.role}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
