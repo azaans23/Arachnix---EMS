@@ -3,17 +3,26 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight, UserPlus, Database } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
+  const pathname = usePathname();
 
   const logoutMutation = useLogout();
 
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
     logoutMutation.mutate();
+  };
+
+  const isActive = (path: string) => {
+    if (path === '/dashboard') {
+      return pathname === '/dashboard';
+    }
+    return pathname.startsWith(path);
   };
 
   return (
@@ -42,10 +51,10 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className={`flex-1 py-6 flex flex-col gap-2 ${isOpen ? 'px-4' : 'px-3 items-center'}`}>
-        <NavItem href="/dashboard" icon={<LayoutDashboard className="w-5 h-5 shrink-0" />} label="Dashboard" isOpen={isOpen} active />
-        <NavItem href="/dashboard/employees" icon={<Users className="w-5 h-5 shrink-0" />} label="Employees" isOpen={isOpen} />
-        <NavItem href="/dashboard/payroll" icon={<FileText className="w-5 h-5 shrink-0" />} label="Payroll" isOpen={isOpen} />
-        <NavItem href="/dashboard/settings" icon={<Settings className="w-5 h-5 shrink-0" />} label="Settings" isOpen={isOpen} />
+        <NavItem href="/dashboard" icon={<LayoutDashboard className="w-5 h-5 shrink-0" />} label="Dashboard" isOpen={isOpen} active={isActive('/dashboard')} />
+        <NavItem href="/dashboard/employees" icon={<Database className="w-5 h-5 shrink-0" />} label="Employees" isOpen={isOpen} active={isActive('/dashboard/employees')} />
+        <NavItem href="/dashboard/payroll" icon={<FileText className="w-5 h-5 shrink-0" />} label="Payroll" isOpen={isOpen} active={isActive('/dashboard/payroll')} />
+        <NavItem href="/dashboard/settings" icon={<Settings className="w-5 h-5 shrink-0" />} label="Settings" isOpen={isOpen} active={isActive('/dashboard/settings')} />
       </nav>
 
       {/* Footer / Logout */}
@@ -53,9 +62,8 @@ export default function Sidebar() {
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${
-            isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
-          } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
+          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
+            } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
         >
           <Power className="w-5 h-5 shrink-0" />
           {isOpen && <span className="whitespace-nowrap overflow-hidden">Log out</span>}

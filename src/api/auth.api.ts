@@ -100,6 +100,38 @@ export const authApi = {
     };
   },
 
+  // Signup Direct Endpoint (bypasses n8n webhook registration)
+  signupDirect: async (credentials: SignupCredentials): Promise<AuthResponse> => {
+    const { data, error } = await supabase.auth.signUp({
+      email: credentials.email,
+      password: credentials.password || '',
+      options: {
+        data: {
+          name: credentials.name,
+          role: credentials.role,
+        }
+      }
+    });
+
+    if (error) throw error;
+    
+    if (!data.session) {
+      return {
+        emailVerificationRequired: true,
+      };
+    }
+
+    return {
+      token: data.session.access_token,
+      user: {
+        id: data.user!.id,
+        name: data.user!.user_metadata?.name || credentials.name,
+        email: data.user!.email || '',
+        role: data.user!.user_metadata?.role || credentials.role,
+      }
+    };
+  },
+
   // Logout Endpoint
   logout: async (): Promise<void> => {
     const { error } = await supabase.auth.signOut();
