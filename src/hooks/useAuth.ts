@@ -31,18 +31,6 @@ export const useSignup = () => {
   });
 };
 
-// Hook for Signup Direct (bypasses n8n webhook)
-export const useSignupDirect = () => {
-  return useMutation({
-    mutationFn: (credentials: SignupCredentials) => authApi.signupDirect(credentials),
-    onSuccess: (data) => {
-      if (data.token && typeof window !== 'undefined') {
-        localStorage.setItem('token', data.token);
-      }
-    },
-    onError: (error) => {},
-  });
-};
 
 // Hook for Logout
 export const useLogout = () => {

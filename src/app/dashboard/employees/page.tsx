@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
-import { useSignupDirect } from '@/hooks/useAuth';
-import CustomDropdown from '@/components/ui/Dropdown';
+import { useSignup } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import {
   Database,
@@ -25,6 +24,7 @@ interface SheetUser {
   name: string;
   email: string;
   role: 'admin' | 'HR' | 'finance' | 'director';
+  employeeId?: string;
 }
 
 export default function EmployeesPage() {
@@ -34,7 +34,7 @@ export default function EmployeesPage() {
   const [selectedUser, setSelectedUser] = useState<SheetUser | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  const signupDirectMutation = useSignupDirect();
+  const signupMutation = useSignup();
 
   // Helper to map and normalize roles from sheet to system values
   const normalizeRole = (role: string): 'admin' | 'HR' | 'finance' | 'director' => {
@@ -53,7 +53,7 @@ export default function EmployeesPage() {
       const response = await fetch('/api/get-users');
       const result = await response.json();
       console.log("Frontend received get-users result:", result);
-      
+
       if (!response.ok || !result.success) {
         let cleanErr = result.error || `Server returned status ${response.status}`;
         try {
@@ -61,7 +61,7 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch (e) {}
+        } catch (e) { }
         throw new Error(cleanErr);
       }
 
@@ -76,8 +76,10 @@ export default function EmployeesPage() {
         name: u.FullName || u.fullName || u.name || u.Name || '',
         email: u.Email || u.email || '',
         role: normalizeRole(u.Role || u.role || ''),
+        employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
       }));
-      
+      console.log("Mapped users:", mapped);
+
       setUsers(mapped);
       toast.success(`Successfully fetched ${mapped.length} users!`);
     } catch (err: any) {
@@ -102,11 +104,16 @@ export default function EmployeesPage() {
     validationSchema: signupValidationSchema,
     enableReinitialize: true,
     onSubmit: (values) => {
-      signupDirectMutation.mutate(values, {
+      console.log("Formik onSubmit values:", values, "selectedUser:", selectedUser);
+      signupMutation.mutate({
+        ...values,
+        employeeId: selectedUser?.employeeId,
+      }, {
         onSuccess: () => {
           toast.success("User account created successfully in Supabase!");
           setSelectedUser(null);
           formik.resetForm();
+          fetchUsers(); // Refresh the list from the sheet
         },
         onError: (err: any) => {
           toast.error(err.message || "Failed to register user.");
@@ -244,7 +251,7 @@ export default function EmployeesPage() {
       {selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/45 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
           <div className="relative w-full max-w-md bg-pure-white border border-subtle-stone shadow-2xl rounded-2xl p-8 mx-auto animate-scale-up">
-            
+
             {/* Close Button */}
             <button
               onClick={() => setSelectedUser(null)}
@@ -265,10 +272,10 @@ export default function EmployeesPage() {
               </p>
             </div>
 
-            {signupDirectMutation.isError && (
+            {signupMutation.isError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex gap-2 items-start">
                 <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <span>{(signupDirectMutation.error as any)?.message || "Credentials setup failed."}</span>
+                <span>{(signupMutation.error as any)?.message || "Credentials setup failed."}</span>
               </div>
             )}
 
@@ -345,11 +352,10 @@ export default function EmployeesPage() {
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     autoFocus
-                    className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${
-                      formik.touched.password && formik.errors.password
+                    className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${formik.touched.password && formik.errors.password
                         ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
                         : "border-subtle-stone focus:border-terracotta"
-                    }`}
+                      }`}
                   />
                   <button
                     type="button"
@@ -369,10 +375,10 @@ export default function EmployeesPage() {
               {/* Submit CTA */}
               <button
                 type="submit"
-                disabled={signupDirectMutation.isPending}
+                disabled={signupMutation.isPending}
                 className="w-full bg-terracotta text-pure-white py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 mt-4 shadow-md shadow-terracotta/10 hover:shadow-terracotta/20 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer text-sm"
               >
-                {signupDirectMutation.isPending ? (
+                {signupMutation.isPending ? (
                   <>
                     <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

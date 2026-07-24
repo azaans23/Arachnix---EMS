@@ -9,6 +9,7 @@ export interface LoginCredentials {
 export interface SignupCredentials extends LoginCredentials {
   name: string;
   role: 'admin' | 'HR' | 'finance' | 'director';
+  employeeId?: string;
 }
 
 export interface AuthResponse {
@@ -46,9 +47,29 @@ export const authApi = {
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
-    // 1. Call n8n webhook first. If this fails, user creation is aborted.
+    console.log("authApi.signup credentials received:", credentials);
+    // 1. Authenticate the user in Supabase first
+    const { data, error } = await supabase.auth.signUp({
+      email: credentials.email,
+      password: credentials.password || '',
+      options: {
+        data: {
+          name: credentials.name,
+          role: credentials.role,
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    const supabaseUserId = data.user?.id;
+    if (!supabaseUserId) {
+      throw new Error("Failed to retrieve user ID from Supabase.");
+    }
+
+    // 2. Update the record in the sheet via n8n update-user webhook
     try {
-      const webhookRes = await fetch('/api/create-user', {
+      const webhookRes = await fetch('/api/update-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,63 +78,20 @@ export const authApi = {
           name: credentials.name,
           email: credentials.email,
           role: credentials.role,
+          supabaseUserId: supabaseUserId,
+          status: 'Active',
+          employeeId: credentials.employeeId,
           created_at: new Date().toISOString(),
         }),
       });
 
       const webhookData = await webhookRes.json();
       if (!webhookRes.ok || !webhookData.success) {
-        throw new Error(webhookData.error || "Failed to trigger n8n workflow. User creation aborted.");
+        throw new Error(webhookData.error || "Failed to sync status update with sheet.");
       }
     } catch (err: any) {
-      throw new Error(err.message || "Webhook call failed. User creation aborted.");
+      throw new Error(err.message || "Failed to update employee status in spreadsheet.");
     }
-
-    // 2. If webhook succeeds, proceed to create the user in Supabase
-    const { data, error } = await supabase.auth.signUp({
-      email: credentials.email,
-      password: credentials.password || '',
-      options: {
-        data: {
-          name: credentials.name,
-          role: credentials.role,
-        }
-      }
-    });
-
-    if (error) throw error;
-    
-    if (!data.session) {
-      return {
-        emailVerificationRequired: true,
-      };
-    }
-
-    return {
-      token: data.session.access_token,
-      user: {
-        id: data.user!.id,
-        name: data.user!.user_metadata?.name || credentials.name,
-        email: data.user!.email || '',
-        role: data.user!.user_metadata?.role || credentials.role,
-      }
-    };
-  },
-
-  // Signup Direct Endpoint (bypasses n8n webhook registration)
-  signupDirect: async (credentials: SignupCredentials): Promise<AuthResponse> => {
-    const { data, error } = await supabase.auth.signUp({
-      email: credentials.email,
-      password: credentials.password || '',
-      options: {
-        data: {
-          name: credentials.name,
-          role: credentials.role,
-        }
-      }
-    });
-
-    if (error) throw error;
     
     if (!data.session) {
       return {
