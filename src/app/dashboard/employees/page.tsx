@@ -151,15 +151,21 @@ export default function EmployeesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openModal('registerEmployee', { user, onSuccess: fetchUsers });
-                        }}
-                        className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" /> Register Account
-                      </button>
+                      {(user.raw?.EMSStatus || '').toLowerCase() !== 'active' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openModal('registerEmployee', { user, onSuccess: fetchUsers });
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" /> Register Account
+                        </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+                          Active Access
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
