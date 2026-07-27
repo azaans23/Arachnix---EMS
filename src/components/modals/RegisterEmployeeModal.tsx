@@ -46,12 +46,12 @@ export default function RegisterEmployeeModal({
         },
         {
           onSuccess: () => {
-            toast.success('User account created successfully in Supabase!');
+            toast.success('User account created successfully');
             onSuccess();
             onClose();
           },
           onError: (err: any) => {
-            toast.error(err.message || 'Failed to register user.');
+            toast.error('Failed to register user.');
           },
         }
       );

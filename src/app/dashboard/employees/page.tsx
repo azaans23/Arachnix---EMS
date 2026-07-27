@@ -61,7 +61,6 @@ export default function EmployeesPage() {
       }));
 
       setUsers(mapped);
-      toast.success(`Successfully fetched ${mapped.length} users!`);
     } catch (err: any) {
       console.error(err);
       setErrorText(err.message || 'Failed to fetch users.');

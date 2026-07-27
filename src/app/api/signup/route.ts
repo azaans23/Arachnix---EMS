@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
+    const { errorResponse } = await verifyAdmin(request);
+    if (errorResponse) return errorResponse;
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -23,35 +27,6 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false },
     });
-
-    const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.replace('Bearer ', '').trim();
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: No token provided' },
-        { status: 401 }
-      );
-    }
-
-    const {
-      data: { user: requester },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-    if (authError || !requester) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const requesterRole = requester.app_metadata?.role || requester.user_metadata?.role || '';
-    if (requesterRole.toLowerCase().trim() !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden: Admin role required' },
-        { status: 403 }
-      );
-    }
 
     const { email, password, name, role, employeeId } = await request.json();
 
@@ -117,7 +92,7 @@ export async function POST(request: Request) {
         let errText = '';
         try {
           errText = await webhookRes.text();
-        } catch { }
+        } catch {}
         throw new Error(errText || `n8n update-user webhook returned status ${webhookRes.status}.`);
       }
 

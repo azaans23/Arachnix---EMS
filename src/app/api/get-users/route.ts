@@ -1,39 +1,12 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { verifyAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.replace('Bearer ', '').trim();
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: No token provided' },
-        { status: 401 }
-      );
-    }
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const role = user.app_metadata?.role || user.user_metadata?.role || '';
-    if (role.toLowerCase().trim() !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden: Admin role required' },
-        { status: 403 }
-      );
-    }
+    const { errorResponse } = await verifyAdmin(request);
+    if (errorResponse) return errorResponse;
 
     const response = await fetch('https://n8n.arachnix.io/webhook/get-users', {
       method: 'GET',
