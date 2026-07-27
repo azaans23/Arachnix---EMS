@@ -14,6 +14,7 @@ import {
   CheckCircle,
   Database,
   UserCheck,
+  Pencil,
 } from 'lucide-react';
 import { useModal } from '@/hooks/useModal';
 
@@ -250,6 +251,16 @@ export default function EmployeeDetailsModal({
             className="px-5 py-2.5 rounded-lg border border-subtle-stone text-sm font-semibold text-muted-clay hover:bg-cream/40 transition-colors cursor-pointer"
           >
             Close Details
+          </button>
+
+          <button
+            onClick={() => {
+              onClose();
+              openModal('editEmployee', { user, onSuccess });
+            }}
+            className="px-5 py-2.5 rounded-lg border border-terracotta/20 hover:border-terracotta text-sm font-semibold text-terracotta hover:bg-terracotta/5 transition-colors cursor-pointer flex items-center gap-1.5"
+          >
+            <Pencil className="w-4 h-4" /> Edit Profile
           </button>
 
           {!isActive && (

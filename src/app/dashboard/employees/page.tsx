@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import { useModal } from '@/hooks/useModal';
-import { Database, RefreshCw, UserPlus } from 'lucide-react';
+import { Database, RefreshCw, UserPlus, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface SheetUser {
@@ -209,21 +209,34 @@ export default function EmployeesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {(user.raw?.EMSStatus || '').toLowerCase() !== 'active' ? (
+                      <div className="flex items-center justify-end gap-3">
+                        {(user.raw?.EMSStatus || '').toLowerCase() !== 'active' ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openModal('registerEmployee', { user, onSuccess: fetchUsers });
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer whitespace-nowrap"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" /> Register Account
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 whitespace-nowrap">
+                            Active Access
+                          </span>
+                        )}
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            openModal('registerEmployee', { user, onSuccess: fetchUsers });
+                            openModal('editEmployee', { user, onSuccess: fetchUsers });
                           }}
-                          className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer"
+                          className="p-1.5 text-muted-clay/60 hover:text-terracotta border border-subtle-stone hover:border-terracotta/30 bg-pure-white hover:bg-terracotta/5 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Employee"
                         >
-                          <UserPlus className="w-3.5 h-3.5" /> Register Account
+                          <Pencil className="w-3.5 h-3.5" />
                         </button>
-                      ) : (
-                        <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                          Active Access
-                        </span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}

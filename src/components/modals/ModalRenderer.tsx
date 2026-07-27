@@ -29,6 +29,14 @@ export default function ModalRenderer() {
       );
     case 'createEmployee':
       return <EmployeeCreateModal onClose={closeModal} onSuccess={modalData?.onSuccess} />;
+    case 'editEmployee':
+      return (
+        <EmployeeCreateModal
+          user={modalData?.user}
+          onClose={closeModal}
+          onSuccess={modalData?.onSuccess}
+        />
+      );
     default:
       return null;
   }

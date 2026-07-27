@@ -20,7 +20,16 @@ import {
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 
+interface SheetUser {
+    name: string;
+    email: string;
+    role: string;
+    employeeId?: string;
+    raw?: Record<string, string | number | null | undefined>;
+}
+
 interface EmployeeCreateModalProps {
+    user?: SheetUser;
     onClose: () => void;
     onSuccess?: () => void;
 }
@@ -33,24 +42,37 @@ const roleOptions = [
     { label: 'Director', value: 'Director' },
 ];
 
-export default function EmployeeCreateModal({ onClose, onSuccess }: EmployeeCreateModalProps) {
+const emsStatusOptions = [
+    { label: 'Active', value: 'Active' },
+    { label: 'Inactive', value: 'Inactive' },
+];
+
+export default function EmployeeCreateModal({
+    user,
+    onClose,
+    onSuccess,
+}: EmployeeCreateModalProps) {
     const [submitting, setSubmitting] = useState(false);
+    const isEditMode = !!user;
+    const raw = user?.raw || {};
 
     const formik = useFormik({
         initialValues: {
-            name: '',
-            email: '',
-            phone: '',
-            designation: '',
-            department: '',
-            employmentType: '',
-            dob: '',
-            joiningDate: '',
-            baseSalary: '',
-            role: 'Employee',
-            address: '',
-            bankAccountDetails: '',
+            name: user?.name || '',
+            email: user?.email || '',
+            phone: raw.Phone || raw.phone || '',
+            designation: raw.Designation || raw.designation || '',
+            department: raw.Department || raw.department || '',
+            employmentType: raw.EmployeeType || raw.employeeType || '',
+            dob: raw.DOB || raw.dob || '',
+            joiningDate: raw.JoiningDate || raw.joiningDate || '',
+            baseSalary: raw.BaseSalary || raw.baseSalary || '',
+            role: user?.role || 'Employee',
+            emsStatus: raw.EMSStatus || raw.emsStatus || 'Active',
+            address: raw.Address || raw.address || '',
+            bankAccountDetails: raw.BankAccountDetails || raw.bankAccountDetails || '',
         },
+        enableReinitialize: true,
         onSubmit: async (values) => {
             setSubmitting(true);
             try {
@@ -70,12 +92,16 @@ export default function EmployeeCreateModal({ onClose, onSuccess }: EmployeeCrea
                     throw new Error(result.error || 'Failed to update user.');
                 }
 
-                toast.success('Employee profile created successfully');
+                toast.success(
+                    isEditMode
+                        ? 'Employee profile updated successfully'
+                        : 'Employee profile created successfully'
+                );
                 if (onSuccess) onSuccess();
                 onClose();
             } catch (err: unknown) {
                 console.error(err);
-                const errMsg = err instanceof Error ? err.message : 'Failed to create employee profile.';
+                const errMsg = err instanceof Error ? err.message : 'Failed to save employee profile.';
                 toast.error(errMsg);
             } finally {
                 setSubmitting(false);
@@ -101,11 +127,12 @@ export default function EmployeeCreateModal({ onClose, onSuccess }: EmployeeCrea
                 {/* Header */}
                 <div className="border-b border-subtle-stone pb-4 mb-6">
                     <h2 className="text-2xl font-extrabold text-deep-ink tracking-tight flex items-center gap-2">
-                        <PlusCircle className="w-6 h-6 text-terracotta" />
-                        Create Employee Profile
+                        {isEditMode ? 'Edit Employee Profile' : 'Create Employee Profile'}
                     </h2>
                     <p className="text-sm text-muted-clay mt-1">
-                        Fill in the details below to add a new employee profile to the system.
+                        {isEditMode
+                            ? 'Update the fields below to modify this employee profile.'
+                            : 'Fill in the details below to add a new employee profile to the system.'}
                     </p>
                 </div>
 
@@ -363,6 +390,25 @@ export default function EmployeeCreateModal({ onClose, onSuccess }: EmployeeCrea
                             />
                         </div>
 
+                        {/* EMS Status */}
+                        <div className="flex flex-col gap-1">
+                            <label
+                                className="text-xs font-semibold text-obsidian tracking-wide uppercase"
+                                htmlFor="emsStatus"
+                            >
+                                EMS Status
+                            </label>
+                            <CustomDropdown
+                                id="emsStatus"
+                                name="emsStatus"
+                                value={formik.values.emsStatus}
+                                onChange={(val) => formik.setFieldValue('emsStatus', val)}
+                                onBlur={() => formik.setFieldTouched('emsStatus', true)}
+                                options={emsStatusOptions}
+                                icon={<Database className="w-4 h-4" />}
+                            />
+                        </div>
+
                         {/* Residential Address */}
                         <div className="flex flex-col gap-1 md:col-span-2">
                             <label
@@ -431,7 +477,13 @@ export default function EmployeeCreateModal({ onClose, onSuccess }: EmployeeCrea
                             disabled={submitting}
                             className="bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm cursor-pointer text-sm disabled:opacity-50"
                         >
-                            {submitting ? 'Creating...' : 'Create Profile'}
+                            {isEditMode
+                                ? submitting
+                                    ? 'Saving...'
+                                    : 'Save Changes'
+                                : submitting
+                                    ? 'Creating...'
+                                    : 'Create Profile'}
                         </button>
                     </div>
                 </form>
