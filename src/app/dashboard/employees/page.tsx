@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import { useModal } from '@/hooks/useModal';
-import { Database, RefreshCw, UserPlus, Pencil } from 'lucide-react';
+import { Database, RefreshCw, UserPlus, Pencil, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface SheetUser {
@@ -41,7 +41,9 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch {}
+        } catch {
+          /* keep cleanErr */
+        }
         throw new Error(cleanErr);
       }
 
@@ -73,21 +75,12 @@ export default function EmployeesPage() {
   const getRoleBadgeClasses = (role: string) => {
     const r = (role || '').toLowerCase().trim();
     if (r.includes('admin') || r === 'super admin') {
-      return 'bg-terracotta/10 text-terracotta border-terracotta/20';
+      return 'border-ink/15 bg-ink text-accent-fg';
     }
     if (r === 'hr' || r.includes('hr manager')) {
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      return 'border-border bg-canvas text-ink';
     }
-    if (r.includes('finance')) {
-      return 'bg-amber-50 text-amber-800 border-amber-200';
-    }
-    if (r.includes('director')) {
-      return 'bg-purple-50 text-purple-800 border-purple-200';
-    }
-    if (r.includes('employee')) {
-      return 'bg-blue-50 text-blue-800 border-blue-200';
-    }
-    return 'bg-stone-50 text-stone-800 border-stone-200';
+    return 'border-border bg-surface text-muted';
   };
 
   useEffect(() => {
@@ -111,135 +104,149 @@ export default function EmployeesPage() {
 
   if (isAdmin === null) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <RefreshCw className="w-8 h-8 text-terracotta animate-spin mb-4" />
-        <span className="text-muted-clay font-medium animate-pulse">Checking permissions...</span>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center">
+        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
+        <span className="text-sm text-muted">Checking permissions…</span>
       </div>
     );
   }
 
   if (isAdmin === false) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-scale-up">
-        <div className="bg-red-50 text-red-500 p-4 rounded-full mb-4">
-          <svg
-            className="w-12 h-12"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+      <div className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center px-4 text-center animate-scale-up">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-danger-border bg-danger-bg text-danger">
+          <ShieldAlert className="h-6 w-6" />
         </div>
-        <h1 className="text-2xl font-bold text-obsidian mb-2">Access Denied</h1>
-        <p className="text-muted-clay max-w-md">
-          You do not have permission to view this page. Only administrators are allowed to access
-          employee records.
+        <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Only administrators can view employee records.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto mt-4 animate-fade-in-up">
-      {/* Header section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+    <div className="mx-auto max-w-6xl animate-fade-in-up">
+      <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-deep-ink flex items-center gap-3">
-            <Database className="w-8 h-8 text-terracotta" />
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Directory</p>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
             Employees
           </h1>
+          <p className="mt-1.5 text-sm text-muted">
+            {loading && users.length === 0
+              ? 'Syncing roster…'
+              : `${users.length} record${users.length === 1 ? '' : 's'}`}
+            {errorText ? ` · Sync issue` : ''}
+          </p>
         </div>
 
-        <button
-          onClick={() => openModal('createEmployee', { onSuccess: fetchUsers })}
-          className="flex items-center justify-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          Create Employee
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={fetchUsers}
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => openModal('createEmployee', { onSuccess: fetchUsers })}
+            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover"
+          >
+            <UserPlus className="h-4 w-4" />
+            Create employee
+          </button>
+        </div>
       </div>
 
       {loading && users.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-pure-white border border-subtle-stone rounded-xl shadow-sm">
-          <RefreshCw className="w-10 h-10 text-terracotta animate-spin mb-4" />
-          <span className="text-muted-clay font-medium">Fetching users...</span>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface py-20">
+          <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
+          <span className="text-sm text-muted">Fetching employees…</span>
         </div>
       ) : users.length === 0 ? (
         <EmptyState
-          icon={<Database className="w-8 h-8 text-muted-clay/60" />}
-          title="No Users Found"
-          description="No pending employee profiles were retrieved. Ensure your spreadsheet contains new records and trigger a synchronization."
-          actionLabel="Retry Sync"
+          icon={<Database className="h-5 w-5" />}
+          title="No employees found"
+          description="No profiles were retrieved. Confirm the sheet has records, then sync again."
+          actionLabel="Retry sync"
           onAction={fetchUsers}
-          actionIcon={<RefreshCw className="w-4 h-4" />}
+          actionIcon={<RefreshCw className="h-4 w-4" />}
         />
       ) : (
-        <div className="bg-pure-white border border-subtle-stone rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-subtle-stone bg-cream/50 text-xs font-semibold uppercase tracking-wider text-muted-clay/80">
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Email</th>
-                  <th className="px-6 py-4">Sheet Assigned Role</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  <th className="px-5 py-3.5 font-semibold">Name</th>
+                  <th className="px-5 py-3.5 font-semibold">Email</th>
+                  <th className="px-5 py-3.5 font-semibold">Role</th>
+                  <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-subtle-stone text-sm text-deep-ink">
-                {users.map((user, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => openModal('employeeDetails', { user, onSuccess: fetchUsers })}
-                    className="hover:bg-cream/40 transition-colors cursor-pointer"
-                  >
-                    <td className="px-6 py-4 font-semibold">{user.name || 'N/A'}</td>
-                    <td className="px-6 py-4 text-muted-clay">{user.email}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getRoleBadgeClasses(user.role)}`}
-                      >
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        {(user.raw?.EMSStatus || '').toLowerCase() !== 'active' ? (
+              <tbody className="divide-y divide-border text-sm text-ink">
+                {users.map((user, idx) => {
+                  const isActive = (user.raw?.EMSStatus || '').toLowerCase() === 'active';
+                  return (
+                    <tr
+                      key={user.email || idx}
+                      onClick={() =>
+                        openModal('employeeDetails', { user, onSuccess: fetchUsers })
+                      }
+                      className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
+                    >
+                      <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
+                      <td className="px-5 py-3.5 text-muted">{user.email}</td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${getRoleBadgeClasses(user.role)}`}
+                        >
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isActive ? (
+                            <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+                              Active
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openModal('registerEmployee', {
+                                  user,
+                                  onSuccess: fetchUsers,
+                                });
+                              }}
+                              className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              Register
+                            </button>
+                          )}
+
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              openModal('registerEmployee', { user, onSuccess: fetchUsers });
+                              openModal('editEmployee', { user, onSuccess: fetchUsers });
                             }}
-                            className="inline-flex items-center gap-1.5 text-xs text-terracotta hover:text-terracotta-hover border border-terracotta/20 hover:border-terracotta bg-pure-white px-3 py-1.5 rounded-md font-semibold transition-all shadow-sm cursor-pointer whitespace-nowrap"
+                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
+                            title="Edit employee"
                           >
-                            <UserPlus className="w-3.5 h-3.5" /> Register Account
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
-                        ) : (
-                          <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 whitespace-nowrap">
-                            Active Access
-                          </span>
-                        )}
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openModal('editEmployee', { user, onSuccess: fetchUsers });
-                          }}
-                          className="p-1.5 text-muted-clay/60 hover:text-terracotta border border-subtle-stone hover:border-terracotta/30 bg-pure-white hover:bg-terracotta/5 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Employee"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

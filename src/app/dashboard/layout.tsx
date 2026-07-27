@@ -38,18 +38,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone">
-        <div className="text-muted-clay font-medium animate-pulse">Loading dashboard...</div>
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <div className="text-sm font-medium text-muted animate-pulse">Loading dashboard…</div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-stone">
+    <div className="flex min-h-screen bg-canvas">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Main Content Area */}
-        <main className="flex-1 p-8">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <main className="flex-1 p-6 md:p-8">{children}</main>
       </div>
     </div>
   );

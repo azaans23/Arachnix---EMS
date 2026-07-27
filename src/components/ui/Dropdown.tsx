@@ -34,7 +34,6 @@ export default function CustomDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -55,33 +54,31 @@ export default function CustomDropdown({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between py-2.5 pr-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/20 transition-all bg-pure-white text-deep-ink text-left relative cursor-pointer ${
+        className={`relative flex w-full cursor-pointer items-center justify-between border bg-surface py-2.5 pr-3 text-left text-ink transition-all focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
           icon ? 'pl-10' : 'pl-3'
-        } ${
+        } rounded-md ${
           touched && error
-            ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+            ? 'border-danger focus:border-danger'
             : isOpen
-              ? 'border-terracotta ring-2 ring-terracotta/20'
-              : 'border-subtle-stone hover:border-muted-clay/40'
+              ? 'border-ink/40 ring-2 ring-[var(--focus-ring)]'
+              : 'border-border hover:border-ink/25'
         }`}
       >
         {icon && (
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none text-muted-clay/60">
+          <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center text-muted/60">
             {icon}
           </div>
         )}
-        <span
-          className={`text-sm ${selectedOption ? 'text-obsidian font-medium' : 'text-muted-clay/40'}`}
-        >
+        <span className={`text-sm ${selectedOption ? 'font-medium text-ink' : 'text-muted/50'}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-muted-clay/60 transition-transform duration-300 ${isOpen ? 'transform rotate-180 text-terracotta' : ''}`}
+          className={`h-4 w-4 text-muted transition-transform duration-200 ${isOpen ? 'rotate-180 text-ink' : ''}`}
         />
       </button>
 
       {isOpen && (
-        <ul className="absolute z-50 w-full mt-1.5 bg-pure-white border border-subtle-stone rounded-md shadow-lg overflow-hidden py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+        <ul className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-md border border-border bg-surface py-1 shadow-panel animate-fade-in">
           {options.map((option) => (
             <li key={option.value}>
               <button
@@ -90,10 +87,10 @@ export default function CustomDropdown({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer ${
+                className={`w-full cursor-pointer px-4 py-2.5 text-left text-sm transition-colors ${
                   option.value === value
-                    ? 'bg-cream text-terracotta font-semibold'
-                    : 'text-obsidian hover:bg-stone/50 hover:text-terracotta'
+                    ? 'bg-canvas font-semibold text-ink'
+                    : 'text-ink hover:bg-canvas'
                 }`}
               >
                 {option.label}
