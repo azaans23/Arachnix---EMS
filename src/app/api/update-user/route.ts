@@ -32,22 +32,20 @@ export async function POST(request: Request) {
           }
         } catch (e) {}
 
-        return NextResponse.json({ 
-          success: false, 
-          error: parsedError || `n8n update-user webhook returned status ${response.status}.` 
+        return NextResponse.json({
+          success: false,
+          error: parsedError || `n8n update-user webhook returned status ${response.status}.`,
         });
       }
 
       return NextResponse.json({ success: true });
     } catch (fetchError: any) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Failed to connect to the n8n server.' 
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to connect to the n8n server.',
       });
     }
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message || 'Internal Server Error' }
-    );
+    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' });
   }
 }

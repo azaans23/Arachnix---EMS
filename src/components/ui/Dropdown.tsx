@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
-import { ChevronDown } from "lucide-react";
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 interface DropdownOption {
   label: string;
@@ -22,7 +22,7 @@ interface CustomDropdownProps {
 }
 
 export default function CustomDropdown({
-  placeholder = "Select an option",
+  placeholder = 'Select an option',
   options,
   value,
   onChange,
@@ -42,9 +42,9 @@ export default function CustomDropdown({
         onBlur();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [onBlur]);
 
@@ -56,13 +56,13 @@ export default function CustomDropdown({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center justify-between py-2.5 pr-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-terracotta/20 transition-all bg-pure-white text-deep-ink text-left relative cursor-pointer ${
-          icon ? "pl-10" : "pl-3"
+          icon ? 'pl-10' : 'pl-3'
         } ${
-          touched && error 
-            ? "border-red-500 focus:border-red-500 focus:ring-red-500/20" 
-            : isOpen 
-            ? "border-terracotta ring-2 ring-terracotta/20" 
-            : "border-subtle-stone hover:border-muted-clay/40"
+          touched && error
+            ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+            : isOpen
+              ? 'border-terracotta ring-2 ring-terracotta/20'
+              : 'border-subtle-stone hover:border-muted-clay/40'
         }`}
       >
         {icon && (
@@ -70,10 +70,14 @@ export default function CustomDropdown({
             {icon}
           </div>
         )}
-        <span className={`text-sm ${selectedOption ? "text-obsidian font-medium" : "text-muted-clay/40"}`}>
+        <span
+          className={`text-sm ${selectedOption ? 'text-obsidian font-medium' : 'text-muted-clay/40'}`}
+        >
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <ChevronDown className={`w-4 h-4 text-muted-clay/60 transition-transform duration-300 ${isOpen ? "transform rotate-180 text-terracotta" : ""}`} />
+        <ChevronDown
+          className={`w-4 h-4 text-muted-clay/60 transition-transform duration-300 ${isOpen ? 'transform rotate-180 text-terracotta' : ''}`}
+        />
       </button>
 
       {isOpen && (
@@ -88,8 +92,8 @@ export default function CustomDropdown({
                 }}
                 className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer ${
                   option.value === value
-                    ? "bg-cream text-terracotta font-semibold"
-                    : "text-obsidian hover:bg-stone/50 hover:text-terracotta"
+                    ? 'bg-cream text-terracotta font-semibold'
+                    : 'text-obsidian hover:bg-stone/50 hover:text-terracotta'
                 }`}
               >
                 {option.label}
@@ -101,4 +105,3 @@ export default function CustomDropdown({
     </div>
   );
 }
-

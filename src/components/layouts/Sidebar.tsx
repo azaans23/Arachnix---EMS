@@ -1,10 +1,20 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, FileText, Settings, Power, ChevronLeft, ChevronRight, UserPlus, Database } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  Settings,
+  Power,
+  ChevronLeft,
+  ChevronRight,
+  UserPlus,
+  Database,
+} from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
 
 export default function Sidebar() {
@@ -26,7 +36,9 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}>
+    <aside
+      className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}
+    >
       {/* Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -37,33 +49,76 @@ export default function Sidebar() {
       </button>
 
       {/* Brand */}
-      <div className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}>
+      <div
+        className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}
+      >
         {isOpen ? (
           <div className="relative w-48 h-12">
-            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain object-left" priority sizes="192px" />
+            <Image
+              src="/logo-small.png"
+              alt="Arachnix Logo"
+              fill
+              className="object-contain object-left"
+              priority
+              sizes="192px"
+            />
           </div>
         ) : (
           <div className="relative w-10 h-10">
-            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority sizes="40px" />
+            <Image
+              src="/logo-small.png"
+              alt="Arachnix Logo"
+              fill
+              className="object-contain"
+              priority
+              sizes="40px"
+            />
           </div>
         )}
       </div>
 
       {/* Navigation */}
       <nav className={`flex-1 py-6 flex flex-col gap-2 ${isOpen ? 'px-4' : 'px-3 items-center'}`}>
-        <NavItem href="/dashboard" icon={<LayoutDashboard className="w-5 h-5 shrink-0" />} label="Dashboard" isOpen={isOpen} active={isActive('/dashboard')} />
-        <NavItem href="/dashboard/employees" icon={<Database className="w-5 h-5 shrink-0" />} label="Employees" isOpen={isOpen} active={isActive('/dashboard/employees')} />
-        <NavItem href="/dashboard/payroll" icon={<FileText className="w-5 h-5 shrink-0" />} label="Payroll" isOpen={isOpen} active={isActive('/dashboard/payroll')} />
-        <NavItem href="/dashboard/settings" icon={<Settings className="w-5 h-5 shrink-0" />} label="Settings" isOpen={isOpen} active={isActive('/dashboard/settings')} />
+        <NavItem
+          href="/dashboard"
+          icon={<LayoutDashboard className="w-5 h-5 shrink-0" />}
+          label="Dashboard"
+          isOpen={isOpen}
+          active={isActive('/dashboard')}
+        />
+        <NavItem
+          href="/dashboard/employees"
+          icon={<Database className="w-5 h-5 shrink-0" />}
+          label="Employees"
+          isOpen={isOpen}
+          active={isActive('/dashboard/employees')}
+        />
+        <NavItem
+          href="/dashboard/payroll"
+          icon={<FileText className="w-5 h-5 shrink-0" />}
+          label="Payroll"
+          isOpen={isOpen}
+          active={isActive('/dashboard/payroll')}
+        />
+        <NavItem
+          href="/dashboard/settings"
+          icon={<Settings className="w-5 h-5 shrink-0" />}
+          label="Settings"
+          isOpen={isOpen}
+          active={isActive('/dashboard/settings')}
+        />
       </nav>
 
       {/* Footer / Logout */}
-      <div className={`p-4 border-t border-subtle-stone flex flex-col ${isOpen ? '' : 'items-center'} transition-all`}>
+      <div
+        className={`p-4 border-t border-subtle-stone flex flex-col ${isOpen ? '' : 'items-center'} transition-all`}
+      >
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
-            } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
+          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${
+            isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
+          } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
         >
           <Power className="w-5 h-5 shrink-0" />
           {isOpen && <span className="whitespace-nowrap overflow-hidden">Log out</span>}
@@ -81,17 +136,32 @@ export default function Sidebar() {
   );
 }
 
-function NavItem({ href, icon, label, isOpen, active = false, isLogout = false }: { href: string; icon: React.ReactNode; label: string; isOpen: boolean; active?: boolean; isLogout?: boolean; }) {
-  const baseClasses = "group relative flex items-center rounded-md font-medium transition-colors w-full";
-  const sizeClasses = isOpen ? "px-3 py-2.5 gap-3" : "justify-center w-10 h-10";
+function NavItem({
+  href,
+  icon,
+  label,
+  isOpen,
+  active = false,
+  isLogout = false,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  isOpen: boolean;
+  active?: boolean;
+  isLogout?: boolean;
+}) {
+  const baseClasses =
+    'group relative flex items-center rounded-md font-medium transition-colors w-full';
+  const sizeClasses = isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10';
 
-  let colorClasses = "";
+  let colorClasses = '';
   if (isLogout) {
-    colorClasses = "text-muted-clay hover:text-terracotta hover:bg-cream";
+    colorClasses = 'text-muted-clay hover:text-terracotta hover:bg-cream';
   } else if (active) {
-    colorClasses = "bg-cream text-terracotta";
+    colorClasses = 'bg-cream text-terracotta';
   } else {
-    colorClasses = "text-muted-clay hover:text-obsidian hover:bg-cream";
+    colorClasses = 'text-muted-clay hover:text-obsidian hover:bg-cream';
   }
 
   return (

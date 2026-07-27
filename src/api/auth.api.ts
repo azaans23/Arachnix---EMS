@@ -32,7 +32,7 @@ export const authApi = {
     });
 
     if (error) throw error;
-    if (!data.session) throw new Error("No session generated");
+    if (!data.session) throw new Error('No session generated');
 
     return {
       token: data.session.access_token,
@@ -41,13 +41,13 @@ export const authApi = {
         name: data.user.user_metadata?.name || '',
         email: data.user.email || '',
         role: data.user.user_metadata?.role || '',
-      }
+      },
     };
   },
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
-    console.log("authApi.signup credentials received:", credentials);
+    console.log('authApi.signup credentials received:', credentials);
     // 1. Authenticate the user in Supabase first
     const { data, error } = await supabase.auth.signUp({
       email: credentials.email,
@@ -56,15 +56,15 @@ export const authApi = {
         data: {
           name: credentials.name,
           role: credentials.role,
-        }
-      }
+        },
+      },
     });
 
     if (error) throw error;
 
     const supabaseUserId = data.user?.id;
     if (!supabaseUserId) {
-      throw new Error("Failed to retrieve user ID from Supabase.");
+      throw new Error('Failed to retrieve user ID from Supabase.');
     }
 
     // 2. Update the record in the sheet via n8n update-user webhook
@@ -87,12 +87,12 @@ export const authApi = {
 
       const webhookData = await webhookRes.json();
       if (!webhookRes.ok || !webhookData.success) {
-        throw new Error(webhookData.error || "Failed to sync status update with sheet.");
+        throw new Error(webhookData.error || 'Failed to sync status update with sheet.');
       }
     } catch (err: any) {
-      throw new Error(err.message || "Failed to update employee status in spreadsheet.");
+      throw new Error(err.message || 'Failed to update employee status in spreadsheet.');
     }
-    
+
     if (!data.session) {
       return {
         emailVerificationRequired: true,
@@ -106,7 +106,7 @@ export const authApi = {
         name: data.user!.user_metadata?.name || credentials.name,
         email: data.user!.email || '',
         role: data.user!.user_metadata?.role || credentials.role,
-      }
+      },
     };
   },
 

@@ -1,21 +1,11 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
 import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
 import { useSignup } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
-import {
-  User,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  Shield,
-  X,
-  UserCheck,
-  AlertCircle
-} from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Shield, X, UserCheck, AlertCircle } from 'lucide-react';
 
 interface SheetUser {
   name: string;
@@ -33,7 +23,7 @@ interface RegisterEmployeeModalProps {
 export default function RegisterEmployeeModal({
   user,
   onClose,
-  onSuccess
+  onSuccess,
 }: RegisterEmployeeModalProps) {
   const [showPassword, setShowPassword] = useState(false);
   const signupMutation = useSignup();
@@ -49,27 +39,29 @@ export default function RegisterEmployeeModal({
     validationSchema: signupValidationSchema,
     enableReinitialize: true,
     onSubmit: (values) => {
-      console.log("RegisterModal submitting values:", values, "employeeId:", user.employeeId);
-      signupMutation.mutate({
-        ...values,
-        employeeId: user.employeeId,
-      }, {
-        onSuccess: () => {
-          toast.success("User account created successfully in Supabase!");
-          onSuccess();
-          onClose();
+      console.log('RegisterModal submitting values:', values, 'employeeId:', user.employeeId);
+      signupMutation.mutate(
+        {
+          ...values,
+          employeeId: user.employeeId,
         },
-        onError: (err: any) => {
-          toast.error(err.message || "Failed to register user.");
+        {
+          onSuccess: () => {
+            toast.success('User account created successfully in Supabase!');
+            onSuccess();
+            onClose();
+          },
+          onError: (err: any) => {
+            toast.error(err.message || 'Failed to register user.');
+          },
         }
-      });
-    }
+      );
+    },
   });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/45 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
       <div className="relative w-full max-w-md bg-pure-white border border-subtle-stone shadow-2xl rounded-2xl p-8 mx-auto animate-scale-up">
-
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -93,7 +85,7 @@ export default function RegisterEmployeeModal({
         {signupMutation.isError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex gap-2 items-start">
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <span>{(signupMutation.error as any)?.message || "Credentials setup failed."}</span>
+            <span>{(signupMutation.error as any)?.message || 'Credentials setup failed.'}</span>
           </div>
         )}
 
@@ -154,7 +146,10 @@ export default function RegisterEmployeeModal({
 
           {/* Password (Input Needed!) */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-obsidian tracking-wide uppercase" htmlFor="password">
+            <label
+              className="text-xs font-semibold text-obsidian tracking-wide uppercase"
+              htmlFor="password"
+            >
               Input Password
             </label>
             <div className="relative flex items-center">
@@ -164,16 +159,17 @@ export default function RegisterEmployeeModal({
               <input
                 id="password"
                 name="password"
-                type={showPassword ? "text" : "password"}
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={formik.values.password}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
                 autoFocus
-                className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${formik.touched.password && formik.errors.password
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
-                  : "border-subtle-stone focus:border-terracotta"
-                  }`}
+                className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${
+                  formik.touched.password && formik.errors.password
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                    : 'border-subtle-stone focus:border-terracotta'
+                }`}
               />
               <button
                 type="button"
@@ -198,9 +194,25 @@ export default function RegisterEmployeeModal({
           >
             {signupMutation.isPending ? (
               <>
-                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 <span>Creating credentials...</span>
               </>

@@ -15,7 +15,7 @@ export default function EmptyState({
   description,
   actionLabel,
   onAction,
-  actionIcon
+  actionIcon,
 }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 bg-pure-white border border-subtle-stone rounded-xl shadow-sm text-center px-4 animate-fade-in-up">
@@ -23,15 +23,13 @@ export default function EmptyState({
       <div className="w-16 h-16 rounded-full bg-cream flex items-center justify-center mb-4 text-muted-clay/65 border border-subtle-stone/30">
         {icon}
       </div>
-      
+
       {/* Title */}
       <h3 className="text-lg font-bold text-deep-ink">{title}</h3>
-      
+
       {/* Description */}
-      <p className="text-muted-clay/60 text-sm max-w-sm mt-2 leading-relaxed">
-        {description}
-      </p>
-      
+      <p className="text-muted-clay/60 text-sm max-w-sm mt-2 leading-relaxed">{description}</p>
+
       {/* Action Button */}
       {actionLabel && onAction && (
         <button

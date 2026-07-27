@@ -1,14 +1,10 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import { useModal } from '@/hooks/useModal';
-import {
-  Database,
-  RefreshCw,
-  UserPlus
-} from 'lucide-react';
+import { Database, RefreshCw, UserPlus } from 'lucide-react';
 
 interface SheetUser {
   name: string;
@@ -30,7 +26,7 @@ export default function EmployeesPage() {
     try {
       const response = await fetch('/api/get-users');
       const result = await response.json();
-      console.log("Frontend received get-users result:", result);
+      console.log('Frontend received get-users result:', result);
 
       if (!response.ok || !result.success) {
         let cleanErr = result.error || `Server returned status ${response.status}`;
@@ -39,7 +35,7 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch (e) { }
+        } catch (e) {}
         throw new Error(cleanErr);
       }
 
@@ -57,7 +53,7 @@ export default function EmployeesPage() {
         employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
         raw: u,
       }));
-      console.log("Mapped users:", mapped);
+      console.log('Mapped users:', mapped);
 
       setUsers(mapped);
       toast.success(`Successfully fetched ${mapped.length} users!`);
@@ -138,16 +134,18 @@ export default function EmployeesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle-stone text-sm text-deep-ink">
-                 {users.map((user, idx) => (
-                  <tr 
-                    key={idx} 
+                {users.map((user, idx) => (
+                  <tr
+                    key={idx}
                     onClick={() => openModal('employeeDetails', { user, onSuccess: fetchUsers })}
                     className="hover:bg-cream/40 transition-colors cursor-pointer"
                   >
                     <td className="px-6 py-4 font-semibold">{user.name || 'N/A'}</td>
                     <td className="px-6 py-4 text-muted-clay">{user.email}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getRoleBadgeClasses(user.role)}`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getRoleBadgeClasses(user.role)}`}
+                      >
                         {user.role}
                       </span>
                     </td>

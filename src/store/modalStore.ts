@@ -12,17 +12,17 @@ const listeners = new Set<Listener>();
 
 export const modalStore = {
   get: (): ModalState => currentModal,
-  
+
   open: (name: ModalName, data?: any) => {
     currentModal = { name, data };
     listeners.forEach((listener) => listener(currentModal));
   },
-  
+
   close: () => {
     currentModal = { name: null };
     listeners.forEach((listener) => listener(currentModal));
   },
-  
+
   subscribe: (listener: Listener) => {
     listeners.add(listener);
     return () => {

@@ -1,17 +1,10 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useLoginForm } from "@/hooks/useAuth";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  ArrowRight
-} from "lucide-react";
+import { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useLoginForm } from '@/hooks/useAuth';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const { formik, isPending, isError, error } = useLoginForm();
@@ -24,15 +17,27 @@ export default function LoginPage() {
       <div className="absolute bottom-[-15%] right-[-15%] w-[70%] h-[70%] rounded-full bg-ochre/10 blur-[130px] animate-float-delayed" />
 
       {/* Interactive Login Card Container */}
-      <div className={`w-full max-w-md bg-pure-white rounded-2xl border border-subtle-stone shadow-xl shadow-stone-200/50 p-8 sm:p-10 relative z-10 animate-fade-in-up ${isError ? "animate-shake" : ""}`}>
-
+      <div
+        className={`w-full max-w-md bg-pure-white rounded-2xl border border-subtle-stone shadow-xl shadow-stone-200/50 p-8 sm:p-10 relative z-10 animate-fade-in-up ${isError ? 'animate-shake' : ''}`}
+      >
         {/* Brand Logo & Header */}
         <div className="flex flex-col items-center mb-8">
           <div className="relative w-16 h-16 mb-4">
-            <Image src="/logo-small.png" alt="Arachnix Logo" fill className="object-contain" priority sizes="64px" />
+            <Image
+              src="/logo-small.png"
+              alt="Arachnix Logo"
+              fill
+              className="object-contain"
+              priority
+              sizes="64px"
+            />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-deep-ink text-center">Welcome Back</h1>
-          <p className="text-muted-clay/60 text-sm text-center mt-2">Sign in to access the Employee System</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-deep-ink text-center">
+            Welcome Back
+          </h1>
+          <p className="text-muted-clay/60 text-sm text-center mt-2">
+            Sign in to access the Employee System
+          </p>
         </div>
 
         {isError && (
@@ -40,7 +45,9 @@ export default function LoginPage() {
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold block">Authentication Failed</span>
-              <span className="text-xs text-red-600/90">{(error as any).message || "Invalid credentials provided."}</span>
+              <span className="text-xs text-red-600/90">
+                {(error as any).message || 'Invalid credentials provided.'}
+              </span>
             </div>
           </div>
         )}
@@ -48,7 +55,10 @@ export default function LoginPage() {
         <form className="flex flex-col gap-5" onSubmit={formik.handleSubmit}>
           {/* Email Address */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-obsidian tracking-wide uppercase" htmlFor="email">
+            <label
+              className="text-xs font-semibold text-obsidian tracking-wide uppercase"
+              htmlFor="email"
+            >
               Email Address
             </label>
             <div className="relative flex items-center">
@@ -63,10 +73,11 @@ export default function LoginPage() {
                 value={formik.values.email}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                className={`pl-11 pr-4 py-2.5 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${formik.submitCount > 0 && formik.errors.email
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
-                  : "border-subtle-stone focus:border-terracotta"
-                  }`}
+                className={`pl-11 pr-4 py-2.5 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${
+                  formik.submitCount > 0 && formik.errors.email
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                    : 'border-subtle-stone focus:border-terracotta'
+                }`}
               />
             </div>
             {formik.submitCount > 0 && formik.errors.email && (
@@ -79,7 +90,10 @@ export default function LoginPage() {
           {/* Password */}
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-obsidian tracking-wide uppercase" htmlFor="password">
+              <label
+                className="text-xs font-semibold text-obsidian tracking-wide uppercase"
+                htmlFor="password"
+              >
                 Password
               </label>
             </div>
@@ -90,15 +104,16 @@ export default function LoginPage() {
               <input
                 id="password"
                 name="password"
-                type={showPassword ? "text" : "password"}
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={formik.values.password}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                className={`pl-11 pr-12 py-2.5 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${formik.submitCount > 0 && formik.errors.password
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/10"
-                  : "border-subtle-stone focus:border-terracotta"
-                  }`}
+                className={`pl-11 pr-12 py-2.5 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${
+                  formik.submitCount > 0 && formik.errors.password
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                    : 'border-subtle-stone focus:border-terracotta'
+                }`}
               />
               <button
                 type="button"
@@ -123,9 +138,25 @@ export default function LoginPage() {
           >
             {isPending ? (
               <>
-                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 <span>Signing in...</span>
               </>
@@ -137,10 +168,7 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
       </div>
     </div>
   );
 }
-
-

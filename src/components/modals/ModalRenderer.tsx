@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useModal } from '@/hooks/useModal';
 import RegisterEmployeeModal from './RegisterEmployeeModal';

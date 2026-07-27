@@ -8,7 +8,7 @@ export async function GET() {
     const response = await fetch('https://n8n.arachnix.io/webhook-test/get-users', {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       cache: 'no-store', // Disable caching so we always get fresh webhook responses
     });
@@ -18,7 +18,7 @@ export async function GET() {
       try {
         errText = await response.text();
       } catch (e) {}
-      
+
       let parsedError = errText;
       try {
         const jsonErr = JSON.parse(errText);
@@ -29,15 +29,17 @@ export async function GET() {
           }
         }
       } catch (e) {}
-      
-      return NextResponse.json({ 
-        success: false, 
-        error: parsedError || `n8n webhook returned status ${response.status}. Make sure the webhook is active or 'Execute workflow' has been clicked.` 
+
+      return NextResponse.json({
+        success: false,
+        error:
+          parsedError ||
+          `n8n webhook returned status ${response.status}. Make sure the webhook is active or 'Execute workflow' has been clicked.`,
       });
     }
 
     const data = await response.json();
-    console.log("n8n response data:", JSON.stringify(data, null, 2));
+    console.log('n8n response data:', JSON.stringify(data, null, 2));
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json(

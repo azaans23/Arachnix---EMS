@@ -14,7 +14,7 @@ export const useLogin = () => {
         localStorage.setItem('token', data.token);
       }
     },
-    onError: (error) => { },
+    onError: (error) => {},
   });
 };
 
@@ -22,10 +22,9 @@ export const useLogin = () => {
 export const useSignup = () => {
   return useMutation({
     mutationFn: (credentials: SignupCredentials) => authApi.signup(credentials),
-    onError: (error) => { },
+    onError: (error) => {},
   });
 };
-
 
 // Hook for Logout
 export const useLogout = () => {
@@ -58,8 +57,8 @@ export const useLoginForm = () => {
     onSubmit: (values) => {
       loginMutation.mutate(values, {
         onSuccess: () => {
-          toast.success("Welcome back! Logging you in...");
-          router.push("/dashboard");
+          toast.success('Welcome back! Logging you in...');
+          router.push('/dashboard');
         },
       });
     },
