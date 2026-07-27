@@ -41,7 +41,7 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch {}
+        } catch { }
         throw new Error(cleanErr);
       }
 
@@ -158,19 +158,18 @@ export default function EmployeesPage() {
         </div>
 
         <button
-          onClick={fetchUsers}
-          disabled={loading}
+
           className="flex items-center justify-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Syncing...' : 'Sync Employee'}
+          {loading ? 'Creating...' : 'Create Employee'}
         </button>
       </div>
 
       {loading && users.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 bg-pure-white border border-subtle-stone rounded-xl shadow-sm">
           <RefreshCw className="w-10 h-10 text-terracotta animate-spin mb-4" />
-          <span className="text-muted-clay font-medium">Fetching users from external sheet...</span>
+          <span className="text-muted-clay font-medium">Fetching users...</span>
         </div>
       ) : users.length === 0 ? (
         <EmptyState

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';

@@ -57,7 +57,6 @@ export const useLoginForm = () => {
     onSubmit: (values) => {
       loginMutation.mutate(values, {
         onSuccess: () => {
-          toast.success('Welcome back! Logging you in...');
           router.push('/dashboard');
         },
       });
