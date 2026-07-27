@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import CustomDropdown from '@/components/ui/Dropdown';
@@ -19,14 +20,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { canAccess, normalizeRole, ROLE_OPTIONS as ASSIGNABLE_ROLES } from '@/lib/rbac';
-
-interface SheetUser {
-  name: string;
-  email: string;
-  role: string;
-  employeeId?: string;
-  raw?: any;
-}
+import { mapRawToEmployee } from '@/lib/sheets/employees';
+import type { SheetUser } from '@/types/employee';
+import { toSheetUser } from '@/types/employee';
 
 type SortKey = 'name' | 'email' | 'role';
 type SortDir = 'asc' | 'desc';
@@ -57,6 +53,10 @@ export default function EmployeesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const { openModal } = useModal();
+  const router = useRouter();
+
+  const profilePath = (user: SheetUser) =>
+    `/dashboard/employees/${encodeURIComponent(user.employeeId || user.email)}`;
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -83,25 +83,18 @@ export default function EmployeesPage() {
         throw new Error(cleanErr);
       }
 
-      let rawUsers: any[] = [];
+      let rawUsers: unknown[] = [];
       if (Array.isArray(result.data)) {
         rawUsers = result.data;
       } else if (result.data && typeof result.data === 'object') {
         rawUsers = [result.data];
       }
 
-      const mapped = rawUsers.map((u: any) => ({
-        name: u.FullName || u.fullName || u.name || u.Name || '',
-        email: u.Email || u.email || '',
-        role: u.Role || u.role || 'Employee',
-        employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
-        raw: u,
-      }));
-
-      setUsers(mapped);
-    } catch (err: any) {
+      setUsers(rawUsers.map((row) => toSheetUser(mapRawToEmployee(row))));
+    } catch (err: unknown) {
       console.error(err);
-      setErrorText(err.message || 'Failed to fetch users.');
+      const message = err instanceof Error ? err.message : 'Failed to fetch users.';
+      setErrorText(message);
       toast.error('Failed to sync sheet users.');
     } finally {
       setLoading(false);
@@ -384,10 +377,8 @@ export default function EmployeesPage() {
                       const isActive = getEmsStatus(user) === 'active';
                       return (
                         <tr
-                          key={user.email || idx}
-                          onClick={() =>
-                            openModal('employeeDetails', { user, onSuccess: fetchUsers })
-                          }
+                          key={user.employeeId || user.email || idx}
+                          onClick={() => router.push(profilePath(user))}
                           className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
                         >
                           <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
@@ -426,7 +417,7 @@ export default function EmployeesPage() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openModal('editEmployee', { user, onSuccess: fetchUsers });
+                                  router.push(`${profilePath(user)}?edit=1`);
                                 }}
                                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
                                 title="Edit employee"

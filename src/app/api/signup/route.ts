@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyEmployeeAccess } from '@/lib/auth';
+import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       }
 
       // 2. Update the record in the sheet via n8n update-user webhook
-      const webhookRes = await fetch('https://n8n.arachnix.io/webhook/update-user', {
+      const webhookRes = await fetch(SHEETS_WEBHOOKS.updateUser, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

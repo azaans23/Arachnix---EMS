@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
+import {
+  SheetsError,
+  upsertEmployee,
+  validateEmployeeWrite,
+} from '@/lib/sheets/employees';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,47 +14,25 @@ export async function POST(request: Request) {
     if (errorResponse) return errorResponse;
 
     const body = await request.json();
+    const validation = await validateEmployeeWrite(body);
 
-    try {
-      const response = await fetch('https://n8n.arachnix.io/webhook-test/update-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        let errText = '';
-        try {
-          errText = await response.text();
-        } catch {}
-
-        let parsedError = errText;
-        try {
-          const jsonErr = JSON.parse(errText);
-          if (jsonErr.message) {
-            parsedError = jsonErr.message;
-            if (jsonErr.hint) {
-              parsedError += ` ${jsonErr.hint}`;
-            }
-          }
-        } catch {}
-
-        return NextResponse.json({
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
           success: false,
-          error: parsedError || `n8n update-user webhook returned status ${response.status}.`,
-        });
-      }
-
-      return NextResponse.json({ success: true });
-    } catch {
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to connect to the n8n server.',
-      });
+          error: validation.error,
+          fieldErrors: validation.fieldErrors,
+        },
+        { status: 400 }
+      );
     }
+
+    await upsertEmployee(validation.value);
+    return NextResponse.json({ success: true });
   } catch (error: unknown) {
+    if (error instanceof SheetsError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    }
     const errMsg = error instanceof Error ? error.message : 'Internal Server Error';
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }

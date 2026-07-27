@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
+import { fetchEmployees, SheetsError } from '@/lib/sheets/employees';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,42 +10,12 @@ export async function GET(request: Request) {
     const { errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
-    const response = await fetch('https://n8n.arachnix.io/webhook/get-users', {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      cache: 'no-store', // Disable caching so we always get fresh webhook responses
-    });
-
-    if (!response.ok) {
-      let errText = '';
-      try {
-        errText = await response.text();
-      } catch {}
-
-      let parsedError = errText;
-      try {
-        const jsonErr = JSON.parse(errText);
-        if (jsonErr.message) {
-          parsedError = jsonErr.message;
-          if (jsonErr.hint) {
-            parsedError += ` ${jsonErr.hint}`;
-          }
-        }
-      } catch {}
-
-      return NextResponse.json({
-        success: false,
-        error:
-          parsedError ||
-          `n8n webhook returned status ${response.status}. Make sure the webhook is active or 'Execute workflow' has been clicked.`,
-      });
-    }
-
-    const data = await response.json();
-    return NextResponse.json({ success: true, data });
+    const employees = await fetchEmployees();
+    return NextResponse.json({ success: true, data: employees.map((e) => e.raw) });
   } catch (error: unknown) {
+    if (error instanceof SheetsError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    }
     const errMsg = error instanceof Error ? error.message : 'Failed to connect to the n8n server.';
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
