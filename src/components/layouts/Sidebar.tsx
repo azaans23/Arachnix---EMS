@@ -5,23 +5,60 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  FileText,
   Settings,
   Power,
   ChevronLeft,
   ChevronRight,
-  Database,
+  Users,
+  ScrollText,
+  Banknote,
+  FileStack,
+  FolderOpen,
+  CalendarDays,
+  CalendarRange,
+  TreePalm,
+  Calculator,
+  type LucideIcon,
 } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { BrandMark, BrandWordmark } from '@/components/brand/BrandLogo';
 import ThemeToggle from '@/components/theme/ThemeToggle';
+import {
+  AppRole,
+  getNavItemsForRole,
+  NavItemConfig,
+  normalizeRole,
+  roleDisplayName,
+} from '@/lib/rbac';
+import { setSessionCookies } from '@/lib/session-cookies';
+
+const NAV_ICONS: Record<string, LucideIcon> = {
+  '/dashboard': LayoutDashboard,
+  '/dashboard/employees': Users,
+  '/dashboard/leave-requests': TreePalm,
+  '/dashboard/leave-balances': CalendarRange,
+  '/dashboard/holiday-calendar': CalendarDays,
+  '/dashboard/salary-slip-runs': Banknote,
+  '/dashboard/salary-slip-run-details': FileStack,
+  '/dashboard/generated-documents': FolderOpen,
+  '/dashboard/accounting-records': Calculator,
+  '/dashboard/audit-log': ScrollText,
+  '/dashboard/settings': Settings,
+};
+
+const SECTION_LABELS: Record<NavItemConfig['section'], string> = {
+  overview: 'Overview',
+  hr: 'HR',
+  finance: 'Finance',
+  system: 'System',
+  workspace: 'Workspace',
+};
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<AppRole | null>(null);
   const pathname = usePathname();
-
   const logoutMutation = useLogout();
 
   useEffect(() => {
@@ -30,8 +67,10 @@ export default function Sidebar() {
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        const role = user.app_metadata?.role || user.user_metadata?.role || '';
-        setIsAdmin(role.toLowerCase().trim() === 'admin');
+        const raw = user.app_metadata?.role || user.user_metadata?.role || '';
+        const normalized = normalizeRole(raw);
+        setRole(normalized);
+        setSessionCookies(roleDisplayName(normalized));
       }
     };
     checkRole();
@@ -43,11 +82,14 @@ export default function Sidebar() {
   };
 
   const isActive = (path: string) => {
-    if (path === '/dashboard') {
-      return pathname === '/dashboard';
-    }
-    return pathname.startsWith(path);
+    if (path === '/dashboard') return pathname === '/dashboard';
+    return pathname === path || pathname.startsWith(`${path}/`);
   };
+
+  const navItems = role ? getNavItemsForRole(role) : [];
+  const sections = (['overview', 'hr', 'finance', 'system', 'workspace'] as const).filter(
+    (section) => navItems.some((item) => item.section === section)
+  );
 
   return (
     <aside
@@ -74,42 +116,44 @@ export default function Sidebar() {
         )}
       </div>
 
-      <nav className={`flex flex-1 flex-col gap-1 py-5 ${isOpen ? 'px-3' : 'items-center px-2'}`}>
-        <NavItem
-          href="/dashboard"
-          icon={<LayoutDashboard className="h-4 w-4 shrink-0" />}
-          label="Dashboard"
-          isOpen={isOpen}
-          active={isActive('/dashboard')}
-        />
-        {isAdmin && (
-          <NavItem
-            href="/dashboard/employees"
-            icon={<Database className="h-4 w-4 shrink-0" />}
-            label="Employees"
-            isOpen={isOpen}
-            active={isActive('/dashboard/employees')}
-          />
-        )}
-        <NavItem
-          href="/dashboard/payroll"
-          icon={<FileText className="h-4 w-4 shrink-0" />}
-          label="Payroll"
-          isOpen={isOpen}
-          active={isActive('/dashboard/payroll')}
-        />
-        <NavItem
-          href="/dashboard/settings"
-          icon={<Settings className="h-4 w-4 shrink-0" />}
-          label="Settings"
-          isOpen={isOpen}
-          active={isActive('/dashboard/settings')}
-        />
+      <nav
+        className={`flex flex-1 flex-col gap-4 overflow-y-auto py-5 ${isOpen ? 'px-3' : 'items-center px-2'}`}
+      >
+        {sections.map((section) => {
+          const items = navItems.filter((item) => item.section === section);
+          return (
+            <div key={section} className={`flex flex-col gap-1 ${isOpen ? '' : 'items-center'}`}>
+              {isOpen && (
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted/70">
+                  {SECTION_LABELS[section]}
+                </p>
+              )}
+              {items.map((item) => {
+                const Icon = NAV_ICONS[item.href] || LayoutDashboard;
+                return (
+                  <NavItem
+                    key={item.href}
+                    href={item.href}
+                    icon={<Icon className="h-4 w-4 shrink-0" />}
+                    label={item.label}
+                    isOpen={isOpen}
+                    active={isActive(item.href)}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
       <div
         className={`flex flex-col gap-2 border-t border-border p-3 ${isOpen ? '' : 'items-center'}`}
       >
+        {isOpen && role && (
+          <p className="px-1 text-[11px] text-muted">
+            Signed in as <span className="font-medium text-ink">{roleDisplayName(role)}</span>
+          </p>
+        )}
         <div className={`flex ${isOpen ? 'justify-between px-1' : 'justify-center'}`}>
           {isOpen && <span className="self-center text-xs text-muted">Appearance</span>}
           <ThemeToggle />
@@ -153,9 +197,7 @@ function NavItem({
       className={`group relative flex w-full items-center rounded-md text-sm font-medium transition-colors duration-200 ${
         isOpen ? 'gap-3 px-3 py-2.5' : 'h-10 w-10 justify-center'
       } ${
-        active
-          ? 'bg-ink text-accent-fg'
-          : 'text-muted hover:bg-canvas hover:text-ink'
+        active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'
       }`}
     >
       {icon}

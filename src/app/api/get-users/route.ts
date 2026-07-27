@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/auth';
+import { verifyEmployeeAccess } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const { errorResponse } = await verifyAdmin(request);
+    const { errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
     const response = await fetch('https://n8n.arachnix.io/webhook/get-users', {

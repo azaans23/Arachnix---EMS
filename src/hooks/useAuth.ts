@@ -4,6 +4,7 @@ import { useFormik } from 'formik';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { loginValidationSchema, signupValidationSchema } from '@/utils/validation';
+import { clearSessionCookies, setSessionCookies } from '@/lib/session-cookies';
 
 // Hook for Login
 export const useLogin = () => {
@@ -12,6 +13,7 @@ export const useLogin = () => {
     onSuccess: (data) => {
       if (typeof window !== 'undefined' && data.token) {
         localStorage.setItem('token', data.token);
+        setSessionCookies(data.user?.role || 'Employee');
       }
     },
     onError: (error) => {},
@@ -35,6 +37,7 @@ export const useLogout = () => {
     onSuccess: () => {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
+        clearSessionCookies();
       }
       // Clear TanStack Query Cache so sensitive data is wiped
       queryClient.clear();

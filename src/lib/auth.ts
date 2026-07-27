@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
+import {
+  AppRole,
+  EMPLOYEE_API_ROLES,
+  normalizeRole,
+  roleDisplayName,
+} from '@/lib/rbac';
 
-export async function verifyAdmin(
-  request: Request
-): Promise<{ user?: User; errorResponse?: NextResponse }> {
+export type AuthResult = {
+  user?: User;
+  role?: AppRole;
+  errorResponse?: NextResponse;
+};
+
+async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
   const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.replace('Bearer ', '').trim();
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
   if (!token) {
     return {
@@ -31,15 +41,50 @@ export async function verifyAdmin(
     };
   }
 
-  const role = user.app_metadata?.role || user.user_metadata?.role || '';
-  if (role.toLowerCase().trim() !== 'admin') {
+  const rawRole = user.app_metadata?.role || user.user_metadata?.role || '';
+  const role = normalizeRole(rawRole);
+
+  return { user, role };
+}
+
+/** Require a valid session (any role). */
+export async function verifyAuth(request: Request): Promise<AuthResult> {
+  return getAuthenticatedUser(request);
+}
+
+/** Require one of the allowed roles (API-level RBAC). */
+export async function verifyRole(
+  request: Request,
+  allowedRoles: AppRole[]
+): Promise<AuthResult> {
+  const result = await getAuthenticatedUser(request);
+  if (result.errorResponse) return result;
+
+  if (!result.role || !allowedRoles.includes(result.role)) {
+    const allowed = allowedRoles.map(roleDisplayName).join(', ');
     return {
       errorResponse: NextResponse.json(
-        { success: false, error: 'Forbidden: Admin role required' },
+        {
+          success: false,
+          error: `Forbidden: requires one of [${allowed}]`,
+        },
         { status: 403 }
       ),
     };
   }
 
-  return { user };
+  return result;
+}
+
+/** Super Admin or HR Manager — employee data APIs. */
+export async function verifyEmployeeAccess(request: Request): Promise<AuthResult> {
+  return verifyRole(request, EMPLOYEE_API_ROLES);
+}
+
+/**
+ * @deprecated Prefer verifyEmployeeAccess / verifyRole.
+ * Kept for compatibility: Super Admin only.
+ */
+export async function verifyAdmin(request: Request): Promise<AuthResult> {
+  return verifyRole(request, [normalizeRole('Super Admin')]);
 }

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/auth';
+import { verifyEmployeeAccess } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyAdmin(request);
+    const { errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
     const body = await request.json();

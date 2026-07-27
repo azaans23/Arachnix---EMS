@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { canAccess, normalizeRole, ROLE_OPTIONS as ASSIGNABLE_ROLES } from '@/lib/rbac';
 
 interface SheetUser {
   name: string;
@@ -32,11 +33,7 @@ type SortDir = 'asc' | 'desc';
 
 const ROLE_OPTIONS = [
   { label: 'All roles', value: 'all' },
-  { label: 'Employee', value: 'Employee' },
-  { label: 'Admin', value: 'Admin' },
-  { label: 'HR', value: 'HR' },
-  { label: 'Finance', value: 'Finance' },
-  { label: 'Director', value: 'Director' },
+  ...ASSIGNABLE_ROLES.map((r) => ({ label: r.label, value: r.value })),
 ];
 
 const STATUS_OPTIONS = [
@@ -53,7 +50,7 @@ export default function EmployeesPage() {
   const [users, setUsers] = useState<SheetUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [canViewEmployees, setCanViewEmployees] = useState<boolean | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -112,11 +109,11 @@ export default function EmployeesPage() {
   };
 
   const getRoleBadgeClasses = (role: string) => {
-    const r = (role || '').toLowerCase().trim();
-    if (r.includes('admin') || r === 'super admin') {
+    const normalized = normalizeRole(role);
+    if (normalized === 'super_admin') {
       return 'border-ink/15 bg-ink text-accent-fg';
     }
-    if (r === 'hr' || r.includes('hr manager')) {
+    if (normalized === 'hr_manager' || normalized === 'finance_manager' || normalized === 'director') {
       return 'border-border bg-canvas text-ink';
     }
     return 'border-border bg-surface text-muted';
@@ -163,7 +160,7 @@ export default function EmployeesPage() {
     }
 
     if (roleFilter !== 'all') {
-      list = list.filter((u) => u.role.toLowerCase() === roleFilter.toLowerCase());
+      list = list.filter((u) => normalizeRole(u.role) === normalizeRole(roleFilter));
     }
 
     if (statusFilter === 'active') {
@@ -189,13 +186,13 @@ export default function EmployeesPage() {
       } = await supabase.auth.getUser();
       if (user) {
         const role = user.app_metadata?.role || user.user_metadata?.role || '';
-        const isUserAdmin = role.toLowerCase().trim() === 'admin';
-        setIsAdmin(isUserAdmin);
-        if (isUserAdmin) {
+        const allowed = canAccess(role, 'employees');
+        setCanViewEmployees(allowed);
+        if (allowed) {
           fetchUsers();
         }
       } else {
-        setIsAdmin(false);
+        setCanViewEmployees(false);
       }
     };
     checkRole();
@@ -233,7 +230,7 @@ export default function EmployeesPage() {
     </th>
   );
 
-  if (isAdmin === null) {
+  if (canViewEmployees === null) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center">
         <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
@@ -242,7 +239,7 @@ export default function EmployeesPage() {
     );
   }
 
-  if (isAdmin === false) {
+  if (canViewEmployees === false) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center px-4 text-center animate-scale-up">
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-danger-border bg-danger-bg text-danger">
@@ -250,7 +247,7 @@ export default function EmployeesPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Only administrators can view employee records.
+          Only Super Admin and HR Manager can view employee records.
         </p>
       </div>
     );

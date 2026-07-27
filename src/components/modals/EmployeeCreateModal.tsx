@@ -36,9 +36,9 @@ interface EmployeeCreateModalProps {
 
 const roleOptions = [
     { label: 'Employee', value: 'Employee' },
-    { label: 'Admin', value: 'Admin' },
-    { label: 'HR', value: 'HR' },
-    { label: 'Finance', value: 'Finance' },
+    { label: 'Super Admin', value: 'Super Admin' },
+    { label: 'HR Manager', value: 'HR Manager' },
+    { label: 'Finance Manager', value: 'Finance Manager' },
     { label: 'Director', value: 'Director' },
 ];
 

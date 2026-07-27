@@ -1,14 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLoginForm } from '@/hooks/useAuth';
 import { BrandMark, BrandWordmark } from '@/components/brand/BrandLogo';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { normalizeRole, roleDisplayName } from '@/lib/rbac';
+import { setSessionCookies } from '@/lib/session-cookies';
 
 export default function LoginPage() {
   const { formik, isPending, isError, error } = useLoginForm();
   const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const restoreSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const raw =
+        session.user.app_metadata?.role || session.user.user_metadata?.role || 'Employee';
+      setSessionCookies(roleDisplayName(normalizeRole(raw)));
+      if (session.access_token) {
+        localStorage.setItem('token', session.access_token);
+      }
+      router.replace('/dashboard');
+    };
+    restoreSession();
+  }, [router]);
 
   const fieldError = (name: 'email' | 'password') =>
     formik.submitCount > 0 && formik.errors[name] ? formik.errors[name] : null;
