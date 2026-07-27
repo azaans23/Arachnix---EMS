@@ -5,8 +5,6 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { email, password, name, role, employeeId } = await request.json();
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -26,6 +24,37 @@ export async function POST(request: Request) {
       auth: { persistSession: false },
     });
 
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: No token provided' },
+        { status: 401 }
+      );
+    }
+
+    const {
+      data: { user: requester },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+    if (authError || !requester) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const requesterRole = requester.app_metadata?.role || requester.user_metadata?.role || '';
+    if (requesterRole.toLowerCase().trim() !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Admin role required' },
+        { status: 403 }
+      );
+    }
+
+    const { email, password, name, role, employeeId } = await request.json();
+
     let supabaseUserId: string | undefined;
 
     try {
@@ -43,7 +72,8 @@ export async function POST(request: Request) {
           email,
           password,
           email_confirm: true, // Auto-confirm email so they can log in
-          user_metadata: { name, role },
+          app_metadata: { role },
+          user_metadata: { name },
         });
 
         if (adminError) throw adminError;
@@ -87,7 +117,7 @@ export async function POST(request: Request) {
         let errText = '';
         try {
           errText = await webhookRes.text();
-        } catch {}
+        } catch { }
         throw new Error(errText || `n8n update-user webhook returned status ${webhookRes.status}.`);
       }
 
@@ -112,7 +142,7 @@ export async function POST(request: Request) {
           id: signInData.user.id,
           name: signInData.user.user_metadata?.name || name,
           email: signInData.user.email || '',
-          role: signInData.user.user_metadata?.role || role,
+          role: signInData.user.app_metadata?.role || role,
         },
       });
     } catch (transactionError: unknown) {

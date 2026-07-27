@@ -40,17 +40,19 @@ export const authApi = {
         id: data.user.id,
         name: data.user.user_metadata?.name || '',
         email: data.user.email || '',
-        role: data.user.user_metadata?.role || '',
+        role: data.user.app_metadata?.role || data.user.user_metadata?.role || '',
       },
     };
   },
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch('/api/signup', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(credentials),
     });

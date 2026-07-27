@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import { useModal } from '@/hooks/useModal';
 import { Database, RefreshCw, UserPlus } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface SheetUser {
   name: string;
@@ -18,13 +19,19 @@ export default function EmployeesPage() {
   const [users, setUsers] = useState<SheetUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const { openModal } = useModal();
 
   const fetchUsers = async () => {
     setLoading(true);
     setErrorText(null);
     try {
-      const response = await fetch('/api/get-users');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/get-users', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const result = await response.json();
 
       if (!response.ok || !result.success) {
@@ -34,7 +41,7 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch (e) {}
+        } catch {}
         throw new Error(cleanErr);
       }
 
@@ -83,6 +90,62 @@ export default function EmployeesPage() {
     }
     return 'bg-stone-50 text-stone-800 border-stone-200';
   };
+
+  useEffect(() => {
+    const checkRole = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const role = user.app_metadata?.role || user.user_metadata?.role || '';
+        const isUserAdmin = role.toLowerCase().trim() === 'admin';
+        setIsAdmin(isUserAdmin);
+        if (isUserAdmin) {
+          fetchUsers();
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkRole();
+  }, []);
+
+  if (isAdmin === null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <RefreshCw className="w-8 h-8 text-terracotta animate-spin mb-4" />
+        <span className="text-muted-clay font-medium animate-pulse">Checking permissions...</span>
+      </div>
+    );
+  }
+
+  if (isAdmin === false) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-scale-up">
+        <div className="bg-red-50 text-red-500 p-4 rounded-full mb-4">
+          <svg
+            className="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-bold text-obsidian mb-2">Access Denied</h1>
+        <p className="text-muted-clay max-w-md">
+          You do not have permission to view this page. Only administrators are allowed to access
+          employee records.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto mt-4 animate-fade-in-up">

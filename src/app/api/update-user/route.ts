@@ -1,13 +1,43 @@
 import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: No token provided' },
+        { status: 401 }
+      );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const role = user.app_metadata?.role || user.user_metadata?.role || '';
+    if (role.toLowerCase().trim() !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Admin role required' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     try {
-      const response = await fetch('https://n8n.arachnix.io/webhook-test/update-user', {
+      const response = await fetch('https://n8n.arachnix.io/webhook/update-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -19,7 +49,7 @@ export async function POST(request: Request) {
         let errText = '';
         try {
           errText = await response.text();
-        } catch (e) { }
+        } catch { }
 
         let parsedError = errText;
         try {
@@ -30,7 +60,7 @@ export async function POST(request: Request) {
               parsedError += ` ${jsonErr.hint}`;
             }
           }
-        } catch (e) { }
+        } catch { }
 
         return NextResponse.json({
           success: false,
@@ -39,13 +69,14 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({ success: true });
-    } catch (fetchError: any) {
+    } catch {
       return NextResponse.json({
         success: false,
         error: 'Failed to connect to the n8n server.',
       });
     }
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }

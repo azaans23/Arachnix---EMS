@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -16,12 +16,27 @@ import {
   Database,
 } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const pathname = usePathname();
 
   const logoutMutation = useLogout();
+
+  useEffect(() => {
+    const checkRole = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const role = user.app_metadata?.role || user.user_metadata?.role || '';
+        setIsAdmin(role.toLowerCase().trim() === 'admin');
+      }
+    };
+    checkRole();
+  }, []);
 
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -86,13 +101,15 @@ export default function Sidebar() {
           isOpen={isOpen}
           active={isActive('/dashboard')}
         />
-        <NavItem
-          href="/dashboard/employees"
-          icon={<Database className="w-5 h-5 shrink-0" />}
-          label="Employees"
-          isOpen={isOpen}
-          active={isActive('/dashboard/employees')}
-        />
+        {isAdmin && (
+          <NavItem
+            href="/dashboard/employees"
+            icon={<Database className="w-5 h-5 shrink-0" />}
+            label="Employees"
+            isOpen={isOpen}
+            active={isActive('/dashboard/employees')}
+          />
+        )}
         <NavItem
           href="/dashboard/payroll"
           icon={<FileText className="w-5 h-5 shrink-0" />}
