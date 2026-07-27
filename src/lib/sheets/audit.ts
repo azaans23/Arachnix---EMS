@@ -77,6 +77,37 @@ export function diffAuditValues(
   return { oldValue: oldChanges, newValue: newChanges };
 }
 
+export class AuditLogError extends Error {
+  status: number;
+
+  constructor(message: string, status = 500) {
+    super(message);
+    this.name = 'AuditLogError';
+    this.status = status;
+  }
+}
+
+/** n8n replies with this when a Webhook node responds before the workflow finishes. */
+const N8N_ACK_MESSAGES = new Set(['workflow was started']);
+
+const RESPOND_IMMEDIATELY_HINT =
+  'The get-audit-log workflow acknowledged the request without returning any rows. ' +
+  'In n8n, open that Webhook node and change "Respond" from "Immediately" to ' +
+  '"When Last Node Finishes" (or add a "Respond to Webhook" node) so the AuditLog rows are sent back.';
+
+/** n8n sometimes wraps each row as { json: {...} }. */
+function unwrapN8nItem(value: unknown): unknown {
+  const record = asRecord(value);
+  const inner = record.json;
+  return inner && typeof inner === 'object' ? inner : value;
+}
+
+function hasAuditIdentity(record: AuditLogRecord): boolean {
+  return Boolean(
+    record.logId || record.timestamp || record.userEmail || record.action || record.recordId
+  );
+}
+
 export function mapRawToAuditLog(rawInput: unknown): AuditLogRecord {
   const raw = asRecord(rawInput);
   return {
@@ -93,19 +124,19 @@ export function mapRawToAuditLog(rawInput: unknown): AuditLogRecord {
 
 export function normalizeAuditPayload(payload: unknown): AuditLogRecord[] {
   const root = asRecord(payload);
-  const data = root.data ?? root.records ?? payload;
-  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
-  return rows.map(mapRawToAuditLog);
-}
 
-export class AuditLogError extends Error {
-  status: number;
-
-  constructor(message: string, status = 500) {
-    super(message);
-    this.name = 'AuditLogError';
-    this.status = status;
+  if (!Array.isArray(payload) && typeof root.message === 'string') {
+    if (N8N_ACK_MESSAGES.has(root.message.trim().toLowerCase())) {
+      throw new AuditLogError(RESPOND_IMMEDIATELY_HINT, 502);
+    }
   }
+
+  const data = Array.isArray(payload)
+    ? payload
+    : (root.data ?? root.records ?? root.rows ?? payload);
+  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
+
+  return rows.map((row) => mapRawToAuditLog(unwrapN8nItem(row))).filter(hasAuditIdentity);
 }
 
 async function webhookError(response: Response, fallback: string): Promise<AuditLogError> {
@@ -138,7 +169,15 @@ export async function fetchAuditLogs(): Promise<AuditLogRecord[]> {
     );
   }
 
-  return normalizeAuditPayload(await response.json());
+  const body = await response.text();
+  if (!body.trim()) return [];
+
+  try {
+    return normalizeAuditPayload(JSON.parse(body));
+  } catch (error) {
+    if (error instanceof AuditLogError) throw error;
+    throw new AuditLogError('get-audit-log webhook returned a non-JSON response.', 502);
+  }
 }
 
 export async function createAuditLog(
