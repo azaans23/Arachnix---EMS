@@ -59,12 +59,12 @@ export default function RegisterEmployeeModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/45 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
-      <div className="relative w-full max-w-md bg-pure-white border border-subtle-stone shadow-2xl rounded-2xl p-8 mx-auto animate-scale-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
+      <div className="relative w-full max-w-md bg-surface border border-border shadow-panel rounded-xl p-8 mx-auto animate-scale-up">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1 text-muted-clay/55 hover:text-obsidian transition-colors rounded-full hover:bg-cream cursor-pointer"
+          className="absolute right-4 top-4 p-1 text-muted hover:text-ink transition-colors rounded-full hover:bg-canvas cursor-pointer"
           aria-label="Close modal"
         >
           <X className="w-5 h-5" />
@@ -72,11 +72,11 @@ export default function RegisterEmployeeModal({
 
         {/* Modal Header */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <div className="w-12 h-12 bg-terracotta/10 rounded-full flex items-center justify-center mb-3">
-            <UserCheck className="w-6 h-6 text-terracotta" />
+          <div className="w-12 h-12 bg-canvas rounded-full flex items-center justify-center mb-3">
+            <UserCheck className="w-6 h-6 text-ink" />
           </div>
-          <h2 className="text-xl font-bold text-deep-ink">Register Credentials</h2>
-          <p className="text-xs text-muted-clay/70 mt-1">
+          <h2 className="text-xl font-bold text-ink">Register Credentials</h2>
+          <p className="text-xs text-muted mt-1">
             Complete registration to give access to EMS
           </p>
         </div>
@@ -84,54 +84,54 @@ export default function RegisterEmployeeModal({
         <form onSubmit={formik.handleSubmit} className="flex flex-col gap-4">
           {/* Name (ReadOnly) */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-obsidian tracking-wide uppercase">
+            <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Name
             </label>
             <div className="relative flex items-center">
-              <div className="absolute left-3 text-clay/40">
+              <div className="absolute left-3 text-muted/50">
                 <User className="w-4 h-4" />
               </div>
               <input
                 type="text"
                 value={formik.values.name}
                 disabled
-                className="pl-10 pr-4 py-2 w-full bg-cream border border-subtle-stone rounded-lg text-sm text-muted-clay cursor-not-allowed opacity-80"
+                className="pl-10 pr-4 py-2 w-full bg-canvas border border-border rounded-lg text-sm text-muted cursor-not-allowed opacity-80"
               />
             </div>
           </div>
 
           {/* Email (ReadOnly) */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-obsidian tracking-wide uppercase">
+            <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Email Address
             </label>
             <div className="relative flex items-center">
-              <div className="absolute left-3 text-clay/40">
+              <div className="absolute left-3 text-muted/50">
                 <Mail className="w-4 h-4" />
               </div>
               <input
                 type="email"
                 value={formik.values.email}
                 disabled
-                className="pl-10 pr-4 py-2 w-full bg-cream border border-subtle-stone rounded-lg text-sm text-muted-clay cursor-not-allowed opacity-80"
+                className="pl-10 pr-4 py-2 w-full bg-canvas border border-border rounded-lg text-sm text-muted cursor-not-allowed opacity-80"
               />
             </div>
           </div>
 
           {/* Role (ReadOnly) */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-obsidian tracking-wide uppercase">
+            <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Role
             </label>
             <div className="relative flex items-center">
-              <div className="absolute left-3 text-clay/40">
+              <div className="absolute left-3 text-muted/50">
                 <Shield className="w-4 h-4" />
               </div>
               <input
                 type="text"
                 value={user.role}
                 disabled
-                className="pl-10 pr-4 py-2 w-full bg-cream border border-subtle-stone rounded-lg text-sm text-muted-clay cursor-not-allowed opacity-80"
+                className="pl-10 pr-4 py-2 w-full bg-canvas border border-border rounded-lg text-sm text-muted cursor-not-allowed opacity-80"
               />
             </div>
           </div>
@@ -139,13 +139,13 @@ export default function RegisterEmployeeModal({
           {/* Password (Input Needed!) */}
           <div className="flex flex-col gap-1">
             <label
-              className="text-xs font-semibold text-obsidian tracking-wide uppercase"
+              className="text-xs font-semibold text-ink tracking-wide uppercase"
               htmlFor="password"
             >
               Input Password
             </label>
             <div className="relative flex items-center">
-              <div className="absolute left-3 text-muted-clay/40">
+              <div className="absolute left-3 text-muted">
                 <Lock className="w-4 h-4" />
               </div>
               <input
@@ -157,16 +157,16 @@ export default function RegisterEmployeeModal({
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
                 autoFocus
-                className={`pl-10 pr-10 py-2 w-full bg-pure-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta/20 text-sm text-deep-ink placeholder:text-muted-clay/35 transition-all duration-200 ${
+                className={`pl-10 pr-10 py-2 w-full bg-surface border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] text-sm text-ink placeholder:text-muted transition-all duration-200 ${
                   formik.touched.password && formik.errors.password
                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
-                    : 'border-subtle-stone focus:border-terracotta'
+                    : 'border-border focus:border-ink/40'
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 text-muted-clay/40 hover:text-muted-clay/80 focus:outline-none cursor-pointer transition-colors p-1"
+                className="absolute right-3 text-muted hover:text-muted focus:outline-none cursor-pointer transition-colors p-1"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -182,7 +182,7 @@ export default function RegisterEmployeeModal({
           <button
             type="submit"
             disabled={signupMutation.isPending}
-            className="w-full bg-terracotta text-pure-white py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 mt-4 shadow-md shadow-terracotta/10 hover:shadow-terracotta/20 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer text-sm"
+            className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50"
           >
             {signupMutation.isPending ? (
               <>

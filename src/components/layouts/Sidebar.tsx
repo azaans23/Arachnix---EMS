@@ -2,21 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  Users,
   FileText,
   Settings,
   Power,
   ChevronLeft,
   ChevronRight,
-  UserPlus,
   Database,
 } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { BrandMark, BrandWordmark } from '@/components/brand/BrandLogo';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
@@ -52,51 +51,33 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`bg-pure-white text-obsidian flex flex-col h-screen sticky top-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} border-r border-subtle-stone relative z-20 shrink-0`}
+      className={`sticky top-0 z-20 flex h-screen shrink-0 flex-col border-r border-border bg-surface text-ink transition-[width] duration-250 ${isOpen ? 'w-64' : 'w-[72px]'}`}
     >
-      {/* Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="absolute -right-3 top-6 bg-pure-white text-muted-clay p-1 rounded-full hover:bg-cream hover:text-obsidian transition-colors shadow-sm z-30 flex items-center justify-center border border-subtle-stone"
-        aria-label="Toggle Sidebar"
+        className="absolute -right-3 top-6 z-30 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
+        aria-label="Toggle sidebar"
       >
-        {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        {isOpen ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
       </button>
 
-      {/* Brand */}
       <div
-        className={`h-16 flex items-center ${isOpen ? 'px-6' : 'justify-center'} border-b border-subtle-stone transition-all`}
+        className={`flex h-16 items-center border-b border-border ${isOpen ? 'px-5' : 'justify-center px-2'}`}
       >
         {isOpen ? (
-          <div className="relative w-48 h-12">
-            <Image
-              src="/logo-small.png"
-              alt="Arachnix Logo"
-              fill
-              className="object-contain object-left"
-              priority
-              sizes="192px"
-            />
+          <div className="flex items-center gap-2.5">
+            <BrandMark size={26} />
+            <BrandWordmark className="h-5 w-[120px]" />
           </div>
         ) : (
-          <div className="relative w-10 h-10">
-            <Image
-              src="/logo-small.png"
-              alt="Arachnix Logo"
-              fill
-              className="object-contain"
-              priority
-              sizes="40px"
-            />
-          </div>
+          <BrandMark size={28} />
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className={`flex-1 py-6 flex flex-col gap-2 ${isOpen ? 'px-4' : 'px-3 items-center'}`}>
+      <nav className={`flex flex-1 flex-col gap-1 py-5 ${isOpen ? 'px-3' : 'items-center px-2'}`}>
         <NavItem
           href="/dashboard"
-          icon={<LayoutDashboard className="w-5 h-5 shrink-0" />}
+          icon={<LayoutDashboard className="h-4 w-4 shrink-0" />}
           label="Dashboard"
           isOpen={isOpen}
           active={isActive('/dashboard')}
@@ -104,7 +85,7 @@ export default function Sidebar() {
         {isAdmin && (
           <NavItem
             href="/dashboard/employees"
-            icon={<Database className="w-5 h-5 shrink-0" />}
+            icon={<Database className="h-4 w-4 shrink-0" />}
             label="Employees"
             isOpen={isOpen}
             active={isActive('/dashboard/employees')}
@@ -112,40 +93,40 @@ export default function Sidebar() {
         )}
         <NavItem
           href="/dashboard/payroll"
-          icon={<FileText className="w-5 h-5 shrink-0" />}
+          icon={<FileText className="h-4 w-4 shrink-0" />}
           label="Payroll"
           isOpen={isOpen}
           active={isActive('/dashboard/payroll')}
         />
         <NavItem
           href="/dashboard/settings"
-          icon={<Settings className="w-5 h-5 shrink-0" />}
+          icon={<Settings className="h-4 w-4 shrink-0" />}
           label="Settings"
           isOpen={isOpen}
           active={isActive('/dashboard/settings')}
         />
       </nav>
 
-      {/* Footer / Logout */}
       <div
-        className={`p-4 border-t border-subtle-stone flex flex-col ${isOpen ? '' : 'items-center'} transition-all`}
+        className={`flex flex-col gap-2 border-t border-border p-3 ${isOpen ? '' : 'items-center'}`}
       >
+        <div className={`flex ${isOpen ? 'justify-between px-1' : 'justify-center'}`}>
+          {isOpen && <span className="self-center text-xs text-muted">Appearance</span>}
+          <ThemeToggle />
+        </div>
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className={`group relative flex items-center rounded-md font-medium transition-colors w-full ${
-            isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10'
-          } text-muted-clay hover:text-terracotta hover:bg-cream disabled:opacity-50`}
+          className={`group relative flex w-full items-center rounded-md text-sm font-medium transition-colors duration-200 ${
+            isOpen ? 'gap-3 px-3 py-2.5' : 'h-10 w-10 justify-center'
+          } text-muted hover:bg-canvas hover:text-ink disabled:opacity-50`}
         >
-          <Power className="w-5 h-5 shrink-0" />
-          {isOpen && <span className="whitespace-nowrap overflow-hidden">Log out</span>}
-
-          {/* Custom Tooltip */}
+          <Power className="h-4 w-4 shrink-0" />
+          {isOpen && <span>Log out</span>}
           {!isOpen && (
-            <div className="absolute left-full ml-3 px-3 py-1.5 bg-obsidian text-pure-white text-sm font-semibold rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-md z-50">
-              <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 border-y-[6px] border-y-transparent border-r-[6px] border-r-obsidian"></div>
+            <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-accent-fg opacity-0 shadow-panel transition-opacity group-hover:opacity-100">
               Log out
-            </div>
+            </span>
           )}
         </button>
       </div>
@@ -159,39 +140,30 @@ function NavItem({
   label,
   isOpen,
   active = false,
-  isLogout = false,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   isOpen: boolean;
   active?: boolean;
-  isLogout?: boolean;
 }) {
-  const baseClasses =
-    'group relative flex items-center rounded-md font-medium transition-colors w-full';
-  const sizeClasses = isOpen ? 'px-3 py-2.5 gap-3' : 'justify-center w-10 h-10';
-
-  let colorClasses = '';
-  if (isLogout) {
-    colorClasses = 'text-muted-clay hover:text-terracotta hover:bg-cream';
-  } else if (active) {
-    colorClasses = 'bg-cream text-terracotta';
-  } else {
-    colorClasses = 'text-muted-clay hover:text-obsidian hover:bg-cream';
-  }
-
   return (
-    <Link href={href} className={`${baseClasses} ${sizeClasses} ${colorClasses}`}>
+    <Link
+      href={href}
+      className={`group relative flex w-full items-center rounded-md text-sm font-medium transition-colors duration-200 ${
+        isOpen ? 'gap-3 px-3 py-2.5' : 'h-10 w-10 justify-center'
+      } ${
+        active
+          ? 'bg-ink text-accent-fg'
+          : 'text-muted hover:bg-canvas hover:text-ink'
+      }`}
+    >
       {icon}
-      {isOpen && <span className="whitespace-nowrap overflow-hidden">{label}</span>}
-
-      {/* Custom Tooltip - Dark mode tooltip on light theme */}
+      {isOpen && <span className="overflow-hidden whitespace-nowrap">{label}</span>}
       {!isOpen && (
-        <div className="absolute left-full ml-3 px-3 py-1.5 bg-obsidian text-pure-white text-sm font-semibold rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-md z-50">
-          <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 border-y-[6px] border-y-transparent border-r-[6px] border-r-obsidian"></div>
+        <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-accent-fg opacity-0 shadow-panel transition-opacity group-hover:opacity-100">
           {label}
-        </div>
+        </span>
       )}
     </Link>
   );

@@ -18,23 +18,17 @@ export default function EmptyState({
   actionIcon,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 bg-pure-white border border-subtle-stone rounded-xl shadow-sm text-center px-4 animate-fade-in-up">
-      {/* Icon container */}
-      <div className="w-16 h-16 rounded-full bg-cream flex items-center justify-center mb-4 text-muted-clay/65 border border-subtle-stone/30">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface px-4 py-16 text-center animate-fade-in-up">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-canvas text-muted">
         {icon}
       </div>
-
-      {/* Title */}
-      <h3 className="text-lg font-bold text-deep-ink">{title}</h3>
-
-      {/* Description */}
-      <p className="text-muted-clay/60 text-sm max-w-sm mt-2 leading-relaxed">{description}</p>
-
-      {/* Action Button */}
+      <h3 className="text-base font-semibold tracking-tight text-ink">{title}</h3>
+      <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">{description}</p>
       {actionLabel && onAction && (
         <button
+          type="button"
           onClick={onAction}
-          className="mt-6 text-sm text-terracotta hover:text-terracotta-hover font-semibold transition-colors flex items-center gap-1.5 cursor-pointer bg-cream/40 border border-subtle-stone/60 px-4 py-2 rounded-lg hover:bg-cream hover:shadow-sm"
+          className="mt-6 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas"
         >
           {actionIcon}
           {actionLabel}

@@ -53,28 +53,28 @@ export default function EmployeeDetailsModal({
   const isActive = status.toLowerCase() === 'active';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/45 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
-      <div className="relative w-full max-w-2xl bg-pure-white border border-subtle-stone shadow-2xl rounded-2xl p-8 mx-auto animate-scale-up overflow-y-auto max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
+      <div className="relative w-full max-w-2xl bg-surface border border-border shadow-panel rounded-xl p-8 mx-auto animate-scale-up overflow-y-auto max-h-[90vh]">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1.5 text-muted-clay/55 hover:text-obsidian transition-colors rounded-full hover:bg-cream cursor-pointer"
+          className="absolute right-4 top-4 p-1.5 text-muted hover:text-ink transition-colors rounded-full hover:bg-canvas cursor-pointer"
           aria-label="Close details"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-subtle-stone pb-6 mb-6 gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-6 mb-6 gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-cream rounded-full flex items-center justify-center border border-subtle-stone">
-              <User className="w-8 h-8 text-muted-clay/70" />
+            <div className="w-14 h-14 bg-canvas rounded-full flex items-center justify-center border border-border">
+              <User className="w-8 h-8 text-muted" />
             </div>
             <div>
-              <h2 className="text-2xl font-extrabold text-deep-ink tracking-tight">
+              <h2 className="text-2xl font-extrabold text-ink tracking-tight">
                 {user?.name || 'N/A'}
               </h2>
-              <p className="text-sm text-muted-clay mt-0.5">
+              <p className="text-sm text-muted mt-0.5">
                 {raw.Designation || raw.designation || 'Staff Member'}
               </p>
             </div>
@@ -102,12 +102,12 @@ export default function EmployeeDetailsModal({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
           {/* Employee ID */}
           <div className="flex gap-3">
-            <Database className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Database className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Employee ID
               </span>
-              <span className="text-sm font-bold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-bold text-ink mt-0.5 block">
                 {user?.employeeId || 'N/A'}
               </span>
             </div>
@@ -115,12 +115,12 @@ export default function EmployeeDetailsModal({
 
           {/* Email */}
           <div className="flex gap-3">
-            <Mail className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Mail className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Email Address
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block break-all">
+              <span className="text-sm font-semibold text-ink mt-0.5 block break-all">
                 {user?.email || 'N/A'}
               </span>
             </div>
@@ -128,12 +128,12 @@ export default function EmployeeDetailsModal({
 
           {/* Phone */}
           <div className="flex gap-3">
-            <Phone className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Phone className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Phone Number
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.Phone || raw.phone || 'N/A'}
               </span>
             </div>
@@ -141,12 +141,12 @@ export default function EmployeeDetailsModal({
 
           {/* Date of Birth */}
           <div className="flex gap-3">
-            <Calendar className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Calendar className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Date of Birth
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.DOB || raw.dob || 'N/A'}
               </span>
             </div>
@@ -154,12 +154,12 @@ export default function EmployeeDetailsModal({
 
           {/* Department */}
           <div className="flex gap-3">
-            <Briefcase className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Briefcase className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Department
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.Department || raw.department || 'N/A'}
               </span>
             </div>
@@ -167,12 +167,12 @@ export default function EmployeeDetailsModal({
 
           {/* Employee Type */}
           <div className="flex gap-3">
-            <Briefcase className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Briefcase className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Employment Type
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.EmployeeType || raw.employeeType || 'N/A'}
               </span>
             </div>
@@ -180,12 +180,12 @@ export default function EmployeeDetailsModal({
 
           {/* Joining Date */}
           <div className="flex gap-3">
-            <Calendar className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <Calendar className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Joining Date
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.JoiningDate || raw.joiningDate || 'N/A'}
               </span>
             </div>
@@ -193,12 +193,12 @@ export default function EmployeeDetailsModal({
 
           {/* Base Salary */}
           <div className="flex gap-3">
-            <DollarSign className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <DollarSign className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Base Salary
               </span>
-              <span className="text-sm font-bold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-bold text-ink mt-0.5 block">
                 {formatCurrency(raw.BaseSalary || raw.baseSalary)}
               </span>
             </div>
@@ -206,12 +206,12 @@ export default function EmployeeDetailsModal({
 
           {/* Bank Account */}
           <div className="flex gap-3">
-            <CreditCard className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <CreditCard className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Bank Details
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.BankAccountDetails || raw.bankAccountDetails || 'N/A'}
               </span>
             </div>
@@ -219,12 +219,12 @@ export default function EmployeeDetailsModal({
 
           {/* System Role */}
           <div className="flex gap-3">
-            <ShieldAlert className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <ShieldAlert className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 System Assigned Role
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {user?.role || 'N/A'}
               </span>
             </div>
@@ -232,12 +232,12 @@ export default function EmployeeDetailsModal({
 
           {/* Address (Full Width) */}
           <div className="flex gap-3 md:col-span-2">
-            <MapPin className="w-5 h-5 text-muted-clay/40 shrink-0 mt-0.5" />
+            <MapPin className="w-5 h-5 text-muted shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-muted-clay/60 font-semibold uppercase tracking-wider block">
+              <span className="text-xs text-muted font-semibold uppercase tracking-wider block">
                 Residential Address
               </span>
-              <span className="text-sm font-semibold text-deep-ink mt-0.5 block">
+              <span className="text-sm font-semibold text-ink mt-0.5 block">
                 {raw.Address || raw.address || 'N/A'}
               </span>
             </div>
@@ -245,10 +245,10 @@ export default function EmployeeDetailsModal({
         </div>
 
         {/* Modal Actions Footer */}
-        <div className="border-t border-subtle-stone mt-8 pt-6 flex justify-end gap-4">
+        <div className="border-t border-border mt-8 pt-6 flex justify-end gap-4">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 rounded-lg border border-subtle-stone text-sm font-semibold text-muted-clay hover:bg-cream/40 transition-colors cursor-pointer"
+            className="px-5 py-2.5 rounded-lg border border-border text-sm font-semibold text-muted hover:bg-canvas/40 transition-colors cursor-pointer"
           >
             Close Details
           </button>
@@ -258,7 +258,7 @@ export default function EmployeeDetailsModal({
               onClose();
               openModal('editEmployee', { user, onSuccess });
             }}
-            className="px-5 py-2.5 rounded-lg border border-terracotta/20 hover:border-terracotta text-sm font-semibold text-terracotta hover:bg-terracotta/5 transition-colors cursor-pointer flex items-center gap-1.5"
+            className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
           >
             <Pencil className="w-4 h-4" /> Edit Profile
           </button>
@@ -269,7 +269,7 @@ export default function EmployeeDetailsModal({
                 onClose();
                 openModal('registerEmployee', { user, onSuccess });
               }}
-              className="flex items-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm cursor-pointer text-sm"
+              className="flex items-center gap-2 bg-accent text-accent-fg px-5 py-2.5 rounded-lg font-semibold hover:bg-accent-hover transition-all duration-200 shadow-sm cursor-pointer text-sm"
             >
               <UserCheck className="w-4 h-4" /> Give EMS Access
             </button>
