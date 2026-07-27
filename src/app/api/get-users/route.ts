@@ -5,7 +5,7 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    const response = await fetch('https://n8n.arachnix.io/webhook-test/get-users', {
+    const response = await fetch('https://n8n.arachnix.io/webhook/get-users', {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -39,7 +39,6 @@ export async function GET() {
     }
 
     const data = await response.json();
-    console.log('n8n response data:', JSON.stringify(data, null, 2));
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json(

@@ -47,66 +47,37 @@ export const authApi = {
 
   // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
-    console.log('authApi.signup credentials received:', credentials);
-    // 1. Authenticate the user in Supabase first
-    const { data, error } = await supabase.auth.signUp({
-      email: credentials.email,
-      password: credentials.password || '',
-      options: {
-        data: {
-          name: credentials.name,
-          role: credentials.role,
-        },
+    const res = await fetch('/api/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(credentials),
     });
 
-    if (error) throw error;
+    const result = await res.json();
 
-    const supabaseUserId = data.user?.id;
-    if (!supabaseUserId) {
-      throw new Error('Failed to retrieve user ID from Supabase.');
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'Failed to complete signup.');
     }
 
-    // 2. Update the record in the sheet via n8n update-user webhook
-    try {
-      const webhookRes = await fetch('/api/update-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: credentials.name,
-          email: credentials.email,
-          role: credentials.role,
-          supabaseUserId: supabaseUserId,
-          status: 'Active',
-          employeeId: credentials.employeeId,
-          created_at: new Date().toISOString(),
-        }),
+    // Set the session on the client-side Supabase client
+    if (result.session) {
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
       });
 
-      const webhookData = await webhookRes.json();
-      if (!webhookRes.ok || !webhookData.success) {
-        throw new Error(webhookData.error || 'Failed to sync status update with sheet.');
+      if (sessionError) {
+        throw new Error(
+          `User was registered, but session creation failed: ${sessionError.message}`
+        );
       }
-    } catch (err: any) {
-      throw new Error(err.message || 'Failed to update employee status in spreadsheet.');
-    }
-
-    if (!data.session) {
-      return {
-        emailVerificationRequired: true,
-      };
     }
 
     return {
-      token: data.session.access_token,
-      user: {
-        id: data.user!.id,
-        name: data.user!.user_metadata?.name || credentials.name,
-        email: data.user!.email || '',
-        role: data.user!.user_metadata?.role || credentials.role,
-      },
+      token: result.session?.access_token,
+      user: result.user,
     };
   },
 

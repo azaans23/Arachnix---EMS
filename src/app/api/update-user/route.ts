@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         let errText = '';
         try {
           errText = await response.text();
-        } catch (e) {}
+        } catch (e) { }
 
         let parsedError = errText;
         try {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
               parsedError += ` ${jsonErr.hint}`;
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         return NextResponse.json({
           success: false,

@@ -26,7 +26,6 @@ export default function EmployeesPage() {
     try {
       const response = await fetch('/api/get-users');
       const result = await response.json();
-      console.log('Frontend received get-users result:', result);
 
       if (!response.ok || !result.success) {
         let cleanErr = result.error || `Server returned status ${response.status}`;
@@ -53,7 +52,6 @@ export default function EmployeesPage() {
         employeeId: u.EmployeeID || u.employeeId || u.EmployeeId || '',
         raw: u,
       }));
-      console.log('Mapped users:', mapped);
 
       setUsers(mapped);
       toast.success(`Successfully fetched ${mapped.length} users!`);

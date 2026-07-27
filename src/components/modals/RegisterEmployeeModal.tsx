@@ -39,7 +39,6 @@ export default function RegisterEmployeeModal({
     validationSchema: signupValidationSchema,
     enableReinitialize: true,
     onSubmit: (values) => {
-      console.log('RegisterModal submitting values:', values, 'employeeId:', user.employeeId);
       signupMutation.mutate(
         {
           ...values,
@@ -81,13 +80,6 @@ export default function RegisterEmployeeModal({
             Complete registration to give access to EMS
           </p>
         </div>
-
-        {signupMutation.isError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex gap-2 items-start">
-            <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <span>{(signupMutation.error as any)?.message || 'Credentials setup failed.'}</span>
-          </div>
-        )}
 
         <form onSubmit={formik.handleSubmit} className="flex flex-col gap-4">
           {/* Name (ReadOnly) */}
