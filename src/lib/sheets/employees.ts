@@ -87,6 +87,36 @@ export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, s
   };
 }
 
+export function employeeRecordToAuditValue(
+  employee: EmployeeRecord
+): Record<string, string> {
+  return {
+    EmployeeID: employee.employeeId,
+    FullName: employee.fullName,
+    Email: employee.email,
+    Phone: employee.phone,
+    DOB: employee.dob,
+    Address: employee.address,
+    Department: employee.department,
+    Designation: employee.designation,
+    EmployeeType: employee.employeeType,
+    JoiningDate: employee.joiningDate,
+    BaseSalary: employee.baseSalary,
+    BankAccountDetails: employee.bankAccountDetails,
+    Role: employee.role,
+    EMSStatus: employee.emsStatus,
+  };
+}
+
+export function employeeInputToAuditValue(
+  input: EmployeeWriteInput
+): Record<string, string> {
+  const payload = toSheetWritePayload(input);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key))
+  );
+}
+
 export type UniquenessConflict =
   | { field: 'employeeId'; message: string }
   | { field: 'email'; message: string };

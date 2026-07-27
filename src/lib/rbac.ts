@@ -97,8 +97,6 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
   audit_log: {
     [ROLES.SUPER_ADMIN]: 'write',
-    [ROLES.HR_MANAGER]: 'read',
-    [ROLES.FINANCE_MANAGER]: 'read',
   },
   salary_slip_runs: {
     [ROLES.SUPER_ADMIN]: 'write',

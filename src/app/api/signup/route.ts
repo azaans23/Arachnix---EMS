@@ -2,12 +2,21 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyEmployeeAccess } from '@/lib/auth';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import {
+  employeeRecordToAuditValue,
+  getEmployeeById,
+} from '@/lib/sheets/employees';
+import {
+  createAuditLog,
+  diffAuditValues,
+} from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS } from '@/types/audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyEmployeeAccess(request);
+    const { user: actor, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -32,6 +41,7 @@ export async function POST(request: Request) {
     const { email, password, name, role, employeeId } = await request.json();
 
     let supabaseUserId: string | undefined;
+    const previousEmployee = employeeId ? await getEmployeeById(employeeId) : null;
 
     try {
       // 1. Create the user. If service role key is available, use Admin API
@@ -111,8 +121,41 @@ export async function POST(request: Request) {
       if (signInError) throw signInError;
       if (!signInData.session) throw new Error('Failed to create session after user creation.');
 
+      const oldValue = previousEmployee
+        ? employeeRecordToAuditValue(previousEmployee)
+        : {};
+      const newValue = {
+        ...oldValue,
+        EmployeeID: employeeId || previousEmployee?.employeeId || '',
+        FullName: name || previousEmployee?.fullName || '',
+        Email: email || previousEmployee?.email || '',
+        Role: role || previousEmployee?.role || '',
+        SupabaseUserID: supabaseUserId,
+        EMSStatus: 'Active',
+      };
+      const changes = diffAuditValues(oldValue, newValue);
+      let auditLogged = true;
+
+      try {
+        await createAuditLog(
+          { email: actor?.email || '' },
+          {
+            action: AUDIT_ACTIONS.GRANT_ACCESS,
+            recordType: 'Employee',
+            recordId: employeeId || email,
+            oldValue: changes.oldValue,
+            newValue: changes.newValue,
+          }
+        );
+      } catch (auditError) {
+        auditLogged = false;
+        console.error('EMS access granted but audit delivery failed:', auditError);
+      }
+
       return NextResponse.json({
         success: true,
+        auditLogged,
+        warning: auditLogged ? undefined : 'Access granted, but the audit entry could not be delivered.',
         session: signInData.session,
         user: {
           id: signInData.user.id,

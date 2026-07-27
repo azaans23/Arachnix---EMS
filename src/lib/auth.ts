@@ -3,8 +3,11 @@ import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import {
   AppRole,
+  canAccess,
+  canWrite,
   EMPLOYEE_API_ROLES,
   normalizeRole,
+  ResourceKey,
   roleDisplayName,
 } from '@/lib/rbac';
 
@@ -79,6 +82,33 @@ export async function verifyRole(
 /** Super Admin or HR Manager — employee data APIs. */
 export async function verifyEmployeeAccess(request: Request): Promise<AuthResult> {
   return verifyRole(request, EMPLOYEE_API_ROLES);
+}
+
+/** Require read or write access to an RBAC resource. */
+export async function verifyResourceAccess(
+  request: Request,
+  resource: ResourceKey,
+  access: 'read' | 'write' = 'read'
+): Promise<AuthResult> {
+  const result = await getAuthenticatedUser(request);
+  if (result.errorResponse) return result;
+
+  const allowed =
+    result.role &&
+    (access === 'write'
+      ? canWrite(result.role, resource)
+      : canAccess(result.role, resource));
+
+  if (!allowed) {
+    return {
+      errorResponse: NextResponse.json(
+        { success: false, error: `Forbidden: ${access} access to ${resource} is required` },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return result;
 }
 
 /**
