@@ -41,7 +41,7 @@ export default function EmployeesPage() {
           if (parsed.message) {
             cleanErr = parsed.message + (parsed.hint ? ` ${parsed.hint}` : '');
           }
-        } catch { }
+        } catch {}
         throw new Error(cleanErr);
       }
 
@@ -158,11 +158,11 @@ export default function EmployeesPage() {
         </div>
 
         <button
-
-          className="flex items-center justify-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm disabled:opacity-50 cursor-pointer"
+          onClick={() => openModal('createEmployee', { onSuccess: fetchUsers })}
+          className="flex items-center justify-center gap-2 bg-terracotta text-pure-white px-5 py-2.5 rounded-lg font-semibold hover:bg-terracotta-hover transition-all duration-200 shadow-sm cursor-pointer"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Creating...' : 'Create Employee'}
+          <UserPlus className="w-4 h-4" />
+          Create Employee
         </button>
       </div>
 

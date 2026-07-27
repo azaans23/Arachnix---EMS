@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     try {
-      const response = await fetch('https://n8n.arachnix.io/webhook/update-user', {
+      const response = await fetch('https://n8n.arachnix.io/webhook-test/update-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

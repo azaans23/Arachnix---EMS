@@ -3,6 +3,7 @@
 import { useModal } from '@/hooks/useModal';
 import RegisterEmployeeModal from './RegisterEmployeeModal';
 import EmployeeDetailsModal from './EmployeeDetailsModal';
+import EmployeeCreateModal from './EmployeeCreateModal';
 
 export default function ModalRenderer() {
   const { activeModal, closeModal, modalData } = useModal();
@@ -26,6 +27,8 @@ export default function ModalRenderer() {
           onSuccess={modalData?.onSuccess}
         />
       );
+    case 'createEmployee':
+      return <EmployeeCreateModal onClose={closeModal} onSuccess={modalData?.onSuccess} />;
     default:
       return null;
   }
