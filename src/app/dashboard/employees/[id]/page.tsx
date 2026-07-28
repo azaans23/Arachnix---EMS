@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
@@ -45,6 +45,7 @@ function formatCurrency(value: unknown) {
 export default function EmployeeProfilePage({ params }: PageProps) {
   const { id } = use(params);
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { openModal } = useModal();
 
@@ -52,9 +53,19 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   const [user, setUser] = useState<SheetUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(searchParams.get('edit') === '1');
+  const editing = searchParams.get('edit') === '1';
 
-  const loadEmployee = async () => {
+  const setEditMode = useCallback(
+    (enabled: boolean) => {
+      // Keep the current path as-is. Re-encoding `id` can turn
+      // `user@x.com` into `%2540` and break the next lookup.
+      const next = enabled ? `${pathname}?edit=1` : pathname;
+      router.replace(next);
+    },
+    [pathname, router]
+  );
+
+  const loadEmployee = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -74,30 +85,38 @@ export default function EmployeeProfilePage({ params }: PageProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const check = async () => {
       const {
         data: { user: authUser },
       } = await supabase.auth.getUser();
+      if (cancelled) return;
+
       if (!authUser) {
         setAllowed(false);
+        setLoading(false);
         return;
       }
+
       const role = authUser.app_metadata?.role || authUser.user_metadata?.role || '';
       const ok = canAccess(role, 'employees');
       setAllowed(ok);
-      if (ok) loadEmployee();
-      else setLoading(false);
+      if (ok) {
+        await loadEmployee();
+      } else {
+        setLoading(false);
+      }
     };
-    check();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
-  useEffect(() => {
-    setEditing(searchParams.get('edit') === '1');
-  }, [searchParams]);
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadEmployee]);
 
   if (allowed === null || (allowed && loading && !user)) {
     return (
@@ -163,10 +182,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           {!editing && (
             <button
               type="button"
-              onClick={() => {
-                setEditing(true);
-                router.replace(`/dashboard/employees/${encodeURIComponent(id)}?edit=1`);
-              }}
+              onClick={() => setEditMode(true)}
               className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
             >
               <Pencil className="h-3.5 w-3.5" /> Edit
@@ -231,14 +247,13 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           <div className="mb-6 flex items-center justify-between gap-3 border-b border-border pb-4">
             <div>
               <h2 className="text-lg font-semibold text-ink">Edit profile</h2>
-              <p className="mt-1 text-sm text-muted">Changes are validated before writing to the sheet.</p>
+              <p className="mt-1 text-sm text-muted">
+                Changes are validated before writing to the sheet.
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => {
-                setEditing(false);
-                router.replace(`/dashboard/employees/${encodeURIComponent(id)}`);
-              }}
+              onClick={() => setEditMode(false)}
               className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border text-muted hover:text-ink"
               aria-label="Cancel edit"
             >
@@ -248,16 +263,10 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           <EmployeeForm
             user={user}
             embedded
-            onCancel={() => {
-              setEditing(false);
-              router.replace(`/dashboard/employees/${encodeURIComponent(id)}`);
-            }}
+            onCancel={() => setEditMode(false)}
             onSuccess={async () => {
-              setEditing(false);
-              router.replace(
-                `/dashboard/employees/${encodeURIComponent(user.employeeId || user.email || id)}`
-              );
               await loadEmployee();
+              setEditMode(false);
             }}
           />
         </div>

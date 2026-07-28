@@ -232,16 +232,33 @@ export async function fetchSheetUsers(): Promise<SheetUser[]> {
 }
 
 export async function getEmployeeById(id: string): Promise<EmployeeRecord | null> {
-  const needle = decodeURIComponent(id).trim().toLowerCase();
-  if (!needle) return null;
+  const candidates = new Set<string>();
+  let current = String(id || '').trim();
+
+  // Next.js / fetch may pass an id that is already decoded, or still percent-encoded.
+  for (let i = 0; i < 3 && current; i += 1) {
+    candidates.add(current.toLowerCase());
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) break;
+      current = decoded.trim();
+    } catch {
+      break;
+    }
+  }
+
+  if (candidates.size === 0) return null;
 
   const employees = await fetchEmployees();
   return (
-    employees.find(
-      (employee) =>
-        employee.employeeId.trim().toLowerCase() === needle ||
-        employee.email.trim().toLowerCase() === needle
-    ) || null
+    employees.find((employee) => {
+      const employeeId = employee.employeeId.trim().toLowerCase();
+      const email = employee.email.trim().toLowerCase();
+      return (
+        (employeeId && candidates.has(employeeId)) ||
+        (email && candidates.has(email))
+      );
+    }) || null
   );
 }
 
