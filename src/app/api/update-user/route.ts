@@ -1,55 +1,106 @@
 import { NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/auth';
+import { verifyEmployeeAccess } from '@/lib/auth';
+import { assertCanAssignRole, normalizeRole, roleDisplayName } from '@/lib/rbac';
+import {
+  employeeInputToAuditValue,
+  employeeRecordToAuditValue,
+  fetchEmployees,
+  getNextEmployeeId,
+  mergeEmployeeWriteInput,
+  SheetsError,
+  upsertEmployee,
+  validateEmployeeWrite,
+} from '@/lib/sheets/employees';
+import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS } from '@/types/audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyAdmin(request);
+    const { user, role: actorRole, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
-    const body = await request.json();
+    const existing = await fetchEmployees();
+    const requestBody = await request.json();
+    const body =
+      requestBody && typeof requestBody === 'object'
+        ? { ...(requestBody as Record<string, unknown>) }
+        : {};
+    const editingExisting = Boolean(body.originalEmployeeId || body.originalEmail);
 
-    try {
-      const response = await fetch('https://n8n.arachnix.io/webhook-test/update-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        let errText = '';
-        try {
-          errText = await response.text();
-        } catch {}
-
-        let parsedError = errText;
-        try {
-          const jsonErr = JSON.parse(errText);
-          if (jsonErr.message) {
-            parsedError = jsonErr.message;
-            if (jsonErr.hint) {
-              parsedError += ` ${jsonErr.hint}`;
-            }
-          }
-        } catch {}
-
-        return NextResponse.json({
-          success: false,
-          error: parsedError || `n8n update-user webhook returned status ${response.status}.`,
-        });
-      }
-
-      return NextResponse.json({ success: true });
-    } catch {
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to connect to the n8n server.',
-      });
+    if (!editingExisting || !String(body.employeeId || '').trim()) {
+      body.employeeId = getNextEmployeeId(existing);
     }
+
+    const validation = await validateEmployeeWrite(body, { existing });
+
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: validation.error,
+          fieldErrors: validation.fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+
+    const originalId = (validation.value.originalEmployeeId || '').trim().toLowerCase();
+    const originalEmail = (validation.value.originalEmail || '').trim().toLowerCase();
+    const previous =
+      existing.find(
+        (employee) =>
+          (originalId && employee.employeeId.trim().toLowerCase() === originalId) ||
+          (originalEmail && employee.email.trim().toLowerCase() === originalEmail)
+      ) || null;
+
+    const previousRole = previous?.role || '';
+    const nextRole = validation.value.role || '';
+    const roleChanging =
+      !previous || normalizeRole(previousRole) !== normalizeRole(nextRole);
+
+    if (roleChanging) {
+      const assignment = assertCanAssignRole(actorRole || '', nextRole);
+      if (!assignment.ok) {
+        return NextResponse.json(
+          { success: false, error: assignment.error, fieldErrors: { role: assignment.error } },
+          { status: 403 }
+        );
+      }
+      validation.value.role = roleDisplayName(assignment.role);
+    }
+
+    const nextValue = employeeInputToAuditValue(
+      mergeEmployeeWriteInput(validation.value, previous)
+    );
+    const previousValue = previous ? employeeRecordToAuditValue(previous) : {};
+    const changes = previous
+      ? diffAuditValues(previousValue, nextValue)
+      : { oldValue: {}, newValue: nextValue };
+
+    const { result: saved, auditLogged } = await runAuditedMutation(
+      { email: user?.email || '' },
+      {
+        action: previous ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
+        recordType: 'Employee',
+        recordId: validation.value.employeeId,
+        oldValue: changes.oldValue,
+        newValue: changes.newValue,
+      },
+      () => upsertEmployee(validation.value, previous)
+    );
+
+    return NextResponse.json({
+      success: true,
+      employeeId: saved.employeeId,
+      auditLogged,
+      warning: auditLogged ? undefined : 'Employee saved, but the audit entry could not be delivered.',
+    });
   } catch (error: unknown) {
+    if (error instanceof SheetsError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    }
     const errMsg = error instanceof Error ? error.message : 'Internal Server Error';
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }

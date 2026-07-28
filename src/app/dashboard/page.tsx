@@ -2,14 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Database, FileText, Settings } from 'lucide-react';
+import { ArrowRight, Calculator, LayoutDashboard, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import {
+  AppRole,
+  canAccess,
+  getNavItemsForRole,
+  getTrustedRole,
+  roleDisplayName,
+} from '@/lib/rbac';
+import { syncSessionCookies } from '@/lib/session-cookies';
 
 type SessionUser = {
   name: string;
   email: string;
-  role: string;
-  isAdmin: boolean;
+  role: AppRole;
+  roleLabel: string;
 };
 
 export default function DashboardPage() {
@@ -18,12 +26,23 @@ export default function DashboardPage() {
   useEffect(() => {
     const load = async () => {
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser) return;
+        data: { session },
+      } = await supabase.auth.getSession();
+      const authUser = session?.user;
+      if (!authUser || !session.access_token) return;
 
-      const role =
-        authUser.app_metadata?.role || authUser.user_metadata?.role || 'Employee';
+      localStorage.setItem('token', session.access_token);
+      let role = getTrustedRole(authUser);
+      let roleLabel = roleDisplayName(role);
+
+      try {
+        const synced = await syncSessionCookies(session.access_token);
+        role = synced.role;
+        roleLabel = synced.roleLabel;
+      } catch {
+        /* keep JWT role fallback */
+      }
+
       const name =
         authUser.user_metadata?.name ||
         authUser.email?.split('@')[0] ||
@@ -33,13 +52,34 @@ export default function DashboardPage() {
         name,
         email: authUser.email || '',
         role,
-        isAdmin: String(role).toLowerCase().trim() === 'admin',
+        roleLabel,
       });
     };
     load();
   }, []);
 
   const firstName = user?.name?.split(' ')[0] || 'there';
+  const quickLinks = user
+    ? getNavItemsForRole(user.role)
+        .filter((item) => item.href !== '/dashboard' && item.href !== '/dashboard/settings')
+        .slice(0, 6)
+    : [];
+
+  const subtitle = (() => {
+    if (!user) return 'Your Arachnix workspace.';
+    switch (user.role) {
+      case 'super_admin':
+        return 'Full access across HR, payroll documents, leave, and accounting.';
+      case 'hr_manager':
+        return 'Manage employees, leave, salary slips, and generated documents.';
+      case 'finance_manager':
+        return 'Accounting uploads, records, and finance dashboards.';
+      case 'director':
+        return 'Read-only financial overview and headcount.';
+      default:
+        return 'Your Arachnix workspace for account settings.';
+    }
+  })();
 
   return (
     <div className="mx-auto max-w-5xl animate-fade-in-up">
@@ -50,15 +90,11 @@ export default function DashboardPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">
           {user ? `Welcome back, ${firstName}` : 'Welcome back'}
         </h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-          {user?.isAdmin
-            ? 'Manage employee records, register accounts, and keep access in sync.'
-            : 'Your Arachnix workspace for payroll and account settings.'}
-        </p>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">{subtitle}</p>
         {user && (
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             <span className="rounded-md border border-border bg-surface px-2.5 py-1 font-medium text-ink">
-              {user.role}
+              {user.roleLabel}
             </span>
             <span className="text-muted/80">{user.email}</span>
           </div>
@@ -66,30 +102,58 @@ export default function DashboardPage() {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {user?.isAdmin && (
+        {quickLinks.length === 0 && (
           <QuickLink
-            href="/dashboard/employees"
-            title="Employees"
-            description="View roster, register accounts, and update profiles."
-            icon={<Database className="h-4 w-4" />}
-            primary
+            href="/dashboard/settings"
+            title="Settings"
+            description="Account preferences and workspace options."
+            icon={<LayoutDashboard className="h-4 w-4" />}
           />
         )}
-        <QuickLink
-          href="/dashboard/payroll"
-          title="Payroll"
-          description="Payroll tools will land here next."
-          icon={<FileText className="h-4 w-4" />}
-        />
-        <QuickLink
-          href="/dashboard/settings"
-          title="Settings"
-          description="Account preferences and workspace options."
-          icon={<Settings className="h-4 w-4" />}
-        />
+        {quickLinks.map((item, index) => (
+          <QuickLink
+            key={item.href}
+            href={item.href}
+            title={item.label}
+            description={descriptionForResource(item.resource)}
+            icon={iconForHref(item.href)}
+            primary={index === 0 && canAccess(user!.role, 'employees')}
+          />
+        ))}
       </section>
     </div>
   );
+}
+
+function descriptionForResource(resource: string): string {
+  switch (resource) {
+    case 'employees':
+      return 'View roster, register accounts, and update profiles.';
+    case 'leave_requests':
+      return 'Leave request intake and approvals.';
+    case 'leave_balances':
+      return 'Quotas and usage by employee.';
+    case 'holiday_calendar':
+      return 'Company holidays for leave calculations.';
+    case 'salary_slip_runs':
+      return 'Batch salary slip processing runs.';
+    case 'salary_slip_run_details':
+      return 'Per-employee slip outcomes.';
+    case 'generated_documents':
+      return 'Contracts, offer letters, and Drive links.';
+    case 'accounting_records':
+      return 'Accounting uploads and transaction records.';
+    case 'audit_log':
+      return 'Who changed which records, and when.';
+    default:
+      return 'Open this workspace module.';
+  }
+}
+
+function iconForHref(href: string) {
+  if (href.includes('employees')) return <Users className="h-4 w-4" />;
+  if (href.includes('accounting')) return <Calculator className="h-4 w-4" />;
+  return <LayoutDashboard className="h-4 w-4" />;
 }
 
 function QuickLink({

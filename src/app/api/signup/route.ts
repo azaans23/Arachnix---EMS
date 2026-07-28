@@ -1,91 +1,139 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdmin } from '@/lib/auth';
+import { verifyEmployeeAccess } from '@/lib/auth';
+import { assertCanAssignRole, roleDisplayName } from '@/lib/rbac';
+import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import {
+  employeeRecordToAuditValue,
+  employeeToFormValues,
+  fetchEmployees,
+  getNextEmployeeId,
+  mergeEmployeeWriteInput,
+  toSheetWritePayload,
+} from '@/lib/sheets/employees';
+import {
+  createAuditLog,
+  diffAuditValues,
+} from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS } from '@/types/audit';
+import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyAdmin(request);
+    const { user: actor, role: actorRole, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!supabaseUrl) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Supabase URL or Anon Key is missing from server configuration.',
+          error: 'Supabase URL is missing from server configuration.',
         },
         { status: 500 }
       );
     }
 
-    // Initialize clients with persistSession: false for server environments
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false },
-    });
+    if (!supabaseServiceKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'SUPABASE_SERVICE_ROLE_KEY is required to register users. Roles must be written to app_metadata via the Admin API.',
+        },
+        { status: 500 }
+      );
+    }
 
     const { email, password, name, role, employeeId } = await request.json();
 
+    const assignment = assertCanAssignRole(actorRole || '', String(role || ''));
+    if (!assignment.ok) {
+      return NextResponse.json(
+        { success: false, error: assignment.error },
+        { status: 403 }
+      );
+    }
+    const assignedRoleLabel = roleDisplayName(assignment.role);
+
     let supabaseUserId: string | undefined;
+    const employees = await fetchEmployees();
+    const previousEmployee =
+      employees.find(
+        (employee) =>
+          (employeeId &&
+            employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
+          employee.email.toLowerCase() === String(email || '').toLowerCase()
+      ) || null;
+    const resolvedEmployeeId =
+      previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
 
     try {
-      // 1. Create the user. If service role key is available, use Admin API
-      // to create the user without establishing a session immediately.
-      if (supabaseServiceKey) {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          },
-        });
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      });
 
-        const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true, // Auto-confirm email so they can log in
-          app_metadata: { role },
-          user_metadata: { name },
-        });
+      // Admin API only — never put role in user_metadata (client-writable).
+      const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        app_metadata: { role: assignedRoleLabel },
+        user_metadata: { name },
+      });
 
-        if (adminError) throw adminError;
-        supabaseUserId = adminData.user?.id;
-      } else {
-        // Fallback to standard signUp if service key is not configured
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { name, role },
-          },
-        });
-
-        if (signUpError) throw signUpError;
-        supabaseUserId = signUpData.user?.id;
-      }
+      if (adminError) throw adminError;
+      supabaseUserId = adminData.user?.id;
 
       if (!supabaseUserId) {
         throw new Error('Failed to retrieve user ID from Supabase.');
       }
 
-      // 2. Update the record in the sheet via n8n update-user webhook
-      const webhookRes = await fetch('https://n8n.arachnix.io/webhook/update-user', {
+      const writeInput: EmployeeWriteInput = mergeEmployeeWriteInput(
+        {
+          ...(previousEmployee
+            ? employeeToFormValues(previousEmployee)
+            : {
+                employeeId: resolvedEmployeeId,
+                name: name || '',
+                email: email || '',
+                phone: '',
+                dob: '',
+                address: '',
+                department: '',
+                designation: '',
+                employmentType: '',
+                joiningDate: '',
+                baseSalary: '',
+                bankAccountDetails: '',
+                role: assignedRoleLabel,
+                emsStatus: 'Active',
+              }),
+          employeeId: resolvedEmployeeId,
+          name: name || previousEmployee?.fullName || '',
+          email: email || previousEmployee?.email || '',
+          role: assignedRoleLabel,
+          emsStatus: 'Active',
+          supabaseUserId,
+          originalEmployeeId: previousEmployee?.employeeId || resolvedEmployeeId,
+          originalEmail: previousEmployee?.email || email,
+        },
+        previousEmployee
+      );
+
+      const webhookRes = await fetch(SHEETS_WEBHOOKS.updateUser, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name,
-          email,
-          role,
-          supabaseUserId,
-          status: 'Active',
-          employeeId,
-          created_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(toSheetWritePayload(writeInput)),
       });
 
       if (!webhookRes.ok) {
@@ -101,30 +149,52 @@ export async function POST(request: Request) {
         throw new Error(webhookData.error);
       }
 
-      // 3. Create the session by signing in with the credentials
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const oldValue = previousEmployee
+        ? employeeRecordToAuditValue(previousEmployee)
+        : {};
+      const newValue = {
+        ...oldValue,
+        ...Object.fromEntries(
+          Object.entries(toSheetWritePayload(writeInput)).filter(([key]) => /^[A-Z]/.test(key))
+        ),
+      };
+      const changes = diffAuditValues(oldValue, newValue);
+      let auditLogged = true;
 
-      if (signInError) throw signInError;
-      if (!signInData.session) throw new Error('Failed to create session after user creation.');
+      try {
+        await createAuditLog(
+          { email: actor?.email || '' },
+          {
+            action: AUDIT_ACTIONS.GRANT_ACCESS,
+            recordType: 'Employee',
+            recordId: resolvedEmployeeId,
+            oldValue: changes.oldValue,
+            newValue: changes.newValue,
+          }
+        );
+      } catch (auditError) {
+        auditLogged = false;
+        console.error('EMS access granted but audit delivery failed:', auditError);
+      }
 
       return NextResponse.json({
         success: true,
-        session: signInData.session,
+        auditLogged,
+        warning: auditLogged
+          ? undefined
+          : 'Access granted, but the audit entry could not be delivered.',
         user: {
-          id: signInData.user.id,
-          name: signInData.user.user_metadata?.name || name,
-          email: signInData.user.email || '',
-          role: signInData.user.app_metadata?.role || role,
+          id: supabaseUserId,
+          employeeId: resolvedEmployeeId,
+          name,
+          email,
+          role: assignedRoleLabel,
         },
       });
     } catch (transactionError: unknown) {
       const errMsg =
         transactionError instanceof Error ? transactionError.message : 'Signup transaction failed.';
 
-      // ROLLBACK: Delete the created user in Supabase if we have a supabaseUserId and service key
       if (supabaseUserId && supabaseServiceKey) {
         try {
           const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {

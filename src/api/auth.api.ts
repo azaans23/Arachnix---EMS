@@ -1,9 +1,9 @@
 import { supabase } from '@/lib/supabase';
+import { clearSessionCookies, syncSessionCookies } from '@/lib/session-cookies';
 
-// Interfaces for Auth Requests and Responses
 export interface LoginCredentials {
   email: string;
-  password?: string; // Optional if using OAuth in other areas, but required for standard login
+  password?: string;
 }
 
 export interface SignupCredentials extends LoginCredentials {
@@ -24,7 +24,6 @@ export interface AuthResponse {
 }
 
 export const authApi = {
-  // Login Endpoint
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: credentials.email,
@@ -34,18 +33,23 @@ export const authApi = {
     if (error) throw error;
     if (!data.session) throw new Error('No session generated');
 
+    // Server resolves role from app_metadata or employee sheet (never user_metadata).
+    const synced = await syncSessionCookies(data.session.access_token);
+    const token =
+      (typeof window !== 'undefined' ? localStorage.getItem('token') : null) ||
+      data.session.access_token;
+
     return {
-      token: data.session.access_token,
+      token,
       user: {
         id: data.user.id,
         name: data.user.user_metadata?.name || '',
         email: data.user.email || '',
-        role: data.user.app_metadata?.role || data.user.user_metadata?.role || '',
+        role: synced.roleLabel,
       },
     };
   },
 
-  // Signup Endpoint
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch('/api/signup', {
@@ -63,28 +67,13 @@ export const authApi = {
       throw new Error(result.error || 'Failed to complete signup.');
     }
 
-    // Set the session on the client-side Supabase client
-    if (result.session) {
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: result.session.access_token,
-        refresh_token: result.session.refresh_token,
-      });
-
-      if (sessionError) {
-        throw new Error(
-          `User was registered, but session creation failed: ${sessionError.message}`
-        );
-      }
-    }
-
     return {
-      token: result.session?.access_token,
       user: result.user,
     };
   },
 
-  // Logout Endpoint
   logout: async (): Promise<void> => {
+    await clearSessionCookies();
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   },

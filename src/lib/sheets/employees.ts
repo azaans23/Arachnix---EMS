@@ -1,0 +1,450 @@
+import type { EmployeeRecord, EmployeeWriteInput, SheetUser } from '@/types/employee';
+import { toSheetUser } from '@/types/employee';
+import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import {
+  buildEmployeeUniquenessContext,
+  employeeValidationSchema,
+} from '@/utils/validation';
+
+function pick(raw: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = raw[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+/** Normalize sheet/Excel/ISO dates to YYYY-MM-DD for HTML date inputs + n8n. */
+export function toDateInputValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Excel serial date (days since 1899-12-30)
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const date = new Date(excelEpoch + value * 24 * 60 * 60 * 1000);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+
+  return text;
+}
+
+function prefer(value: string | undefined, fallback: string): string {
+  const next = String(value ?? '').trim();
+  return next || fallback;
+}
+
+export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
+  const raw =
+    rawInput && typeof rawInput === 'object'
+      ? (rawInput as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+
+  return {
+    employeeId: pick(raw, 'EmployeeID', 'employeeId', 'EmployeeId'),
+    fullName: pick(raw, 'FullName', 'fullName', 'name', 'Name'),
+    email: pick(raw, 'Email', 'email'),
+    phone: pick(raw, 'Phone', 'phone'),
+    dob: toDateInputValue(raw.DOB ?? raw.dob),
+    address: pick(raw, 'Address', 'address'),
+    department: pick(raw, 'Department', 'department'),
+    designation: pick(raw, 'Designation', 'designation'),
+    employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
+    joiningDate: toDateInputValue(raw.JoiningDate ?? raw.joiningDate),
+    baseSalary: pick(raw, 'BaseSalary', 'baseSalary'),
+    bankAccountDetails: pick(raw, 'BankAccountDetails', 'bankAccountDetails'),
+    role: pick(raw, 'Role', 'role') || 'Employee',
+    supabaseUserId: pick(raw, 'SupabaseUserID', 'supabaseUserId', 'SupabaseUserId'),
+    emsStatus: pick(raw, 'EMSStatus', 'emsStatus') || 'Inactive',
+    raw,
+  };
+}
+
+export function normalizeEmployeesPayload(data: unknown): EmployeeRecord[] {
+  let rows: unknown[] = [];
+  if (Array.isArray(data)) {
+    rows = data;
+  } else if (data && typeof data === 'object') {
+    rows = [data];
+  }
+  return rows.map(mapRawToEmployee);
+}
+
+const EMPLOYEE_ID_PATTERN = /^EMP-(\d+)$/i;
+
+/**
+ * Returns the next ID after the highest valid EMP-nnn value.
+ * Blank/malformed legacy IDs are ignored; an empty roster starts at EMP-001.
+ */
+export function getNextEmployeeId(
+  employees: Pick<EmployeeRecord, 'employeeId'>[]
+): string {
+  const highest = employees.reduce((max, employee) => {
+    const match = employee.employeeId.trim().match(EMPLOYEE_ID_PATTERN);
+    if (!match) return max;
+    const sequence = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(sequence) ? Math.max(max, sequence) : max;
+  }, 0);
+
+  return `EMP-${String(highest + 1).padStart(3, '0')}`;
+}
+
+/** Sheet/n8n write body — keys match n8n `$json.body.*` mappings exactly. */
+export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, string> {
+  const employeeId = input.employeeId.trim();
+  const name = input.name.trim();
+  const email = input.email.trim();
+  const phone = String(input.phone ?? '').trim();
+  const dob = toDateInputValue(input.dob);
+  const address = input.address.trim();
+  const department = input.department.trim();
+  const designation = input.designation.trim();
+  const employmentType = input.employmentType.trim();
+  const joiningDate = toDateInputValue(input.joiningDate);
+  const baseSalary = String(input.baseSalary ?? '').trim();
+  const bankAccountDetails = input.bankAccountDetails.trim();
+  const role = input.role.trim();
+  const emsStatus = input.emsStatus.trim() || 'Inactive';
+  const supabaseUserId = String(input.supabaseUserId ?? '').trim();
+
+  return {
+    // PascalCase sheet columns
+    EmployeeID: employeeId,
+    FullName: name,
+    Email: email,
+    Phone: phone,
+    DOB: dob,
+    Address: address,
+    Department: department,
+    Designation: designation,
+    EmployeeType: employmentType,
+    JoiningDate: joiningDate,
+    BaseSalary: baseSalary,
+    BankAccountDetails: bankAccountDetails,
+    Role: role,
+    SupabaseUserID: supabaseUserId,
+    EMSStatus: emsStatus,
+    // camelCase aliases used by n8n Update row expressions ($json.body.*)
+    employeeId,
+    name,
+    email,
+    phone,
+    dob,
+    address,
+    department,
+    designation,
+    employmentType,
+    joiningDate,
+    baseSalary,
+    bankAccountDetails,
+    role,
+    supabaseUserId,
+    emsStatus,
+    status: emsStatus,
+  };
+}
+
+/**
+ * Fill any blank write fields from the existing sheet row so an update
+ * never clears columns the form didn't intentionally change.
+ */
+export function mergeEmployeeWriteInput(
+  input: EmployeeWriteInput,
+  previous: EmployeeRecord | null | undefined
+): EmployeeWriteInput {
+  if (!previous) {
+    return {
+      ...input,
+      dob: toDateInputValue(input.dob),
+      joiningDate: toDateInputValue(input.joiningDate),
+      emsStatus: input.emsStatus.trim() || 'Active',
+      supabaseUserId: input.supabaseUserId || '',
+    };
+  }
+
+  return {
+    employeeId: prefer(input.employeeId, previous.employeeId),
+    name: prefer(input.name, previous.fullName),
+    email: prefer(input.email, previous.email),
+    phone: prefer(input.phone, previous.phone),
+    dob: prefer(toDateInputValue(input.dob), previous.dob),
+    address: prefer(input.address, previous.address),
+    department: prefer(input.department, previous.department),
+    designation: prefer(input.designation, previous.designation),
+    employmentType: prefer(input.employmentType, previous.employeeType),
+    joiningDate: prefer(toDateInputValue(input.joiningDate), previous.joiningDate),
+    baseSalary: prefer(String(input.baseSalary ?? ''), previous.baseSalary),
+    bankAccountDetails: prefer(input.bankAccountDetails, previous.bankAccountDetails),
+    role: prefer(input.role, previous.role),
+    emsStatus: prefer(input.emsStatus, previous.emsStatus) || 'Inactive',
+    supabaseUserId: prefer(input.supabaseUserId, previous.supabaseUserId),
+    originalEmployeeId: input.originalEmployeeId || previous.employeeId,
+    originalEmail: input.originalEmail || previous.email,
+  };
+}
+
+export function employeeRecordToAuditValue(
+  employee: EmployeeRecord
+): Record<string, string> {
+  return {
+    EmployeeID: employee.employeeId,
+    FullName: employee.fullName,
+    Email: employee.email,
+    Phone: employee.phone,
+    DOB: employee.dob,
+    Address: employee.address,
+    Department: employee.department,
+    Designation: employee.designation,
+    EmployeeType: employee.employeeType,
+    JoiningDate: employee.joiningDate,
+    BaseSalary: employee.baseSalary,
+    BankAccountDetails: employee.bankAccountDetails,
+    Role: employee.role,
+    SupabaseUserID: employee.supabaseUserId,
+    EMSStatus: employee.emsStatus,
+  };
+}
+
+export function employeeInputToAuditValue(
+  input: EmployeeWriteInput
+): Record<string, string> {
+  const payload = toSheetWritePayload(input);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key))
+  );
+}
+
+export type UniquenessConflict =
+  | { field: 'employeeId'; message: string }
+  | { field: 'email'; message: string };
+
+export function findUniquenessConflict(
+  employees: EmployeeRecord[],
+  input: Pick<EmployeeWriteInput, 'employeeId' | 'email' | 'originalEmployeeId' | 'originalEmail'>
+): UniquenessConflict | null {
+  const id = input.employeeId.trim().toLowerCase();
+  const email = input.email.trim().toLowerCase();
+  const excludeId = (input.originalEmployeeId || '').trim().toLowerCase();
+  const excludeEmail = (input.originalEmail || '').trim().toLowerCase();
+
+  const isSameRecord = (employee: EmployeeRecord) => {
+    const empId = employee.employeeId.trim().toLowerCase();
+    const empEmail = employee.email.trim().toLowerCase();
+    if (excludeId && empId === excludeId) return true;
+    if (excludeEmail && empEmail === excludeEmail) return true;
+    return false;
+  };
+
+  const idMatch = employees.find(
+    (employee) => employee.employeeId.trim().toLowerCase() === id && !isSameRecord(employee)
+  );
+  if (idMatch) {
+    return { field: 'employeeId', message: 'Employee ID already exists' };
+  }
+
+  const emailMatch = employees.find(
+    (employee) => employee.email.trim().toLowerCase() === email && !isSameRecord(employee)
+  );
+  if (emailMatch) {
+    return { field: 'email', message: 'Email already exists' };
+  }
+
+  return null;
+}
+
+export class SheetsError extends Error {
+  status: number;
+
+  constructor(message: string, status = 500) {
+    super(message);
+    this.name = 'SheetsError';
+    this.status = status;
+  }
+}
+
+async function parseWebhookError(response: Response, fallback: string): Promise<string> {
+  let errText = '';
+  try {
+    errText = await response.text();
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const jsonErr = JSON.parse(errText);
+    if (jsonErr.message) {
+      return jsonErr.message + (jsonErr.hint ? ` ${jsonErr.hint}` : '');
+    }
+  } catch {
+    /* keep text */
+  }
+
+  return errText || fallback;
+}
+
+/** Typed read of the Employees sheet via n8n. */
+export async function fetchEmployees(): Promise<EmployeeRecord[]> {
+  const response = await fetch(SHEETS_WEBHOOKS.getUsers, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new SheetsError(
+      await parseWebhookError(
+        response,
+        `n8n webhook returned status ${response.status}. Make sure the webhook is active.`
+      ),
+      response.status
+    );
+  }
+
+  const data = await response.json();
+  return normalizeEmployeesPayload(data);
+}
+
+export async function fetchSheetUsers(): Promise<SheetUser[]> {
+  const employees = await fetchEmployees();
+  return employees.map(toSheetUser);
+}
+
+export async function getEmployeeById(id: string): Promise<EmployeeRecord | null> {
+  const candidates = new Set<string>();
+  let current = String(id || '').trim();
+
+  // Next.js / fetch may pass an id that is already decoded, or still percent-encoded.
+  for (let i = 0; i < 3 && current; i += 1) {
+    candidates.add(current.toLowerCase());
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) break;
+      current = decoded.trim();
+    } catch {
+      break;
+    }
+  }
+
+  if (candidates.size === 0) return null;
+
+  const employees = await fetchEmployees();
+  return (
+    employees.find((employee) => {
+      const employeeId = employee.employeeId.trim().toLowerCase();
+      const email = employee.email.trim().toLowerCase();
+      return (
+        (employeeId && candidates.has(employeeId)) ||
+        (email && candidates.has(email))
+      );
+    }) || null
+  );
+}
+
+export type ValidateEmployeeResult =
+  | { ok: true; value: EmployeeWriteInput }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+/** Required fields, email format, then duplicate Employee ID / email against the sheet. */
+export async function validateEmployeeWrite(
+  body: unknown,
+  options?: { existing?: EmployeeRecord[] }
+): Promise<ValidateEmployeeResult> {
+  const existing = options?.existing ?? (await fetchEmployees());
+  const bodyRecord =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+
+  try {
+    const value = (await employeeValidationSchema.validate(body, {
+      abortEarly: false,
+      stripUnknown: true,
+      context: buildEmployeeUniquenessContext(existing, {
+        employeeId: String(bodyRecord.originalEmployeeId || ''),
+        email: String(bodyRecord.originalEmail || ''),
+      }),
+    })) as EmployeeWriteInput;
+
+    const conflict = findUniquenessConflict(existing, value);
+    if (conflict) {
+      return {
+        ok: false,
+        error: conflict.message,
+        fieldErrors: { [conflict.field]: conflict.message },
+      };
+    }
+
+    return { ok: true, value };
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'inner' in err) {
+      const yupErr = err as { message: string; inner: { path?: string; message: string }[] };
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of yupErr.inner || []) {
+        if (issue.path && !fieldErrors[issue.path]) {
+          fieldErrors[issue.path] = issue.message;
+        }
+      }
+      return {
+        ok: false,
+        error: Object.values(fieldErrors)[0] || yupErr.message || 'Validation failed',
+        fieldErrors,
+      };
+    }
+
+    const message = err instanceof Error ? err.message : 'Validation failed';
+    return { ok: false, error: message };
+  }
+}
+
+/** Typed write to the Employees sheet via n8n (create or update). */
+export async function upsertEmployee(
+  input: EmployeeWriteInput,
+  previous?: EmployeeRecord | null
+): Promise<EmployeeWriteInput> {
+  const merged = mergeEmployeeWriteInput(input, previous);
+  const payload = toSheetWritePayload(merged);
+
+  const response = await fetch(SHEETS_WEBHOOKS.updateUser, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new SheetsError(
+      await parseWebhookError(
+        response,
+        `n8n update-user webhook returned status ${response.status}.`
+      ),
+      response.status
+    );
+  }
+
+  return merged;
+}
+
+export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInput {
+  return {
+    employeeId: employee.employeeId,
+    name: employee.fullName,
+    email: employee.email,
+    phone: employee.phone,
+    dob: toDateInputValue(employee.dob),
+    address: employee.address,
+    department: employee.department,
+    designation: employee.designation,
+    employmentType: employee.employeeType,
+    joiningDate: toDateInputValue(employee.joiningDate),
+    baseSalary: employee.baseSalary,
+    bankAccountDetails: employee.bankAccountDetails,
+    role: employee.role || 'Employee',
+    emsStatus: employee.emsStatus || 'Active',
+    supabaseUserId: employee.supabaseUserId,
+    originalEmployeeId: employee.employeeId,
+    originalEmail: employee.email,
+  };
+}

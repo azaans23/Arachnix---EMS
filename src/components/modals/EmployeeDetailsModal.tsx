@@ -15,17 +15,14 @@ import {
   Database,
   UserCheck,
   Pencil,
+  ExternalLink,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
+import type { SheetUser } from '@/types/employee';
 
 interface EmployeeDetailsModalProps {
-  user: {
-    name: string;
-    email: string;
-    role: string;
-    employeeId?: string;
-    raw: any;
-  };
+  user: SheetUser;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -37,11 +34,20 @@ export default function EmployeeDetailsModal({
 }: EmployeeDetailsModalProps) {
   const { openModal } = useModal();
   const raw = user?.raw || {};
+  const rawStr = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = raw[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        return String(value);
+      }
+    }
+    return '';
+  };
 
   // Formatter helper for currency
-  const formatCurrency = (value: any) => {
+  const formatCurrency = (value: unknown) => {
     const num = Number(value);
-    if (isNaN(num)) return value || 'N/A';
+    if (Number.isNaN(num)) return String(value || 'N/A');
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'PKR',
@@ -49,7 +55,7 @@ export default function EmployeeDetailsModal({
     }).format(num);
   };
 
-  const status = raw.EMSStatus || raw.emsStatus || 'Inactive';
+  const status = rawStr('EMSStatus', 'emsStatus') || 'Inactive';
   const isActive = status.toLowerCase() === 'active';
 
   return (
@@ -75,7 +81,7 @@ export default function EmployeeDetailsModal({
                 {user?.name || 'N/A'}
               </h2>
               <p className="text-sm text-muted mt-0.5">
-                {raw.Designation || raw.designation || 'Staff Member'}
+                {rawStr('Designation', 'designation') || 'Staff Member'}
               </p>
             </div>
           </div>
@@ -134,7 +140,7 @@ export default function EmployeeDetailsModal({
                 Phone Number
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.Phone || raw.phone || 'N/A'}
+                {rawStr('Phone', 'phone') || 'N/A'}
               </span>
             </div>
           </div>
@@ -147,7 +153,7 @@ export default function EmployeeDetailsModal({
                 Date of Birth
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.DOB || raw.dob || 'N/A'}
+                {rawStr('DOB', 'dob') || 'N/A'}
               </span>
             </div>
           </div>
@@ -160,7 +166,7 @@ export default function EmployeeDetailsModal({
                 Department
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.Department || raw.department || 'N/A'}
+                {rawStr('Department', 'department') || 'N/A'}
               </span>
             </div>
           </div>
@@ -173,7 +179,7 @@ export default function EmployeeDetailsModal({
                 Employment Type
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.EmployeeType || raw.employeeType || 'N/A'}
+                {rawStr('EmployeeType', 'employeeType') || 'N/A'}
               </span>
             </div>
           </div>
@@ -186,7 +192,7 @@ export default function EmployeeDetailsModal({
                 Joining Date
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.JoiningDate || raw.joiningDate || 'N/A'}
+                {rawStr('JoiningDate', 'joiningDate') || 'N/A'}
               </span>
             </div>
           </div>
@@ -199,7 +205,7 @@ export default function EmployeeDetailsModal({
                 Base Salary
               </span>
               <span className="text-sm font-bold text-ink mt-0.5 block">
-                {formatCurrency(raw.BaseSalary || raw.baseSalary)}
+                {formatCurrency(rawStr('BaseSalary', 'baseSalary'))}
               </span>
             </div>
           </div>
@@ -212,7 +218,7 @@ export default function EmployeeDetailsModal({
                 Bank Details
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.BankAccountDetails || raw.bankAccountDetails || 'N/A'}
+                {rawStr('BankAccountDetails', 'bankAccountDetails') || 'N/A'}
               </span>
             </div>
           </div>
@@ -238,20 +244,28 @@ export default function EmployeeDetailsModal({
                 Residential Address
               </span>
               <span className="text-sm font-semibold text-ink mt-0.5 block">
-                {raw.Address || raw.address || 'N/A'}
+                {rawStr('Address', 'address') || 'N/A'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Modal Actions Footer */}
-        <div className="border-t border-border mt-8 pt-6 flex justify-end gap-4">
+        <div className="border-t border-border mt-8 pt-6 flex flex-wrap justify-end gap-3">
           <button
             onClick={onClose}
             className="px-5 py-2.5 rounded-lg border border-border text-sm font-semibold text-muted hover:bg-canvas/40 transition-colors cursor-pointer"
           >
             Close Details
           </button>
+
+          <Link
+            href={`/dashboard/employees/${encodeURIComponent(user.employeeId || user.email)}`}
+            onClick={onClose}
+            className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
+          >
+            <ExternalLink className="w-4 h-4" /> Open profile
+          </Link>
 
           <button
             onClick={() => {
