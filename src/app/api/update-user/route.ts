@@ -4,6 +4,7 @@ import {
   employeeInputToAuditValue,
   employeeRecordToAuditValue,
   fetchEmployees,
+  getNextEmployeeId,
   SheetsError,
   upsertEmployee,
   validateEmployeeWrite,
@@ -18,8 +19,21 @@ export async function POST(request: Request) {
     const { user, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
-    const body = await request.json();
     const existing = await fetchEmployees();
+    const requestBody = await request.json();
+    const body =
+      requestBody && typeof requestBody === 'object'
+        ? { ...(requestBody as Record<string, unknown>) }
+        : {};
+    const editingExisting = Boolean(body.originalEmployeeId || body.originalEmail);
+
+    // The server is authoritative for new IDs so a stale browser cannot reuse
+    // an ID after another employee was created. Legacy records with no ID also
+    // receive the next sequence when they are first edited.
+    if (!editingExisting || !String(body.employeeId || '').trim()) {
+      body.employeeId = getNextEmployeeId(existing);
+    }
+
     const validation = await validateEmployeeWrite(body, { existing });
 
     if (!validation.ok) {
@@ -62,6 +76,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
+      employeeId: validation.value.employeeId,
       auditLogged,
       warning: auditLogged ? undefined : 'Employee saved, but the audit entry could not be delivered.',
     });

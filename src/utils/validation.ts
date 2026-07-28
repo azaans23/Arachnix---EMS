@@ -30,7 +30,7 @@ export const employeeValidationSchema = Yup.object({
   employeeId: Yup.string()
     .trim()
     .required('Employee ID is required')
-    .min(2, 'Employee ID must be at least 2 characters')
+    .matches(/^EMP-\d{3,}$/i, 'Employee ID must use the format EMP-001')
     .test('unique-employee-id', 'Employee ID already exists', function (value) {
       const ctx = this.options.context as EmployeeUniquenessContext | undefined;
       if (!value || !ctx?.existingIds?.length) return true;

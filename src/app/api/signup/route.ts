@@ -4,7 +4,8 @@ import { verifyEmployeeAccess } from '@/lib/auth';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
   employeeRecordToAuditValue,
-  getEmployeeById,
+  fetchEmployees,
+  getNextEmployeeId,
 } from '@/lib/sheets/employees';
 import {
   createAuditLog,
@@ -41,7 +42,16 @@ export async function POST(request: Request) {
     const { email, password, name, role, employeeId } = await request.json();
 
     let supabaseUserId: string | undefined;
-    const previousEmployee = employeeId ? await getEmployeeById(employeeId) : null;
+    const employees = await fetchEmployees();
+    const previousEmployee =
+      employees.find(
+        (employee) =>
+          (employeeId &&
+            employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
+          employee.email.toLowerCase() === String(email || '').toLowerCase()
+      ) || null;
+    const resolvedEmployeeId =
+      previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
 
     try {
       // 1. Create the user. If service role key is available, use Admin API
@@ -89,12 +99,18 @@ export async function POST(request: Request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          EmployeeID: resolvedEmployeeId,
+          FullName: name,
+          Email: email,
+          Role: role,
+          SupabaseUserID: supabaseUserId,
+          EMSStatus: 'Active',
           name,
           email,
           role,
           supabaseUserId,
           status: 'Active',
-          employeeId,
+          employeeId: resolvedEmployeeId,
           created_at: new Date().toISOString(),
         }),
       });
@@ -126,7 +142,7 @@ export async function POST(request: Request) {
         : {};
       const newValue = {
         ...oldValue,
-        EmployeeID: employeeId || previousEmployee?.employeeId || '',
+        EmployeeID: resolvedEmployeeId,
         FullName: name || previousEmployee?.fullName || '',
         Email: email || previousEmployee?.email || '',
         Role: role || previousEmployee?.role || '',
@@ -142,7 +158,7 @@ export async function POST(request: Request) {
           {
             action: AUDIT_ACTIONS.GRANT_ACCESS,
             recordType: 'Employee',
-            recordId: employeeId || email,
+            recordId: resolvedEmployeeId,
             oldValue: changes.oldValue,
             newValue: changes.newValue,
           }
@@ -159,6 +175,7 @@ export async function POST(request: Request) {
         session: signInData.session,
         user: {
           id: signInData.user.id,
+          employeeId: resolvedEmployeeId,
           name: signInData.user.user_metadata?.name || name,
           email: signInData.user.email || '',
           role: signInData.user.app_metadata?.role || role,

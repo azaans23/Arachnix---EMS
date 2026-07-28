@@ -52,6 +52,25 @@ export function normalizeEmployeesPayload(data: unknown): EmployeeRecord[] {
   return rows.map(mapRawToEmployee);
 }
 
+const EMPLOYEE_ID_PATTERN = /^EMP-(\d+)$/i;
+
+/**
+ * Returns the next ID after the highest valid EMP-nnn value.
+ * Blank/malformed legacy IDs are ignored; an empty roster starts at EMP-001.
+ */
+export function getNextEmployeeId(
+  employees: Pick<EmployeeRecord, 'employeeId'>[]
+): string {
+  const highest = employees.reduce((max, employee) => {
+    const match = employee.employeeId.trim().match(EMPLOYEE_ID_PATTERN);
+    if (!match) return max;
+    const sequence = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(sequence) ? Math.max(max, sequence) : max;
+  }, 0);
+
+  return `EMP-${String(highest + 1).padStart(3, '0')}`;
+}
+
 /** Sheet/n8n write body using PascalCase column names from the Employees schema. */
 export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, string> {
   return {

@@ -16,10 +16,11 @@ import {
   Calendar,
   Clock,
   Hash,
+  RefreshCw,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
-import { mapRawToEmployee } from '@/lib/sheets/employees';
+import { getNextEmployeeId, mapRawToEmployee } from '@/lib/sheets/employees';
 import {
   buildEmployeeUniquenessContext,
   employeeValidationSchema,
@@ -41,9 +42,9 @@ type EmployeeFormProps = {
   embedded?: boolean;
 };
 
-function emptyValues(): EmployeeWriteInput {
+function emptyValues(employeeId: string): EmployeeWriteInput {
   return {
-    employeeId: '',
+    employeeId,
     name: '',
     email: '',
     phone: '',
@@ -91,6 +92,7 @@ export default function EmployeeForm({
 }: EmployeeFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [roster, setRoster] = useState<{ employeeId: string; email: string }[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
   const isEditMode = !!user;
 
   useEffect(() => {
@@ -107,23 +109,31 @@ export default function EmployeeForm({
         if (Array.isArray(result.data)) rawUsers = result.data;
         else if (result.data && typeof result.data === 'object') rawUsers = [result.data];
 
-        setRoster(
+        const loadedRoster =
           rawUsers.map((row) => {
             const employee = mapRawToEmployee(row);
             return { employeeId: employee.employeeId, email: employee.email };
-          })
-        );
+          });
+        setRoster(loadedRoster);
       } catch {
         /* uniqueness still enforced server-side */
+      } finally {
+        setRosterLoading(false);
       }
     };
     loadRoster();
   }, []);
 
-  const initialValues = useMemo(
-    () => (user ? valuesFromUser(user) : emptyValues()),
-    [user]
-  );
+  const nextEmployeeId = useMemo(() => getNextEmployeeId(roster), [roster]);
+
+  const initialValues = useMemo(() => {
+    if (!user) return emptyValues(nextEmployeeId);
+    const values = valuesFromUser(user);
+    return {
+      ...values,
+      employeeId: values.employeeId || nextEmployeeId,
+    };
+  }, [user, nextEmployeeId]);
 
   const uniquenessContext = useMemo(
     () =>
@@ -208,11 +218,20 @@ export default function EmployeeForm({
         : 'border-border focus:border-ink/40'
     }`;
 
+  if (rosterLoading) {
+    return (
+      <div className="flex min-h-48 flex-col items-center justify-center">
+        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
+        <span className="text-sm text-muted">Preparing employee ID…</span>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={formik.handleSubmit} className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
         <Field
-          label="Employee ID"
+          label="Employee ID (Auto-generated)"
           htmlFor="employeeId"
           error={showError('employeeId')}
           icon={<Hash className="h-4 w-4" />}
@@ -223,9 +242,9 @@ export default function EmployeeForm({
             type="text"
             placeholder="EMP-001"
             value={formik.values.employeeId}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('employeeId')}
+            readOnly
+            aria-readonly="true"
+            className={`${fieldClass('employeeId')} cursor-not-allowed bg-canvas text-muted`}
           />
         </Field>
 
