@@ -35,6 +35,8 @@ export interface EmployeeWriteInput {
   bankAccountDetails: string;
   role: string;
   emsStatus: string;
+  /** Preserved from the sheet on update; set on EMS registration. */
+  supabaseUserId?: string;
   /** When editing, the ID currently stored on the sheet (for uniqueness exclusion). */
   originalEmployeeId?: string;
   /** When editing, the email currently stored on the sheet. */

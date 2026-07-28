@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
-import { getNextEmployeeId, mapRawToEmployee } from '@/lib/sheets/employees';
+import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import {
   buildEmployeeUniquenessContext,
   employeeValidationSchema,
@@ -58,29 +58,12 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     bankAccountDetails: '',
     role: 'Employee',
     emsStatus: 'Active',
+    supabaseUserId: '',
   };
 }
 
 function valuesFromUser(user: SheetUser): EmployeeWriteInput {
-  const employee = mapRawToEmployee(user.raw || {});
-  return {
-    employeeId: user.employeeId || employee.employeeId,
-    name: user.name || employee.fullName,
-    email: user.email || employee.email,
-    phone: employee.phone,
-    dob: employee.dob,
-    address: employee.address,
-    department: employee.department,
-    designation: employee.designation,
-    employmentType: employee.employeeType,
-    joiningDate: employee.joiningDate,
-    baseSalary: employee.baseSalary,
-    bankAccountDetails: employee.bankAccountDetails,
-    role: user.role || employee.role || 'Employee',
-    emsStatus: employee.emsStatus || 'Active',
-    originalEmployeeId: user.employeeId || employee.employeeId,
-    originalEmail: user.email || employee.email,
-  };
+  return employeeToFormValues(mapRawToEmployee(user.raw || {}));
 }
 
 export default function EmployeeForm({

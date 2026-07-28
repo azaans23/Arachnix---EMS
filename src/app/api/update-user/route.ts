@@ -5,6 +5,7 @@ import {
   employeeRecordToAuditValue,
   fetchEmployees,
   getNextEmployeeId,
+  mergeEmployeeWriteInput,
   SheetsError,
   upsertEmployee,
   validateEmployeeWrite,
@@ -56,13 +57,15 @@ export async function POST(request: Request) {
           (originalEmail && employee.email.trim().toLowerCase() === originalEmail)
       ) || null;
 
-    const nextValue = employeeInputToAuditValue(validation.value);
+    const nextValue = employeeInputToAuditValue(
+      mergeEmployeeWriteInput(validation.value, previous)
+    );
     const previousValue = previous ? employeeRecordToAuditValue(previous) : {};
     const changes = previous
       ? diffAuditValues(previousValue, nextValue)
       : { oldValue: {}, newValue: nextValue };
 
-    const { auditLogged } = await runAuditedMutation(
+    const { result: saved, auditLogged } = await runAuditedMutation(
       { email: user?.email || '' },
       {
         action: previous ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
@@ -71,12 +74,12 @@ export async function POST(request: Request) {
         oldValue: changes.oldValue,
         newValue: changes.newValue,
       },
-      () => upsertEmployee(validation.value)
+      () => upsertEmployee(validation.value, previous)
     );
 
     return NextResponse.json({
       success: true,
-      employeeId: validation.value.employeeId,
+      employeeId: saved.employeeId,
       auditLogged,
       warning: auditLogged ? undefined : 'Employee saved, but the audit entry could not be delivered.',
     });

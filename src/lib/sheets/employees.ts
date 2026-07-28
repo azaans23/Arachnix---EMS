@@ -16,6 +16,30 @@ function pick(raw: Record<string, unknown>, ...keys: string[]): string {
   return '';
 }
 
+/** Normalize sheet/Excel/ISO dates to YYYY-MM-DD for HTML date inputs + n8n. */
+export function toDateInputValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Excel serial date (days since 1899-12-30)
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const date = new Date(excelEpoch + value * 24 * 60 * 60 * 1000);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+
+  return text;
+}
+
+function prefer(value: string | undefined, fallback: string): string {
+  const next = String(value ?? '').trim();
+  return next || fallback;
+}
+
 export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
   const raw =
     rawInput && typeof rawInput === 'object'
@@ -27,12 +51,12 @@ export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
     fullName: pick(raw, 'FullName', 'fullName', 'name', 'Name'),
     email: pick(raw, 'Email', 'email'),
     phone: pick(raw, 'Phone', 'phone'),
-    dob: pick(raw, 'DOB', 'dob'),
+    dob: toDateInputValue(raw.DOB ?? raw.dob),
     address: pick(raw, 'Address', 'address'),
     department: pick(raw, 'Department', 'department'),
     designation: pick(raw, 'Designation', 'designation'),
     employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
-    joiningDate: pick(raw, 'JoiningDate', 'joiningDate'),
+    joiningDate: toDateInputValue(raw.JoiningDate ?? raw.joiningDate),
     baseSalary: pick(raw, 'BaseSalary', 'baseSalary'),
     bankAccountDetails: pick(raw, 'BankAccountDetails', 'bankAccountDetails'),
     role: pick(raw, 'Role', 'role') || 'Employee',
@@ -71,38 +95,97 @@ export function getNextEmployeeId(
   return `EMP-${String(highest + 1).padStart(3, '0')}`;
 }
 
-/** Sheet/n8n write body using PascalCase column names from the Employees schema. */
+/** Sheet/n8n write body — keys match n8n `$json.body.*` mappings exactly. */
 export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, string> {
+  const employeeId = input.employeeId.trim();
+  const name = input.name.trim();
+  const email = input.email.trim();
+  const phone = String(input.phone ?? '').trim();
+  const dob = toDateInputValue(input.dob);
+  const address = input.address.trim();
+  const department = input.department.trim();
+  const designation = input.designation.trim();
+  const employmentType = input.employmentType.trim();
+  const joiningDate = toDateInputValue(input.joiningDate);
+  const baseSalary = String(input.baseSalary ?? '').trim();
+  const bankAccountDetails = input.bankAccountDetails.trim();
+  const role = input.role.trim();
+  const emsStatus = input.emsStatus.trim() || 'Inactive';
+  const supabaseUserId = String(input.supabaseUserId ?? '').trim();
+
   return {
-    EmployeeID: input.employeeId.trim(),
-    FullName: input.name.trim(),
-    Email: input.email.trim(),
-    Phone: input.phone.trim(),
-    DOB: input.dob.trim(),
-    Address: input.address.trim(),
-    Department: input.department.trim(),
-    Designation: input.designation.trim(),
-    EmployeeType: input.employmentType.trim(),
-    JoiningDate: input.joiningDate.trim(),
-    BaseSalary: String(input.baseSalary).trim(),
-    BankAccountDetails: input.bankAccountDetails.trim(),
-    Role: input.role.trim(),
-    EMSStatus: input.emsStatus.trim(),
-    // camelCase aliases for workflows that still expect the form shape
-    employeeId: input.employeeId.trim(),
-    name: input.name.trim(),
-    email: input.email.trim(),
-    phone: input.phone.trim(),
-    dob: input.dob.trim(),
-    address: input.address.trim(),
-    department: input.department.trim(),
-    designation: input.designation.trim(),
-    employmentType: input.employmentType.trim(),
-    joiningDate: input.joiningDate.trim(),
-    baseSalary: String(input.baseSalary).trim(),
-    bankAccountDetails: input.bankAccountDetails.trim(),
-    role: input.role.trim(),
-    emsStatus: input.emsStatus.trim(),
+    // PascalCase sheet columns
+    EmployeeID: employeeId,
+    FullName: name,
+    Email: email,
+    Phone: phone,
+    DOB: dob,
+    Address: address,
+    Department: department,
+    Designation: designation,
+    EmployeeType: employmentType,
+    JoiningDate: joiningDate,
+    BaseSalary: baseSalary,
+    BankAccountDetails: bankAccountDetails,
+    Role: role,
+    SupabaseUserID: supabaseUserId,
+    EMSStatus: emsStatus,
+    // camelCase aliases used by n8n Update row expressions ($json.body.*)
+    employeeId,
+    name,
+    email,
+    phone,
+    dob,
+    address,
+    department,
+    designation,
+    employmentType,
+    joiningDate,
+    baseSalary,
+    bankAccountDetails,
+    role,
+    supabaseUserId,
+    emsStatus,
+    status: emsStatus,
+  };
+}
+
+/**
+ * Fill any blank write fields from the existing sheet row so an update
+ * never clears columns the form didn't intentionally change.
+ */
+export function mergeEmployeeWriteInput(
+  input: EmployeeWriteInput,
+  previous: EmployeeRecord | null | undefined
+): EmployeeWriteInput {
+  if (!previous) {
+    return {
+      ...input,
+      dob: toDateInputValue(input.dob),
+      joiningDate: toDateInputValue(input.joiningDate),
+      emsStatus: input.emsStatus.trim() || 'Active',
+      supabaseUserId: input.supabaseUserId || '',
+    };
+  }
+
+  return {
+    employeeId: prefer(input.employeeId, previous.employeeId),
+    name: prefer(input.name, previous.fullName),
+    email: prefer(input.email, previous.email),
+    phone: prefer(input.phone, previous.phone),
+    dob: prefer(toDateInputValue(input.dob), previous.dob),
+    address: prefer(input.address, previous.address),
+    department: prefer(input.department, previous.department),
+    designation: prefer(input.designation, previous.designation),
+    employmentType: prefer(input.employmentType, previous.employeeType),
+    joiningDate: prefer(toDateInputValue(input.joiningDate), previous.joiningDate),
+    baseSalary: prefer(String(input.baseSalary ?? ''), previous.baseSalary),
+    bankAccountDetails: prefer(input.bankAccountDetails, previous.bankAccountDetails),
+    role: prefer(input.role, previous.role),
+    emsStatus: prefer(input.emsStatus, previous.emsStatus) || 'Inactive',
+    supabaseUserId: prefer(input.supabaseUserId, previous.supabaseUserId),
+    originalEmployeeId: input.originalEmployeeId || previous.employeeId,
+    originalEmail: input.originalEmail || previous.email,
   };
 }
 
@@ -123,6 +206,7 @@ export function employeeRecordToAuditValue(
     BaseSalary: employee.baseSalary,
     BankAccountDetails: employee.bankAccountDetails,
     Role: employee.role,
+    SupabaseUserID: employee.supabaseUserId,
     EMSStatus: employee.emsStatus,
   };
 }
@@ -317,8 +401,12 @@ export async function validateEmployeeWrite(
 }
 
 /** Typed write to the Employees sheet via n8n (create or update). */
-export async function upsertEmployee(input: EmployeeWriteInput): Promise<void> {
-  const payload = toSheetWritePayload(input);
+export async function upsertEmployee(
+  input: EmployeeWriteInput,
+  previous?: EmployeeRecord | null
+): Promise<EmployeeWriteInput> {
+  const merged = mergeEmployeeWriteInput(input, previous);
+  const payload = toSheetWritePayload(merged);
 
   const response = await fetch(SHEETS_WEBHOOKS.updateUser, {
     method: 'POST',
@@ -335,6 +423,8 @@ export async function upsertEmployee(input: EmployeeWriteInput): Promise<void> {
       response.status
     );
   }
+
+  return merged;
 }
 
 export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInput {
@@ -343,16 +433,17 @@ export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInp
     name: employee.fullName,
     email: employee.email,
     phone: employee.phone,
-    dob: employee.dob,
+    dob: toDateInputValue(employee.dob),
     address: employee.address,
     department: employee.department,
     designation: employee.designation,
     employmentType: employee.employeeType,
-    joiningDate: employee.joiningDate,
+    joiningDate: toDateInputValue(employee.joiningDate),
     baseSalary: employee.baseSalary,
     bankAccountDetails: employee.bankAccountDetails,
     role: employee.role || 'Employee',
     emsStatus: employee.emsStatus || 'Active',
+    supabaseUserId: employee.supabaseUserId,
     originalEmployeeId: employee.employeeId,
     originalEmail: employee.email,
   };

@@ -4,14 +4,18 @@ import { verifyEmployeeAccess } from '@/lib/auth';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
   employeeRecordToAuditValue,
+  employeeToFormValues,
   fetchEmployees,
   getNextEmployeeId,
+  mergeEmployeeWriteInput,
+  toSheetWritePayload,
 } from '@/lib/sheets/employees';
 import {
   createAuditLog,
   diffAuditValues,
 } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
+import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,27 +104,46 @@ export async function POST(request: Request) {
         );
       }
 
-      // 2. Update the record in the sheet via n8n update-user webhook
+      // 2. Update the sheet with the FULL employee row (merge) so registration
+      // does not wipe Phone/DOB/Address/etc. when only access fields change.
+      const writeInput: EmployeeWriteInput = mergeEmployeeWriteInput(
+        {
+          ...(previousEmployee
+            ? employeeToFormValues(previousEmployee)
+            : {
+                employeeId: resolvedEmployeeId,
+                name: name || '',
+                email: email || '',
+                phone: '',
+                dob: '',
+                address: '',
+                department: '',
+                designation: '',
+                employmentType: '',
+                joiningDate: '',
+                baseSalary: '',
+                bankAccountDetails: '',
+                role: role || 'Employee',
+                emsStatus: 'Active',
+              }),
+          employeeId: resolvedEmployeeId,
+          name: name || previousEmployee?.fullName || '',
+          email: email || previousEmployee?.email || '',
+          role: role || previousEmployee?.role || 'Employee',
+          emsStatus: 'Active',
+          supabaseUserId,
+          originalEmployeeId: previousEmployee?.employeeId || resolvedEmployeeId,
+          originalEmail: previousEmployee?.email || email,
+        },
+        previousEmployee
+      );
+
       const webhookRes = await fetch(SHEETS_WEBHOOKS.updateUser, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          EmployeeID: resolvedEmployeeId,
-          FullName: name,
-          Email: email,
-          Role: role,
-          SupabaseUserID: supabaseUserId,
-          EMSStatus: 'Active',
-          name,
-          email,
-          role,
-          supabaseUserId,
-          status: 'Active',
-          employeeId: resolvedEmployeeId,
-          created_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(toSheetWritePayload(writeInput)),
       });
 
       if (!webhookRes.ok) {
@@ -141,12 +164,9 @@ export async function POST(request: Request) {
         : {};
       const newValue = {
         ...oldValue,
-        EmployeeID: resolvedEmployeeId,
-        FullName: name || previousEmployee?.fullName || '',
-        Email: email || previousEmployee?.email || '',
-        Role: role || previousEmployee?.role || '',
-        SupabaseUserID: supabaseUserId,
-        EMSStatus: 'Active',
+        ...Object.fromEntries(
+          Object.entries(toSheetWritePayload(writeInput)).filter(([key]) => /^[A-Z]/.test(key))
+        ),
       };
       const changes = diffAuditValues(oldValue, newValue);
       let auditLogged = true;
