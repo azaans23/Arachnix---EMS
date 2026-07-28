@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
+import { assertCanAssignRole, normalizeRole, roleDisplayName } from '@/lib/rbac';
 import {
   employeeInputToAuditValue,
   employeeRecordToAuditValue,
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { user, errorResponse } = await verifyEmployeeAccess(request);
+    const { user, role: actorRole, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
     const existing = await fetchEmployees();
@@ -28,9 +29,6 @@ export async function POST(request: Request) {
         : {};
     const editingExisting = Boolean(body.originalEmployeeId || body.originalEmail);
 
-    // The server is authoritative for new IDs so a stale browser cannot reuse
-    // an ID after another employee was created. Legacy records with no ID also
-    // receive the next sequence when they are first edited.
     if (!editingExisting || !String(body.employeeId || '').trim()) {
       body.employeeId = getNextEmployeeId(existing);
     }
@@ -56,6 +54,22 @@ export async function POST(request: Request) {
           (originalId && employee.employeeId.trim().toLowerCase() === originalId) ||
           (originalEmail && employee.email.trim().toLowerCase() === originalEmail)
       ) || null;
+
+    const previousRole = previous?.role || '';
+    const nextRole = validation.value.role || '';
+    const roleChanging =
+      !previous || normalizeRole(previousRole) !== normalizeRole(nextRole);
+
+    if (roleChanging) {
+      const assignment = assertCanAssignRole(actorRole || '', nextRole);
+      if (!assignment.ok) {
+        return NextResponse.json(
+          { success: false, error: assignment.error, fieldErrors: { role: assignment.error } },
+          { status: 403 }
+        );
+      }
+      validation.value.role = roleDisplayName(assignment.role);
+    }
 
     const nextValue = employeeInputToAuditValue(
       mergeEmployeeWriteInput(validation.value, previous)

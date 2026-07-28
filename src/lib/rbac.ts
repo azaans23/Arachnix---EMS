@@ -41,6 +41,8 @@ export const ROLE_OPTIONS = [
   { label: 'Employee', value: 'Employee' },
 ] as const;
 
+export const KNOWN_ROLE_VALUES = ROLE_OPTIONS.map((option) => option.value);
+
 const ROLE_ALIASES: Record<string, AppRole> = {
   'super admin': ROLES.SUPER_ADMIN,
   superadmin: ROLES.SUPER_ADMIN,
@@ -80,6 +82,92 @@ export function roleDisplayName(role: AppRole | string): string {
     default:
       return 'Employee';
   }
+}
+
+/**
+ * Authorization role must come from app_metadata only (client JWT claim).
+ * For legacy accounts missing app_metadata, use resolveTrustedRole() server-side
+ * which can fall back to the employee sheet and backfill metadata.
+ * Never trust user_metadata.role — it is client-writable.
+ */
+export function getTrustedRole(
+  user: { app_metadata?: Record<string, unknown> | null } | null | undefined
+): AppRole {
+  const raw = user?.app_metadata?.role;
+  if (typeof raw === 'string' && isKnownRoleValue(raw)) {
+    return normalizeRole(raw);
+  }
+  return ROLES.EMPLOYEE;
+}
+
+/** True when app_metadata already carries a recognized role. */
+export function hasTrustedAppRole(
+  user: { app_metadata?: Record<string, unknown> | null } | null | undefined
+): boolean {
+  const raw = user?.app_metadata?.role;
+  return typeof raw === 'string' && isKnownRoleValue(raw);
+}
+
+export function isKnownRoleValue(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const key = String(raw)
+    .toLowerCase()
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  const compact = key.replace(/\s/g, '_');
+  return Boolean(ROLE_ALIASES[key] || ROLE_ALIASES[compact]);
+}
+
+/**
+ * Who may assign which system roles.
+ * HR Manager cannot grant Super Admin (prevents privilege escalation).
+ */
+const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
+  [ROLES.SUPER_ADMIN]: [
+    ROLES.SUPER_ADMIN,
+    ROLES.HR_MANAGER,
+    ROLES.FINANCE_MANAGER,
+    ROLES.DIRECTOR,
+    ROLES.EMPLOYEE,
+  ],
+  [ROLES.HR_MANAGER]: [
+    ROLES.HR_MANAGER,
+    ROLES.FINANCE_MANAGER,
+    ROLES.DIRECTOR,
+    ROLES.EMPLOYEE,
+  ],
+  [ROLES.FINANCE_MANAGER]: [],
+  [ROLES.DIRECTOR]: [],
+  [ROLES.EMPLOYEE]: [],
+};
+
+export function canAssignRole(actorRole: AppRole | string, targetRole: AppRole | string): boolean {
+  if (!isKnownRoleValue(String(targetRole))) return false;
+  const actor = normalizeRole(actorRole);
+  const target = normalizeRole(targetRole);
+  return ASSIGNABLE_ROLES[actor]?.includes(target) ?? false;
+}
+
+export function assignableRoleOptions(actorRole: AppRole | string) {
+  return ROLE_OPTIONS.filter((option) => canAssignRole(actorRole, option.value));
+}
+
+export function assertCanAssignRole(
+  actorRole: AppRole | string,
+  targetRole: string
+): { ok: true; role: AppRole } | { ok: false; error: string } {
+  if (!isKnownRoleValue(targetRole)) {
+    return { ok: false, error: `Invalid role: ${targetRole}` };
+  }
+  const target = normalizeRole(targetRole);
+  if (!canAssignRole(actorRole, target)) {
+    return {
+      ok: false,
+      error: `${roleDisplayName(actorRole)} cannot assign role ${roleDisplayName(target)}`,
+    };
+  }
+  return { ok: true, role: target };
 }
 
 /** Matrix: which roles can access each resource, and at what level */

@@ -19,7 +19,8 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess, normalizeRole, ROLE_OPTIONS as ASSIGNABLE_ROLES } from '@/lib/rbac';
+import { canAccess, canAssignRole, getTrustedRole, normalizeRole, ROLE_OPTIONS as ALL_ROLES } from '@/lib/rbac';
+import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import type { SheetUser } from '@/types/employee';
 import { toSheetUser } from '@/types/employee';
@@ -29,7 +30,7 @@ type SortDir = 'asc' | 'desc';
 
 const ROLE_OPTIONS = [
   { label: 'All roles', value: 'all' },
-  ...ASSIGNABLE_ROLES.map((r) => ({ label: r.label, value: r.value })),
+  ...ALL_ROLES.map((r) => ({ label: r.label, value: r.value })),
 ];
 
 const STATUS_OPTIONS = [
@@ -47,6 +48,7 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [canViewEmployees, setCanViewEmployees] = useState<boolean | null>(null);
+  const [actorRole, setActorRole] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -175,10 +177,18 @@ export default function EmployeesPage() {
   useEffect(() => {
     const checkRole = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const role = user.app_metadata?.role || user.user_metadata?.role || '';
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user && session.access_token) {
+        localStorage.setItem('token', session.access_token);
+        let role = getTrustedRole(session.user);
+        try {
+          const synced = await syncSessionCookies(session.access_token);
+          role = synced.role;
+        } catch {
+          /* keep JWT fallback */
+        }
+        setActorRole(role);
         const allowed = canAccess(role, 'employees');
         setCanViewEmployees(allowed);
         if (allowed) {
@@ -396,7 +406,7 @@ export default function EmployeesPage() {
                                 <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
                                   Active
                                 </span>
-                              ) : (
+                              ) : actorRole && canAssignRole(actorRole, user.role) ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -411,6 +421,13 @@ export default function EmployeesPage() {
                                   <UserPlus className="h-3.5 w-3.5" />
                                   Register
                                 </button>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                  title="You cannot grant EMS access for this role"
+                                >
+                                  Restricted
+                                </span>
                               )}
 
                               <button

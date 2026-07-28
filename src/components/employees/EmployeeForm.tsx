@@ -25,14 +25,14 @@ import {
   buildEmployeeUniquenessContext,
   employeeValidationSchema,
 } from '@/utils/validation';
-import { ROLE_OPTIONS } from '@/lib/rbac';
+import { assignableRoleOptions, getTrustedRole, ROLE_OPTIONS } from '@/lib/rbac';
+import { syncSessionCookies } from '@/lib/session-cookies';
+import { supabase } from '@/lib/supabase';
 
 const emsStatusOptions = [
   { label: 'Active', value: 'Active' },
   { label: 'Inactive', value: 'Inactive' },
 ];
-
-const roleOptions = ROLE_OPTIONS.map((r) => ({ label: r.label, value: r.value }));
 
 type EmployeeFormProps = {
   user?: SheetUser;
@@ -76,7 +76,38 @@ export default function EmployeeForm({
   const [submitting, setSubmitting] = useState(false);
   const [roster, setRoster] = useState<{ employeeId: string; email: string }[]>([]);
   const [rosterLoading, setRosterLoading] = useState(true);
+  const [actorRole, setActorRole] = useState<string | null>(null);
   const isEditMode = !!user;
+
+  useEffect(() => {
+    const loadActor = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user || !session.access_token) return;
+      try {
+        const synced = await syncSessionCookies(session.access_token);
+        setActorRole(synced.role);
+      } catch {
+        setActorRole(getTrustedRole(session.user));
+      }
+    };
+    loadActor();
+  }, []);
+
+  const roleOptions = useMemo(() => {
+    const assignable = actorRole
+      ? assignableRoleOptions(actorRole).map((r) => ({ label: r.label, value: r.value }))
+      : ROLE_OPTIONS.filter((r) => r.value !== 'Super Admin').map((r) => ({
+          label: r.label,
+          value: r.value,
+        }));
+    const current = user?.role || '';
+    if (current && !assignable.some((o) => o.value === current)) {
+      return [{ label: current, value: current }, ...assignable];
+    }
+    return assignable;
+  }, [actorRole, user?.role]);
 
   useEffect(() => {
     const loadRoster = async () => {

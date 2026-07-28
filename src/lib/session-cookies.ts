@@ -1,17 +1,74 @@
-export const SESSION_COOKIE = 'ems_session';
-export const ROLE_COOKIE = 'ems_role';
+/**
+ * Client helpers for the signed httpOnly UI gate cookie.
+ * Role/session cookies are never written from document.cookie — only via /api/auth/session.
+ */
 
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+import type { AppRole } from '@/lib/rbac';
+import { supabase } from '@/lib/supabase';
 
-export function setSessionCookies(role: string) {
-  if (typeof document === 'undefined') return;
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${SESSION_COOKIE}=1; Path=/; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}${secure}`;
-  document.cookie = `${ROLE_COOKIE}=${encodeURIComponent(role)}; Path=/; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}${secure}`;
+export {
+  GATE_COOKIE,
+  LEGACY_ROLE_COOKIE,
+  LEGACY_SESSION_COOKIE,
+  ROLE_COOKIE,
+  SESSION_COOKIE,
+} from '@/lib/session-gate';
+
+export type SessionSyncResult = {
+  role: AppRole;
+  roleLabel: string;
+  metadataUpdated?: boolean;
+};
+
+/** Establish or refresh the signed httpOnly gate cookie from a Supabase access token. */
+export async function syncSessionCookies(accessToken: string): Promise<SessionSyncResult> {
+  if (!accessToken) {
+    throw new Error('No access token provided');
+  }
+
+  const res = await fetch('/api/auth/session', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    error?: string;
+    role?: AppRole;
+    roleLabel?: string;
+    metadataUpdated?: boolean;
+  };
+
+  if (!res.ok || !body.success) {
+    throw new Error(body.error || 'Failed to establish session gate cookie');
+  }
+
+  // If server backfilled app_metadata from the sheet, refresh so JWT matches.
+  if (body.metadataUpdated) {
+    const { data } = await supabase.auth.refreshSession();
+    if (data.session?.access_token && typeof window !== 'undefined') {
+      localStorage.setItem('token', data.session.access_token);
+    }
+  }
+
+  return {
+    role: body.role || 'employee',
+    roleLabel: body.roleLabel || 'Employee',
+    metadataUpdated: body.metadataUpdated,
+  };
 }
 
-export function clearSessionCookies() {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
-  document.cookie = `${ROLE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+/** @deprecated Prefer syncSessionCookies(accessToken). */
+export async function setSessionCookies(_role?: string): Promise<SessionSyncResult | void> {
+  if (typeof window === 'undefined') return;
+  const token = localStorage.getItem('token');
+  if (token) return syncSessionCookies(token);
+}
+
+/** Clear the signed gate cookie (and any legacy forgeable cookies). */
+export async function clearSessionCookies(): Promise<void> {
+  try {
+    await fetch('/api/auth/session', { method: 'DELETE' });
+  } catch {
+    /* best-effort */
+  }
 }

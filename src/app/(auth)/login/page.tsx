@@ -7,8 +7,7 @@ import { BrandMark, BrandWordmark } from '@/components/brand/BrandLogo';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { normalizeRole, roleDisplayName } from '@/lib/rbac';
-import { setSessionCookies } from '@/lib/session-cookies';
+import { syncSessionCookies } from '@/lib/session-cookies';
 
 export default function LoginPage() {
   const { formik, isPending, isError, error } = useLoginForm();
@@ -20,15 +19,15 @@ export default function LoginPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      if (!session?.user || !session.access_token) return;
 
-      const raw =
-        session.user.app_metadata?.role || session.user.user_metadata?.role || 'Employee';
-      setSessionCookies(roleDisplayName(normalizeRole(raw)));
-      if (session.access_token) {
-        localStorage.setItem('token', session.access_token);
+      localStorage.setItem('token', session.access_token);
+      try {
+        await syncSessionCookies(session.access_token);
+        router.replace('/dashboard');
+      } catch {
+        /* gate cookie failed — stay on login */
       }
-      router.replace('/dashboard');
     };
     restoreSession();
   }, [router]);

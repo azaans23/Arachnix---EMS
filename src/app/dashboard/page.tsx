@@ -8,10 +8,10 @@ import {
   AppRole,
   canAccess,
   getNavItemsForRole,
-  normalizeRole,
+  getTrustedRole,
   roleDisplayName,
 } from '@/lib/rbac';
-import { setSessionCookies } from '@/lib/session-cookies';
+import { syncSessionCookies } from '@/lib/session-cookies';
 
 type SessionUser = {
   name: string;
@@ -26,24 +26,33 @@ export default function DashboardPage() {
   useEffect(() => {
     const load = async () => {
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser) return;
+        data: { session },
+      } = await supabase.auth.getSession();
+      const authUser = session?.user;
+      if (!authUser || !session.access_token) return;
 
-      const rawRole =
-        authUser.app_metadata?.role || authUser.user_metadata?.role || 'Employee';
-      const role = normalizeRole(rawRole);
+      localStorage.setItem('token', session.access_token);
+      let role = getTrustedRole(authUser);
+      let roleLabel = roleDisplayName(role);
+
+      try {
+        const synced = await syncSessionCookies(session.access_token);
+        role = synced.role;
+        roleLabel = synced.roleLabel;
+      } catch {
+        /* keep JWT role fallback */
+      }
+
       const name =
         authUser.user_metadata?.name ||
         authUser.email?.split('@')[0] ||
         'there';
 
-      setSessionCookies(roleDisplayName(role));
       setUser({
         name,
         email: authUser.email || '',
         role,
-        roleLabel: roleDisplayName(role),
+        roleLabel,
       });
     };
     load();

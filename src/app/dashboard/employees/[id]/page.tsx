@@ -23,7 +23,8 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess } from '@/lib/rbac';
+import { canAccess, getTrustedRole } from '@/lib/rbac';
+import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import type { SheetUser } from '@/types/employee';
@@ -92,17 +93,25 @@ export default function EmployeeProfilePage({ params }: PageProps) {
 
     const check = async () => {
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
       if (cancelled) return;
 
-      if (!authUser) {
+      if (!session?.user || !session.access_token) {
         setAllowed(false);
         setLoading(false);
         return;
       }
 
-      const role = authUser.app_metadata?.role || authUser.user_metadata?.role || '';
+      localStorage.setItem('token', session.access_token);
+      let role = getTrustedRole(session.user);
+      try {
+        const synced = await syncSessionCookies(session.access_token);
+        role = synced.role;
+      } catch {
+        /* keep JWT fallback */
+      }
+
       const ok = canAccess(role, 'employees');
       setAllowed(ok);
       if (ok) {

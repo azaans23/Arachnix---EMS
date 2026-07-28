@@ -1,4 +1,5 @@
 import * as Yup from 'yup';
+import { KNOWN_ROLE_VALUES } from '@/lib/rbac';
 
 export const loginValidationSchema = Yup.object({
   email: Yup.string().email('Invalid email address').required('Email is required'),
@@ -13,7 +14,9 @@ export const signupValidationSchema = Yup.object({
   password: Yup.string()
     .min(6, 'Password must be at least 6 characters')
     .required('Password is required'),
-  role: Yup.string().required('Role is required'),
+  role: Yup.string()
+    .required('Role is required')
+    .oneOf([...KNOWN_ROLE_VALUES], 'Invalid role'),
 });
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -69,7 +72,10 @@ export const employeeValidationSchema = Yup.object({
       return !Number.isNaN(Number(value));
     }),
   bankAccountDetails: Yup.string().trim().required('Bank account details are required'),
-  role: Yup.string().trim().required('Role is required'),
+  role: Yup.string()
+    .trim()
+    .required('Role is required')
+    .oneOf([...KNOWN_ROLE_VALUES], 'Invalid role'),
   emsStatus: Yup.string().trim().required('EMS status is required'),
   originalEmployeeId: Yup.string().trim().optional(),
   originalEmail: Yup.string().trim().optional(),

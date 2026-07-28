@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
 import { useSignup } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { User, Mail, Lock, Eye, EyeOff, Shield, X, UserCheck } from 'lucide-react';
+import { canAssignRole, getTrustedRole } from '@/lib/rbac';
+import { syncSessionCookies } from '@/lib/session-cookies';
+import { supabase } from '@/lib/supabase';
 
 interface SheetUser {
   name: string;
@@ -26,9 +29,30 @@ export default function RegisterEmployeeModal({
   onSuccess,
 }: RegisterEmployeeModalProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [canGrant, setCanGrant] = useState<boolean | null>(null);
   const signupMutation = useSignup();
 
-  // Wait, let's use import { useFormik } from 'formik';
+  useEffect(() => {
+    const check = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user || !session.access_token) {
+        setCanGrant(false);
+        return;
+      }
+      let actorRole = getTrustedRole(session.user);
+      try {
+        const synced = await syncSessionCookies(session.access_token);
+        actorRole = synced.role;
+      } catch {
+        /* keep JWT fallback */
+      }
+      setCanGrant(canAssignRole(actorRole, user.role || 'Employee'));
+    };
+    check();
+  }, [user.role]);
+
   const formik = useFormik({
     initialValues: {
       name: user.name || '',
@@ -39,6 +63,10 @@ export default function RegisterEmployeeModal({
     validationSchema: signupValidationSchema,
     enableReinitialize: true,
     onSubmit: (values) => {
+      if (!canGrant) {
+        toast.error('You cannot grant EMS access for this role.');
+        return;
+      }
       signupMutation.mutate(
         {
           ...values,
@@ -63,7 +91,6 @@ export default function RegisterEmployeeModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm transition-all duration-300 animate-fade-in p-4">
       <div className="relative w-full max-w-md bg-surface border border-border shadow-panel rounded-xl p-8 mx-auto animate-scale-up">
-        {/* Close Button */}
         <button
           onClick={onClose}
           className="absolute right-4 top-4 p-1 text-muted hover:text-ink transition-colors rounded-full hover:bg-canvas cursor-pointer"
@@ -72,7 +99,6 @@ export default function RegisterEmployeeModal({
           <X className="w-5 h-5" />
         </button>
 
-        {/* Modal Header */}
         <div className="flex flex-col items-center mb-6 text-center">
           <div className="w-12 h-12 bg-canvas rounded-full flex items-center justify-center mb-3">
             <UserCheck className="w-6 h-6 text-ink" />
@@ -83,8 +109,13 @@ export default function RegisterEmployeeModal({
           </p>
         </div>
 
+        {canGrant === false && (
+          <div className="mb-4 rounded-lg border border-danger-border bg-danger-bg p-3 text-sm text-danger">
+            You cannot grant EMS access for the role &ldquo;{user.role}&rdquo;. Ask a Super Admin.
+          </div>
+        )}
+
         <form onSubmit={formik.handleSubmit} className="flex flex-col gap-4">
-          {/* Name (ReadOnly) */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Name
@@ -102,7 +133,6 @@ export default function RegisterEmployeeModal({
             </div>
           </div>
 
-          {/* Email (ReadOnly) */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Email Address
@@ -120,7 +150,6 @@ export default function RegisterEmployeeModal({
             </div>
           </div>
 
-          {/* Role (ReadOnly) */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-ink tracking-wide uppercase">
               Role
@@ -138,7 +167,6 @@ export default function RegisterEmployeeModal({
             </div>
           </div>
 
-          {/* Password (Input Needed!) */}
           <div className="flex flex-col gap-1">
             <label
               className="text-xs font-semibold text-ink tracking-wide uppercase"
@@ -159,6 +187,7 @@ export default function RegisterEmployeeModal({
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
                 autoFocus
+                disabled={canGrant === false}
                 className={`pl-10 pr-10 py-2 w-full bg-surface border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] text-sm text-ink placeholder:text-muted transition-all duration-200 ${
                   formik.touched.password && formik.errors.password
                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
@@ -180,10 +209,9 @@ export default function RegisterEmployeeModal({
             )}
           </div>
 
-          {/* Submit CTA */}
           <button
             type="submit"
-            disabled={signupMutation.isPending}
+            disabled={signupMutation.isPending || canGrant === false}
             className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50"
           >
             {signupMutation.isPending ? (

@@ -27,11 +27,11 @@ import ThemeToggle from '@/components/theme/ThemeToggle';
 import {
   AppRole,
   getNavItemsForRole,
+  getTrustedRole,
   NavItemConfig,
-  normalizeRole,
   roleDisplayName,
 } from '@/lib/rbac';
-import { setSessionCookies } from '@/lib/session-cookies';
+import { syncSessionCookies } from '@/lib/session-cookies';
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
@@ -64,13 +64,16 @@ export default function Sidebar() {
   useEffect(() => {
     const checkRole = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const raw = user.app_metadata?.role || user.user_metadata?.role || '';
-        const normalized = normalizeRole(raw);
-        setRole(normalized);
-        setSessionCookies(roleDisplayName(normalized));
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user && session.access_token) {
+        localStorage.setItem('token', session.access_token);
+        try {
+          const synced = await syncSessionCookies(session.access_token);
+          setRole(synced.role);
+        } catch {
+          setRole(getTrustedRole(session.user));
+        }
       }
     };
     checkRole();
