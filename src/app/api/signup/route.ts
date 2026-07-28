@@ -92,6 +92,14 @@ export async function POST(request: Request) {
         throw new Error('Failed to retrieve user ID from Supabase.');
       }
 
+      // Prefer Admin API so registration never creates a browser session for the new user.
+      // The fallback signUp path above still must not sign the admin out on the client.
+      if (!supabaseServiceKey) {
+        console.warn(
+          'SUPABASE_SERVICE_ROLE_KEY is missing; employee registration used anon signUp. Configure the service role key to avoid session side effects.'
+        );
+      }
+
       // 2. Update the record in the sheet via n8n update-user webhook
       const webhookRes = await fetch(SHEETS_WEBHOOKS.updateUser, {
         method: 'POST',
@@ -128,15 +136,6 @@ export async function POST(request: Request) {
         throw new Error(webhookData.error);
       }
 
-      // 3. Create the session by signing in with the credentials
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) throw signInError;
-      if (!signInData.session) throw new Error('Failed to create session after user creation.');
-
       const oldValue = previousEmployee
         ? employeeRecordToAuditValue(previousEmployee)
         : {};
@@ -168,17 +167,19 @@ export async function POST(request: Request) {
         console.error('EMS access granted but audit delivery failed:', auditError);
       }
 
+      // Do not sign in as the newly created user — that would replace the admin session.
       return NextResponse.json({
         success: true,
         auditLogged,
-        warning: auditLogged ? undefined : 'Access granted, but the audit entry could not be delivered.',
-        session: signInData.session,
+        warning: auditLogged
+          ? undefined
+          : 'Access granted, but the audit entry could not be delivered.',
         user: {
-          id: signInData.user.id,
+          id: supabaseUserId,
           employeeId: resolvedEmployeeId,
-          name: signInData.user.user_metadata?.name || name,
-          email: signInData.user.email || '',
-          role: signInData.user.app_metadata?.role || role,
+          name,
+          email,
+          role,
         },
       });
     } catch (transactionError: unknown) {

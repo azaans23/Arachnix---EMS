@@ -5,7 +5,7 @@ import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
 import { useSignup } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
-import { User, Mail, Lock, Eye, EyeOff, Shield, X, UserCheck, AlertCircle } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Shield, X, UserCheck } from 'lucide-react';
 
 interface SheetUser {
   name: string;
@@ -50,8 +50,10 @@ export default function RegisterEmployeeModal({
             onSuccess();
             onClose();
           },
-          onError: (err: any) => {
-            toast.error('Failed to register user.');
+          onError: (err: unknown) => {
+            const message =
+              err instanceof Error ? err.message : 'Failed to register user.';
+            toast.error(message);
           },
         }
       );

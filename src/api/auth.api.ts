@@ -45,7 +45,7 @@ export const authApi = {
     };
   },
 
-  // Signup Endpoint
+  // Signup Endpoint — registers an employee account without switching the admin session
   signup: async (credentials: SignupCredentials): Promise<AuthResponse> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch('/api/signup', {
@@ -63,22 +63,9 @@ export const authApi = {
       throw new Error(result.error || 'Failed to complete signup.');
     }
 
-    // Set the session on the client-side Supabase client
-    if (result.session) {
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: result.session.access_token,
-        refresh_token: result.session.refresh_token,
-      });
-
-      if (sessionError) {
-        throw new Error(
-          `User was registered, but session creation failed: ${sessionError.message}`
-        );
-      }
-    }
-
+    // Intentionally do NOT call setSession / overwrite localStorage token.
+    // The admin who granted access must remain signed in.
     return {
-      token: result.session?.access_token,
       user: result.user,
     };
   },
