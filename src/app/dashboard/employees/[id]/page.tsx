@@ -2,69 +2,35 @@
 
 import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
   User,
-  Mail,
-  Phone,
-  Calendar,
-  MapPin,
-  Briefcase,
-  DollarSign,
-  CreditCard,
   ShieldAlert,
   CheckCircle,
-  Database,
   UserCheck,
-  Pencil,
   RefreshCw,
-  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { canAccess, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
+import { FormSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import type { SheetUser } from '@/types/employee';
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-function formatCurrency(value: unknown) {
-  const num = Number(value);
-  if (Number.isNaN(num)) return String(value || 'N/A');
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'PKR',
-    maximumFractionDigits: 0,
-  }).format(num);
-}
-
 export default function EmployeeProfilePage({ params }: PageProps) {
   const { id } = use(params);
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { openModal } = useModal();
 
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [user, setUser] = useState<SheetUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const editing = searchParams.get('edit') === '1';
-
-  const setEditMode = useCallback(
-    (enabled: boolean) => {
-      // Keep the current path as-is. Re-encoding `id` can turn
-      // `user@x.com` into `%2540` and break the next lookup.
-      const next = enabled ? `${pathname}?edit=1` : pathname;
-      router.replace(next);
-    },
-    [pathname, router]
-  );
 
   const loadEmployee = useCallback(async () => {
     setLoading(true);
@@ -129,9 +95,18 @@ export default function EmployeeProfilePage({ params }: PageProps) {
 
   if (allowed === null || (allowed && loading && !user)) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center">
-        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
-        <span className="text-sm text-muted">Loading profile…</span>
+      <div className="mx-auto max-w-3xl animate-fade-in-up">
+        <Skeleton className="mb-6 h-4 w-36" />
+        <div className="mb-8 flex items-center gap-4 border-b border-border pb-6">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-7 w-24" />
+        </div>
+        <FormSkeleton />
       </div>
     );
   }
@@ -187,34 +162,23 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         >
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
-          {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditMode(true)}
-              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
-            >
-              <Pencil className="h-3.5 w-3.5" /> Edit
-            </button>
-          )}
-          {!isActive && (
-            <button
-              type="button"
-              onClick={() =>
-                openModal('registerEmployee', {
-                  user,
-                  onSuccess: () => {
-                    loadEmployee();
-                    toast.success('EMS access granted');
-                  },
-                })
-              }
-              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
-            >
-              <UserCheck className="h-3.5 w-3.5" /> Give EMS Access
-            </button>
-          )}
-        </div>
+        {!isActive && (
+          <button
+            type="button"
+            onClick={() =>
+              openModal('registerEmployee', {
+                user,
+                onSuccess: () => {
+                  loadEmployee();
+                  toast.success('EMS access granted');
+                },
+              })
+            }
+            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
+          >
+            <UserCheck className="h-3.5 w-3.5" /> Give EMS Access
+          </button>
+        )}
       </div>
 
       <header className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
@@ -251,107 +215,15 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </span>
       </header>
 
-      {editing ? (
-        <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
-          <div className="mb-6 flex items-center justify-between gap-3 border-b border-border pb-4">
-            <div>
-              <h2 className="text-lg font-semibold text-ink">Edit profile</h2>
-              <p className="mt-1 text-sm text-muted">
-                Changes are validated before writing to the sheet.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEditMode(false)}
-              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border text-muted hover:text-ink"
-              aria-label="Cancel edit"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <EmployeeForm
-            user={user}
-            embedded
-            onCancel={() => setEditMode(false)}
-            onSuccess={async () => {
-              await loadEmployee();
-              setEditMode(false);
-            }}
-          />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
-          <Info icon={<Database className="h-5 w-5" />} label="Employee ID" value={user.employeeId} />
-          <Info icon={<Mail className="h-5 w-5" />} label="Email Address" value={user.email} />
-          <Info
-            icon={<Phone className="h-5 w-5" />}
-            label="Phone Number"
-            value={String(raw.Phone || raw.phone || '')}
-          />
-          <Info
-            icon={<Calendar className="h-5 w-5" />}
-            label="Date of Birth"
-            value={String(raw.DOB || raw.dob || '')}
-          />
-          <Info
-            icon={<Briefcase className="h-5 w-5" />}
-            label="Department"
-            value={String(raw.Department || raw.department || '')}
-          />
-          <Info
-            icon={<Briefcase className="h-5 w-5" />}
-            label="Employment Type"
-            value={String(raw.EmployeeType || raw.employeeType || '')}
-          />
-          <Info
-            icon={<Calendar className="h-5 w-5" />}
-            label="Joining Date"
-            value={String(raw.JoiningDate || raw.joiningDate || '')}
-          />
-          <Info
-            icon={<DollarSign className="h-5 w-5" />}
-            label="Base Salary"
-            value={formatCurrency(raw.BaseSalary || raw.baseSalary)}
-          />
-          <Info
-            icon={<CreditCard className="h-5 w-5" />}
-            label="Bank Details"
-            value={String(raw.BankAccountDetails || raw.bankAccountDetails || '')}
-          />
-          <Info icon={<ShieldAlert className="h-5 w-5" />} label="System Role" value={user.role} />
-          <Info
-            icon={<MapPin className="h-5 w-5" />}
-            label="Residential Address"
-            value={String(raw.Address || raw.address || '')}
-            wide
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Info({
-  icon,
-  label,
-  value,
-  wide = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  wide?: boolean;
-}) {
-  return (
-    <div className={`flex gap-3 ${wide ? 'md:col-span-2' : ''}`}>
-      <div className="mt-0.5 shrink-0 text-muted">{icon}</div>
-      <div>
-        <span className="block text-xs font-semibold uppercase tracking-wider text-muted">
-          {label}
-        </span>
-        <span className="mt-0.5 block break-all text-sm font-semibold text-ink">
-          {value || 'N/A'}
-        </span>
+      <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
+        <EmployeeForm
+          user={user}
+          embedded
+          submitLabel="Save"
+          onSuccess={async () => {
+            await loadEmployee();
+          }}
+        />
       </div>
     </div>
   );

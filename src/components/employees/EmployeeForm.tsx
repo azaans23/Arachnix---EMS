@@ -16,7 +16,6 @@ import {
   Calendar,
   Clock,
   Hash,
-  RefreshCw,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
@@ -28,6 +27,7 @@ import {
 import { assignableRoleOptions, getTrustedRole, ROLE_OPTIONS } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { supabase } from '@/lib/supabase';
+import { FormSkeleton } from '@/components/ui/Skeleton';
 
 const emsStatusOptions = [
   { label: 'Active', value: 'Active' },
@@ -233,12 +233,7 @@ export default function EmployeeForm({
     }`;
 
   if (rosterLoading) {
-    return (
-      <div className="flex min-h-48 flex-col items-center justify-center">
-        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
-        <span className="text-sm text-muted">Preparing employee ID…</span>
-      </div>
-    );
+    return <FormSkeleton fields={isEditMode ? 10 : 12} />;
   }
 
   return (
@@ -529,7 +524,7 @@ export default function EmployeeForm({
             ? isEditMode
               ? 'Saving…'
               : 'Creating…'
-            : submitLabel || (isEditMode ? 'Save Changes' : 'Create Profile')}
+            : submitLabel || (isEditMode ? 'Save' : 'Create Profile')}
         </button>
       </div>
     </form>

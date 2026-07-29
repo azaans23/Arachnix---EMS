@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
 import CustomDropdown from '@/components/ui/Dropdown';
+import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import type { AuditLogRecord } from '@/types/audit';
 
 type SortKey = 'timestamp' | 'userEmail' | 'action' | 'recordType';
@@ -196,9 +197,18 @@ export default function AuditLogPage() {
 
   if (loading && records.length === 0) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center">
-        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
-        <span className="text-sm text-muted">Loading audit history…</span>
+      <div className="mx-auto max-w-7xl animate-fade-in-up">
+        <div className="mb-8 space-y-2 border-b border-border pb-6">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-full lg:w-44" />
+          <Skeleton className="h-10 w-full lg:w-48" />
+        </div>
+        <TableSkeleton columns={6} rows={10} actions={false} />
       </div>
     );
   }
