@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Fragment } from 'react';
 import {
   ArrowUpDown,
   ChevronDown,
@@ -145,17 +145,17 @@ export default function AuditLogPage() {
           record.action,
           record.recordType,
           record.recordId,
-        ].some((value) => value.toLowerCase().includes(query));
+        ].some((value) => String(value || '').toLowerCase().includes(query));
       })
       .sort((a, b) => {
         const left =
           sortKey === 'timestamp'
             ? new Date(a.timestamp).getTime() || 0
-            : a[sortKey].toLowerCase();
+            : String(a[sortKey] || '').toLowerCase();
         const right =
           sortKey === 'timestamp'
             ? new Date(b.timestamp).getTime() || 0
-            : b[sortKey].toLowerCase();
+            : String(b[sortKey] || '').toLowerCase();
         const comparison = left < right ? -1 : left > right ? 1 : 0;
         return sortDirection === 'asc' ? comparison : -comparison;
       });
@@ -167,7 +167,7 @@ export default function AuditLogPage() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   );
-  const hasFilters = search.trim() || actionFilter !== 'all' || typeFilter !== 'all';
+  const hasFilters = Boolean(search.trim() || actionFilter !== 'all' || typeFilter !== 'all');
 
   const clearFilters = () => {
     setSearch('');
@@ -197,18 +197,18 @@ export default function AuditLogPage() {
 
   if (loading && records.length === 0) {
     return (
-      <div className="mx-auto max-w-7xl animate-fade-in-up">
+      <div className="mx-auto max-w-6xl animate-fade-in-up">
         <div className="mb-8 space-y-2 border-b border-border pb-6">
           <Skeleton className="h-3 w-16" />
           <Skeleton className="h-9 w-40" />
           <Skeleton className="h-4 w-28" />
         </div>
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
           <Skeleton className="h-10 flex-1" />
-          <Skeleton className="h-10 w-full lg:w-44" />
-          <Skeleton className="h-10 w-full lg:w-48" />
+          <Skeleton className="h-10 w-full sm:w-40" />
+          <Skeleton className="h-10 w-full sm:w-44" />
         </div>
-        <TableSkeleton columns={6} rows={10} actions={false} />
+        <TableSkeleton columns={6} rows={8} actions={false} />
       </div>
     );
   }
@@ -229,7 +229,7 @@ export default function AuditLogPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl animate-fade-in-up">
+    <div className="mx-auto max-w-6xl animate-fade-in-up">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted">System</p>
@@ -253,7 +253,7 @@ export default function AuditLogPage() {
         </button>
       </div>
 
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
           <input
@@ -267,8 +267,8 @@ export default function AuditLogPage() {
             className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:flex">
-          <div className="lg:w-44">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:shrink-0 sm:gap-3">
+          <div className="sm:w-40">
             <CustomDropdown
               id="audit-action-filter"
               name="actionFilter"
@@ -281,7 +281,7 @@ export default function AuditLogPage() {
               onBlur={() => {}}
             />
           </div>
-          <div className="lg:w-48">
+          <div className="sm:w-44">
             <CustomDropdown
               id="audit-type-filter"
               name="typeFilter"
@@ -299,7 +299,7 @@ export default function AuditLogPage() {
           <button
             type="button"
             onClick={clearFilters}
-            className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-muted hover:text-ink"
+            className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-muted hover:text-ink"
           >
             <X className="h-3.5 w-3.5" /> Clear
           </button>
@@ -323,7 +323,15 @@ export default function AuditLogPage() {
         <>
           <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
+              <table className="w-full min-w-[720px] border-collapse text-left table-fixed">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[16%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                     {(
@@ -331,10 +339,10 @@ export default function AuditLogPage() {
                         ['timestamp', 'Timestamp'],
                         ['userEmail', 'User'],
                         ['action', 'Action'],
-                        ['recordType', 'Record type'],
+                        ['recordType', 'Type'],
                       ] as [SortKey, string][]
                     ).map(([key, label]) => (
-                      <th key={key} className="px-5 py-3.5 font-semibold">
+                      <th key={key} className="px-4 py-3.5 font-semibold">
                         <button
                           type="button"
                           onClick={() => changeSort(key)}
@@ -344,8 +352,8 @@ export default function AuditLogPage() {
                         </button>
                       </th>
                     ))}
-                    <th className="px-5 py-3.5 font-semibold">Record ID</th>
-                    <th className="px-5 py-3.5 text-right font-semibold">Changes</th>
+                    <th className="px-4 py-3.5 font-semibold">Record ID</th>
+                    <th className="px-4 py-3.5 text-right font-semibold">Details</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm text-ink">
@@ -353,41 +361,54 @@ export default function AuditLogPage() {
                     const rowId = record.logId || `${record.timestamp}-${index}`;
                     const expanded = expandedId === rowId;
                     return (
-                      <tr key={rowId} className="align-top hover:bg-canvas/50">
-                        <td className="whitespace-nowrap px-5 py-3.5 text-muted">
-                          {displayDate(record.timestamp)}
-                        </td>
-                        <td className="px-5 py-3.5">{record.userEmail || 'System'}</td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${actionClasses(record.action)}`}
+                      <Fragment key={rowId}>
+                        <tr className="hover:bg-canvas/50">
+                          <td className="whitespace-nowrap px-4 py-3.5 text-muted">
+                            {displayDate(record.timestamp)}
+                          </td>
+                          <td className="truncate px-4 py-3.5" title={record.userEmail || 'System'}>
+                            {record.userEmail || 'System'}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span
+                              className={`inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${actionClasses(record.action)}`}
+                            >
+                              {String(record.action || '').replaceAll('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="truncate px-4 py-3.5">
+                            {record.recordType || 'N/A'}
+                          </td>
+                          <td
+                            className="truncate px-4 py-3.5 font-mono text-xs text-muted"
+                            title={record.recordId || 'N/A'}
                           >
-                            {record.action.replaceAll('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">{record.recordType || 'N/A'}</td>
-                        <td className="px-5 py-3.5 font-mono text-xs text-muted">
-                          {record.recordId || 'N/A'}
-                        </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedId(expanded ? null : rowId)}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-ink hover:bg-canvas"
-                          >
-                            {expanded ? 'Hide' : 'View'}
-                            <ChevronDown
-                              className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                            />
-                          </button>
-                          {expanded && (
-                            <div className="mt-3 grid min-w-[34rem] grid-cols-2 gap-3 text-left">
-                              <AuditValue label="Before" value={record.oldValue} />
-                              <AuditValue label="After" value={record.newValue} />
-                            </div>
-                          )}
-                        </td>
-                      </tr>
+                            {record.recordId || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedId(expanded ? null : rowId)}
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-ink hover:bg-canvas"
+                            >
+                              {expanded ? 'Hide' : 'View'}
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                              />
+                            </button>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="bg-canvas/40">
+                            <td colSpan={6} className="px-4 py-4">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <AuditValue label="Before" value={record.oldValue} />
+                                <AuditValue label="After" value={record.newValue} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -428,11 +449,11 @@ export default function AuditLogPage() {
 
 function AuditValue({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-canvas p-3">
+    <div className="min-w-0 rounded-md border border-border bg-surface p-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
         {label}
       </p>
-      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
         {prettyValue(value)}
       </pre>
     </div>
