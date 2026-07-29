@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useFormik } from 'formik';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import {
   User,
   Mail,

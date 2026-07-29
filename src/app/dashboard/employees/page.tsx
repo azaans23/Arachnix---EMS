@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import EmptyState from '@/components/ui/EmptyState';
 import CustomDropdown from '@/components/ui/Dropdown';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';

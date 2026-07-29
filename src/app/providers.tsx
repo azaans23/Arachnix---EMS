@@ -2,9 +2,9 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Toaster } from 'react-hot-toast';
 import ModalRenderer from '@/components/modals/ModalRenderer';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { Toaster } from '@/components/ui/sonner';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -22,7 +22,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         {children}
-        <Toaster position="top-right" reverseOrder={false} />
+        <Toaster />
         <ModalRenderer />
       </QueryClientProvider>
     </ThemeProvider>
