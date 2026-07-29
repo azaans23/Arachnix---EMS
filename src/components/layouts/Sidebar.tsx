@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -55,9 +56,12 @@ const SECTION_LABELS: Record<NavItemConfig['section'], string> = {
   workspace: 'Workspace',
 };
 
+type TipState = { label: string; top: number; left: number } | null;
+
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [tip, setTip] = useState<TipState>(null);
   const pathname = usePathname();
   const logoutMutation = useLogout();
 
@@ -79,6 +83,21 @@ export default function Sidebar() {
     checkRole();
   }, []);
 
+  useEffect(() => {
+    if (isOpen) setTip(null);
+  }, [isOpen]);
+
+  const showTip = (label: string, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    setTip({
+      label,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 12,
+    });
+  };
+
+  const hideTip = () => setTip(null);
+
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
     logoutMutation.mutate();
@@ -96,18 +115,22 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`sticky top-0 z-20 flex h-screen shrink-0 flex-col border-r border-border bg-surface text-ink transition-[width] duration-250 ${isOpen ? 'w-64' : 'w-[72px]'}`}
+      className={`sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-border bg-surface text-ink transition-[width] duration-250 ${
+        isOpen ? 'w-64' : 'w-[72px]'
+      }`}
     >
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="absolute -right-3 top-6 z-30 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
+        className="absolute -right-3 top-6 z-40 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
         aria-label="Toggle sidebar"
       >
         {isOpen ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
       </button>
 
       <div
-        className={`flex h-16 items-center border-b border-border ${isOpen ? 'px-5' : 'justify-center px-2'}`}
+        className={`flex h-16 shrink-0 items-center border-b border-border ${
+          isOpen ? 'px-5' : 'justify-center px-2'
+        }`}
       >
         {isOpen ? (
           <div className="flex items-center gap-2.5">
@@ -120,12 +143,17 @@ export default function Sidebar() {
       </div>
 
       <nav
-        className={`flex flex-1 flex-col gap-4 overflow-y-auto py-5 ${isOpen ? 'px-3' : 'items-center px-2'}`}
+        className={`flex flex-1 flex-col overflow-y-auto py-4 ${
+          isOpen ? 'gap-4 px-3' : 'items-center gap-3 px-0'
+        }`}
       >
         {sections.map((section) => {
           const items = navItems.filter((item) => item.section === section);
           return (
-            <div key={section} className={`flex flex-col gap-1 ${isOpen ? '' : 'items-center'}`}>
+            <div
+              key={section}
+              className={`flex flex-col ${isOpen ? 'gap-1' : 'items-center gap-2.5'}`}
+            >
               {isOpen && (
                 <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted/70">
                   {SECTION_LABELS[section]}
@@ -141,6 +169,8 @@ export default function Sidebar() {
                     label={item.label}
                     isOpen={isOpen}
                     active={isActive(item.href)}
+                    onShowTip={showTip}
+                    onHideTip={hideTip}
                   />
                 );
               })}
@@ -150,7 +180,9 @@ export default function Sidebar() {
       </nav>
 
       <div
-        className={`flex flex-col gap-2 border-t border-border p-3 ${isOpen ? '' : 'items-center'}`}
+        className={`flex shrink-0 flex-col border-t border-border ${
+          isOpen ? 'gap-2 p-3' : 'items-center gap-3 p-3'
+        }`}
       >
         {isOpen && role && (
           <p className="px-1 text-[11px] text-muted">
@@ -159,24 +191,42 @@ export default function Sidebar() {
         )}
         <div className={`flex ${isOpen ? 'justify-between px-1' : 'justify-center'}`}>
           {isOpen && <span className="self-center text-xs text-muted">Appearance</span>}
-          <ThemeToggle />
+          <ThemeToggle className={isOpen ? '' : 'h-10 w-10 rounded-full'} />
         </div>
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className={`group relative flex w-full items-center rounded-md text-sm font-medium transition-colors duration-200 ${
-            isOpen ? 'gap-3 px-3 py-2.5' : 'h-10 w-10 justify-center'
-          } text-muted hover:bg-canvas hover:text-ink disabled:opacity-50`}
+          onMouseEnter={(e) => {
+            if (!isOpen) showTip('Log out', e.currentTarget);
+          }}
+          onMouseLeave={hideTip}
+          onFocus={(e) => {
+            if (!isOpen) showTip('Log out', e.currentTarget);
+          }}
+          onBlur={hideTip}
+          className={`group flex shrink-0 items-center text-sm font-medium transition-colors duration-200 text-muted hover:bg-canvas hover:text-ink disabled:opacity-50 ${
+            isOpen
+              ? 'w-full gap-3 rounded-md px-3 py-2.5'
+              : 'h-10 w-10 justify-center rounded-full'
+          }`}
         >
           <Power className="h-4 w-4 shrink-0" />
           {isOpen && <span>Log out</span>}
-          {!isOpen && (
-            <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-accent-fg opacity-0 shadow-panel transition-opacity group-hover:opacity-100">
-              Log out
-            </span>
-          )}
         </button>
       </div>
+
+      {tip &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <span
+            role="tooltip"
+            className="pointer-events-none fixed z-[200] -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-accent-fg shadow-panel"
+            style={{ top: tip.top, left: tip.left }}
+          >
+            {tip.label}
+          </span>,
+          document.body
+        )}
     </aside>
   );
 }
@@ -187,29 +237,36 @@ function NavItem({
   label,
   isOpen,
   active = false,
+  onShowTip,
+  onHideTip,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   isOpen: boolean;
   active?: boolean;
+  onShowTip: (label: string, el: HTMLElement) => void;
+  onHideTip: () => void;
 }) {
   return (
     <Link
       href={href}
-      className={`group relative flex w-full items-center rounded-md text-sm font-medium transition-colors duration-200 ${
-        isOpen ? 'gap-3 px-3 py-2.5' : 'h-10 w-10 justify-center'
-      } ${
-        active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'
-      }`}
+      onMouseEnter={(e) => {
+        if (!isOpen) onShowTip(label, e.currentTarget);
+      }}
+      onMouseLeave={onHideTip}
+      onFocus={(e) => {
+        if (!isOpen) onShowTip(label, e.currentTarget);
+      }}
+      onBlur={onHideTip}
+      className={`flex shrink-0 items-center text-sm font-medium transition-colors duration-200 ${
+        isOpen
+          ? 'w-full gap-3 rounded-md px-3 py-2.5'
+          : 'h-10 w-10 justify-center rounded-full'
+      } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`}
     >
       {icon}
       {isOpen && <span className="overflow-hidden whitespace-nowrap">{label}</span>}
-      {!isOpen && (
-        <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-accent-fg opacity-0 shadow-panel transition-opacity group-hover:opacity-100">
-          {label}
-        </span>
-      )}
     </Link>
   );
 }
