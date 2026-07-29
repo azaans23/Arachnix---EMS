@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useFormik } from 'formik';
 import { signupValidationSchema } from '@/utils/validation';
 import { useSignup } from '@/hooks/useAuth';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { User, Mail, Lock, Eye, EyeOff, Shield, X, UserCheck } from 'lucide-react';
 import { canAssignRole, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';

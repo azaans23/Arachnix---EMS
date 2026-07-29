@@ -143,7 +143,7 @@ export default function Sidebar() {
       </div>
 
       <nav
-        className={`flex flex-1 flex-col overflow-y-auto py-4 ${
+        className={`sidebar-scroll flex flex-1 flex-col overflow-y-auto py-4 ${
           isOpen ? 'gap-4 px-3' : 'items-center gap-3 px-0'
         }`}
       >
