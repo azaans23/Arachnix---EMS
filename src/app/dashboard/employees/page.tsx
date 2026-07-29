@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import EmptyState from '@/components/ui/EmptyState';
 import CustomDropdown from '@/components/ui/Dropdown';
+import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { useModal } from '@/hooks/useModal';
 import {
   Database,
@@ -235,9 +236,13 @@ export default function EmployeesPage() {
 
   if (canViewEmployees === null) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center">
-        <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
-        <span className="text-sm text-muted">Checking permissions…</span>
+      <div className="mx-auto max-w-6xl animate-fade-in-up">
+        <div className="mb-8 space-y-2 border-b border-border pb-6">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <TableSkeleton columns={4} rows={8} />
       </div>
     );
   }
@@ -299,9 +304,13 @@ export default function EmployeesPage() {
       </div>
 
       {loading && users.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface py-20">
-          <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted" />
-          <span className="text-sm text-muted">Fetching employees…</span>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="h-10 w-full sm:w-40" />
+            <Skeleton className="h-10 w-full sm:w-40" />
+          </div>
+          <TableSkeleton columns={4} rows={8} />
         </div>
       ) : users.length === 0 ? (
         <EmptyState
@@ -434,10 +443,10 @@ export default function EmployeesPage() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  router.push(`${profilePath(user)}?edit=1`);
+                                  router.push(profilePath(user));
                                 }}
                                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
-                                title="Edit employee"
+                                title="Open profile"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>

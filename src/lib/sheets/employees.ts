@@ -95,58 +95,24 @@ export function getNextEmployeeId(
   return `EMP-${String(highest + 1).padStart(3, '0')}`;
 }
 
-/** Sheet/n8n write body — keys match n8n `$json.body.*` mappings exactly. */
+/** Sheet/n8n write body — sheet column names only (no camelCase duplicates). */
 export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, string> {
-  const employeeId = input.employeeId.trim();
-  const name = input.name.trim();
-  const email = input.email.trim();
-  const phone = String(input.phone ?? '').trim();
-  const dob = toDateInputValue(input.dob);
-  const address = input.address.trim();
-  const department = input.department.trim();
-  const designation = input.designation.trim();
-  const employmentType = input.employmentType.trim();
-  const joiningDate = toDateInputValue(input.joiningDate);
-  const baseSalary = String(input.baseSalary ?? '').trim();
-  const bankAccountDetails = input.bankAccountDetails.trim();
-  const role = input.role.trim();
-  const emsStatus = input.emsStatus.trim() || 'Inactive';
-  const supabaseUserId = String(input.supabaseUserId ?? '').trim();
-
   return {
-    // PascalCase sheet columns
-    EmployeeID: employeeId,
-    FullName: name,
-    Email: email,
-    Phone: phone,
-    DOB: dob,
-    Address: address,
-    Department: department,
-    Designation: designation,
-    EmployeeType: employmentType,
-    JoiningDate: joiningDate,
-    BaseSalary: baseSalary,
-    BankAccountDetails: bankAccountDetails,
-    Role: role,
-    SupabaseUserID: supabaseUserId,
-    EMSStatus: emsStatus,
-    // camelCase aliases used by n8n Update row expressions ($json.body.*)
-    employeeId,
-    name,
-    email,
-    phone,
-    dob,
-    address,
-    department,
-    designation,
-    employmentType,
-    joiningDate,
-    baseSalary,
-    bankAccountDetails,
-    role,
-    supabaseUserId,
-    emsStatus,
-    status: emsStatus,
+    EmployeeID: input.employeeId.trim(),
+    FullName: input.name.trim(),
+    Email: input.email.trim(),
+    Phone: String(input.phone ?? '').trim(),
+    DOB: toDateInputValue(input.dob),
+    Address: input.address.trim(),
+    Department: input.department.trim(),
+    Designation: input.designation.trim(),
+    EmployeeType: input.employmentType.trim(),
+    JoiningDate: toDateInputValue(input.joiningDate),
+    BaseSalary: String(input.baseSalary ?? '').trim(),
+    BankAccountDetails: input.bankAccountDetails.trim(),
+    Role: input.role.trim(),
+    SupabaseUserID: String(input.supabaseUserId ?? '').trim(),
+    EMSStatus: input.emsStatus.trim() || 'Inactive',
   };
 }
 
