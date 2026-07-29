@@ -12,6 +12,7 @@ import {
   roleDisplayName,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 type SessionUser = {
   name: string;
@@ -22,41 +23,50 @@ type SessionUser = {
 
 export default function DashboardPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const authUser = session?.user;
-      if (!authUser || !session.access_token) return;
-
-      localStorage.setItem('token', session.access_token);
-      let role = getTrustedRole(authUser);
-      let roleLabel = roleDisplayName(role);
-
       try {
-        const synced = await syncSessionCookies(session.access_token);
-        role = synced.role;
-        roleLabel = synced.roleLabel;
-      } catch {
-        /* keep JWT role fallback */
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const authUser = session?.user;
+        if (!authUser || !session.access_token) return;
+
+        localStorage.setItem('token', session.access_token);
+        let role = getTrustedRole(authUser);
+        let roleLabel = roleDisplayName(role);
+
+        try {
+          const synced = await syncSessionCookies(session.access_token);
+          role = synced.role;
+          roleLabel = synced.roleLabel;
+        } catch {
+          /* keep JWT role fallback */
+        }
+
+        const name =
+          authUser.user_metadata?.name ||
+          authUser.email?.split('@')[0] ||
+          'there';
+
+        setUser({
+          name,
+          email: authUser.email || '',
+          role,
+          roleLabel,
+        });
+      } finally {
+        setLoading(false);
       }
-
-      const name =
-        authUser.user_metadata?.name ||
-        authUser.email?.split('@')[0] ||
-        'there';
-
-      setUser({
-        name,
-        email: authUser.email || '',
-        role,
-        roleLabel,
-      });
     };
     load();
   }, []);
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
 
   const firstName = user?.name?.split(' ')[0] || 'there';
   const quickLinks = user
@@ -102,23 +112,57 @@ export default function DashboardPage() {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {quickLinks.length === 0 && (
+        {quickLinks.length === 0 ? (
           <QuickLink
             href="/dashboard/settings"
             title="Settings"
             description="Account preferences and workspace options."
             icon={<LayoutDashboard className="h-4 w-4" />}
           />
+        ) : (
+          quickLinks.map((item, index) => (
+            <QuickLink
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              description={descriptionForResource(item.resource)}
+              icon={iconForHref(item.href)}
+              primary={Boolean(user && index === 0 && canAccess(user.role, 'employees'))}
+            />
+          ))
         )}
-        {quickLinks.map((item, index) => (
-          <QuickLink
-            key={item.href}
-            href={item.href}
-            title={item.label}
-            description={descriptionForResource(item.resource)}
-            icon={iconForHref(item.href)}
-            primary={index === 0 && canAccess(user!.role, 'employees')}
-          />
+      </section>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="mx-auto max-w-5xl" role="status" aria-label="Loading dashboard">
+      <header className="mb-10 space-y-3 border-b border-border pb-8">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-9 w-72 max-w-full" />
+        <Skeleton className="h-4 w-full max-w-md" />
+        <div className="flex items-center gap-2 pt-1">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </header>
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="flex flex-col rounded-lg border border-border bg-surface p-5"
+          >
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <Skeleton className="h-4 w-4" />
+            </div>
+            <Skeleton className="mt-4 h-4 w-28" />
+            <Skeleton className="mt-2 h-4 w-full" />
+            <Skeleton className="mt-1.5 h-4 w-4/5" />
+          </div>
         ))}
       </section>
     </div>
