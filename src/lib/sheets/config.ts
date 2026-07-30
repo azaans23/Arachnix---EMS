@@ -3,4 +3,6 @@ export const SHEETS_WEBHOOKS = {
   updateUser: 'https://n8n.arachnix.io/webhook/update-user',
   getAuditLog: 'https://n8n.arachnix.io/webhook/get-audit-log',
   createAudit: 'https://n8n.arachnix.io/webhook/create-audit',
+  /** Week 2 test workflow — generate + email salary slips */
+  generateSalarySlip: 'https://n8n.arachnix.io/webhook-test/generate-salary-slip',
 } as const;

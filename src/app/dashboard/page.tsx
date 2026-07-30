@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Calculator, LayoutDashboard, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  Banknote,
+  Calculator,
+  LayoutDashboard,
+  Loader2,
+  Users,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   AppRole,
@@ -13,6 +20,7 @@ import {
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { Skeleton } from '@/components/ui/Skeleton';
+import type { SalarySlipRun } from '@/types/salary-slip';
 
 type SessionUser = {
   name: string;
@@ -21,9 +29,32 @@ type SessionUser = {
   roleLabel: string;
 };
 
+type HrMetrics = {
+  employeeCount: number;
+  activeEmployeeCount: number;
+  pendingSalarySlipRuns: number;
+  latestRun: SalarySlipRun | null;
+};
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 export default function DashboardPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<HrMetrics | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -57,6 +88,21 @@ export default function DashboardPage() {
           role,
           roleLabel,
         });
+
+        if (role === 'super_admin' || role === 'hr_manager') {
+          try {
+            const response = await fetch('/api/hr-metrics', {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+              cache: 'no-store',
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+              setMetrics(result.data);
+            }
+          } catch {
+            /* non-fatal */
+          }
+        }
       } finally {
         setLoading(false);
       }
@@ -69,6 +115,7 @@ export default function DashboardPage() {
   }
 
   const firstName = user?.name?.split(' ')[0] || 'there';
+  const showHr = user?.role === 'super_admin' || user?.role === 'hr_manager';
   const quickLinks = user
     ? getNavItemsForRole(user.role)
         .filter((item) => item.href !== '/dashboard' && item.href !== '/dashboard/settings')
@@ -91,6 +138,11 @@ export default function DashboardPage() {
     }
   })();
 
+  const latest = metrics?.latestRun;
+  const latestLabel = latest
+    ? `${MONTH_NAMES[latest.month - 1] || latest.month} ${latest.year} · ${latest.status}`
+    : 'No runs yet';
+
   return (
     <div className="mx-auto max-w-5xl animate-fade-in-up">
       <header className="mb-10 border-b border-border pb-8">
@@ -110,6 +162,70 @@ export default function DashboardPage() {
           </div>
         )}
       </header>
+
+      {showHr && (
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-ink">HR snapshot</h2>
+            <Link
+              href="/dashboard/salary-slip-runs"
+              className="text-xs font-semibold text-ink hover:underline"
+            >
+              Open payroll
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric
+              label="Employees"
+              value={metrics ? String(metrics.employeeCount) : '—'}
+              hint={
+                metrics
+                  ? `${metrics.activeEmployeeCount} active`
+                  : 'Loading roster…'
+              }
+              icon={<Users className="h-4 w-4" />}
+            />
+            <Metric
+              label="Pending slip runs"
+              value={metrics ? String(metrics.pendingSalarySlipRuns) : '—'}
+              hint={
+                metrics?.pendingSalarySlipRuns
+                  ? 'Processing in n8n'
+                  : 'No runs in progress'
+              }
+              icon={
+                metrics?.pendingSalarySlipRuns ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Banknote className="h-4 w-4" />
+                )
+              }
+            />
+            <Metric
+              label="Latest run"
+              value={latest ? `#${latest.runId}` : '—'}
+              hint={latestLabel}
+              icon={<Banknote className="h-4 w-4" />}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/salary-slip-runs"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
+            >
+              <Banknote className="h-4 w-4" />
+              Generate salary slips
+            </Link>
+            <Link
+              href="/dashboard/employees"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              <Users className="h-4 w-4" />
+              Employees
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {quickLinks.length === 0 ? (
@@ -136,6 +252,33 @@ export default function DashboardPage() {
   );
 }
 
+function Metric({
+  label,
+  value,
+  hint,
+  icon,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4 shadow-panel">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          {label}
+        </p>
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-canvas text-muted">
+          {icon}
+        </span>
+      </div>
+      <p className="mt-3 text-2xl font-semibold tracking-tight text-ink">{value}</p>
+      <p className="mt-1 text-xs text-muted">{hint}</p>
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <div className="mx-auto max-w-5xl" role="status" aria-label="Loading dashboard">
@@ -148,6 +291,16 @@ function DashboardSkeleton() {
           <Skeleton className="h-4 w-40" />
         </div>
       </header>
+
+      <section className="mb-8 grid gap-3 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-border bg-surface p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-3 h-8 w-16" />
+            <Skeleton className="mt-2 h-3 w-28" />
+          </div>
+        ))}
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, index) => (
@@ -197,6 +350,7 @@ function descriptionForResource(resource: string): string {
 function iconForHref(href: string) {
   if (href.includes('employees')) return <Users className="h-4 w-4" />;
   if (href.includes('accounting')) return <Calculator className="h-4 w-4" />;
+  if (href.includes('salary-slip')) return <Banknote className="h-4 w-4" />;
   return <LayoutDashboard className="h-4 w-4" />;
 }
 
