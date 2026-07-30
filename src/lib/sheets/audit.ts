@@ -1,4 +1,10 @@
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import {
+  dbRowToAuditLogRecord,
+  deleteAuditLogDbRow,
+  insertAuditLogDbRow,
+  listAuditLogDbRows,
+} from '@/lib/db/audit';
 import type {
   AuditActor,
   AuditedMutationResult,
@@ -111,14 +117,14 @@ function hasAuditIdentity(record: AuditLogRecord): boolean {
 export function mapRawToAuditLog(rawInput: unknown): AuditLogRecord {
   const raw = asRecord(rawInput);
   return {
-    logId: pick(raw, 'LogID', 'logId', 'LogId'),
+    logId: pick(raw, 'LogID', 'logId', 'LogId', 'logid'),
     timestamp: pick(raw, 'Timestamp', 'timestamp'),
-    userEmail: pick(raw, 'UserEmail', 'userEmail'),
+    userEmail: pick(raw, 'UserEmail', 'userEmail', 'useremail'),
     action: pick(raw, 'Action', 'action'),
-    recordType: pick(raw, 'RecordType', 'recordType'),
-    recordId: pick(raw, 'RecordID', 'recordId', 'RecordId'),
-    oldValue: serializeAuditValue(raw.OldValue ?? raw.oldValue),
-    newValue: serializeAuditValue(raw.NewValue ?? raw.newValue),
+    recordType: pick(raw, 'RecordType', 'recordType', 'recordtype'),
+    recordId: pick(raw, 'RecordID', 'recordId', 'RecordId', 'recordid'),
+    oldValue: serializeAuditValue(raw.OldValue ?? raw.oldValue ?? raw.oldvalue),
+    newValue: serializeAuditValue(raw.NewValue ?? raw.newValue ?? raw.newvalue),
   };
 }
 
@@ -156,27 +162,13 @@ async function webhookError(response: Response, fallback: string): Promise<Audit
 }
 
 export async function fetchAuditLogs(): Promise<AuditLogRecord[]> {
-  const response = await fetch(SHEETS_WEBHOOKS.getAuditLog, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw await webhookError(
-      response,
-      `get-audit-log webhook returned status ${response.status}.`
-    );
-  }
-
-  const body = await response.text();
-  if (!body.trim()) return [];
-
   try {
-    return normalizeAuditPayload(JSON.parse(body));
-  } catch (error) {
-    if (error instanceof AuditLogError) throw error;
-    throw new AuditLogError('get-audit-log webhook returned a non-JSON response.', 502);
+    const rows = await listAuditLogDbRows();
+    return rows.map(dbRowToAuditLogRecord);
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to load audit logs from Supabase.';
+    throw new AuditLogError(message, 500);
   }
 }
 
@@ -189,8 +181,7 @@ export async function createAuditLog(
   if (!event.recordType.trim()) throw new AuditLogError('Audit record type is required', 400);
   if (!event.recordId.trim()) throw new AuditLogError('Audit record ID is required', 400);
 
-  const record: AuditLogRecord = {
-    logId: crypto.randomUUID(),
+  const draft: Omit<AuditLogRecord, 'logId'> = {
     timestamp: new Date().toISOString(),
     userEmail: actor.email.trim().toLowerCase(),
     action: event.action.trim().toUpperCase(),
@@ -200,27 +191,40 @@ export async function createAuditLog(
     newValue: serializeAuditValue(event.newValue),
   };
 
-  const response = await fetch(SHEETS_WEBHOOKS.createAudit, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      LogID: record.logId,
-      Timestamp: record.timestamp,
-      UserEmail: record.userEmail,
-      Action: record.action,
-      RecordType: record.recordType,
-      RecordID: record.recordId,
-      OldValue: record.oldValue,
-      NewValue: record.newValue,
-    }),
-    cache: 'no-store',
-  });
+  // Dual-write: Supabase first (generates bigint logid), then Google Sheet.
+  const dbRow = await insertAuditLogDbRow(draft);
+  const record = dbRowToAuditLogRecord(dbRow);
 
-  if (!response.ok) {
-    throw await webhookError(
-      response,
-      `create-audit webhook returned status ${response.status}.`
-    );
+  try {
+    const response = await fetch(SHEETS_WEBHOOKS.createAudit, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        LogID: record.logId,
+        Timestamp: record.timestamp,
+        UserEmail: record.userEmail,
+        Action: record.action,
+        RecordType: record.recordType,
+        RecordID: record.recordId,
+        OldValue: record.oldValue,
+        NewValue: record.newValue,
+      }),
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw await webhookError(
+        response,
+        `create-audit webhook returned status ${response.status}.`
+      );
+    }
+  } catch (sheetError) {
+    try {
+      await deleteAuditLogDbRow(dbRow.logid);
+    } catch (rollbackError) {
+      console.error('Failed to roll back Supabase auditlog after sheet write failure:', rollbackError);
+    }
+    throw sheetError;
   }
 
   return record;

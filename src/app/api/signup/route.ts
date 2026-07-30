@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { verifyEmployeeAccess } from '@/lib/auth';
 import { assertCanAssignRole, roleDisplayName } from '@/lib/rbac';
-import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   employeeRecordToAuditValue,
   employeeToFormValues,
@@ -10,6 +9,7 @@ import {
   getNextEmployeeId,
   mergeEmployeeWriteInput,
   toSheetWritePayload,
+  upsertEmployee,
 } from '@/lib/sheets/employees';
 import {
   createAuditLog,
@@ -25,10 +25,7 @@ export async function POST(request: Request) {
     const { user: actor, role: actorRole, errorResponse } = await verifyEmployeeAccess(request);
     if (errorResponse) return errorResponse;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-    if (!supabaseUrl) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
         {
           success: false,
@@ -38,7 +35,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!supabaseServiceKey) {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json(
         {
           success: false,
@@ -73,12 +70,7 @@ export async function POST(request: Request) {
       previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
 
     try {
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      });
+      const supabaseAdmin = getSupabaseAdmin();
 
       // Admin API only — never put role in user_metadata (client-writable).
       const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
@@ -128,26 +120,8 @@ export async function POST(request: Request) {
         previousEmployee
       );
 
-      const webhookRes = await fetch(SHEETS_WEBHOOKS.updateUser, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(toSheetWritePayload(writeInput)),
-      });
-
-      if (!webhookRes.ok) {
-        let errText = '';
-        try {
-          errText = await webhookRes.text();
-        } catch {}
-        throw new Error(errText || `n8n update-user webhook returned status ${webhookRes.status}.`);
-      }
-
-      const webhookData = await webhookRes.json();
-      if (!webhookData.success && webhookData.error) {
-        throw new Error(webhookData.error);
-      }
+      // Dual-write: Supabase employees table + Google Sheet (rolls back DB if sheet fails)
+      await upsertEmployee(writeInput, previousEmployee);
 
       const oldValue = previousEmployee
         ? employeeRecordToAuditValue(previousEmployee)
@@ -195,18 +169,14 @@ export async function POST(request: Request) {
       const errMsg =
         transactionError instanceof Error ? transactionError.message : 'Signup transaction failed.';
 
-      if (supabaseUserId && supabaseServiceKey) {
+      // Roll back Auth user. Employee DB row is already rolled back by upsertEmployee
+      // when the sheet write fails; if DB failed first, no employee row was written.
+      if (supabaseUserId) {
         try {
-          const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-            auth: {
-              persistSession: false,
-              autoRefreshToken: false,
-            },
-          });
-          await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+          await getSupabaseAdmin().auth.admin.deleteUser(supabaseUserId);
         } catch (rollbackError) {
           console.error(
-            'Failed to rollback/delete user during transaction failure:',
+            'Failed to rollback/delete auth user during transaction failure:',
             rollbackError
           );
         }
