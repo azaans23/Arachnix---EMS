@@ -20,8 +20,19 @@ import { supabase } from '@/lib/supabase';
 import { getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
+import {
+  hasPayrollSalary,
+  parseBaseSalary,
+  payrollEligibilityReason,
+} from '@/lib/payroll/generate';
 import { toSheetUser, type SheetUser } from '@/types/employee';
 import type { SalarySlipRun } from '@/types/salary-slip';
+
+type PayrollEmployee = SheetUser & {
+  eligible: boolean;
+  reason: string | null;
+  salaryLabel: string;
+};
 
 const MONTH_OPTIONS = [
   { label: 'January', value: '1' },
@@ -82,7 +93,7 @@ export default function SalarySlipRunsPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [canGenerate, setCanGenerate] = useState(false);
   const [runs, setRuns] = useState<SalarySlipRun[]>([]);
-  const [employees, setEmployees] = useState<SheetUser[]>([]);
+  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [month, setMonth] = useState(String(now.getMonth() + 1));
@@ -116,13 +127,17 @@ export default function SalarySlipRunsPage() {
             ? [usersJson.data]
             : [];
         setEmployees(
-          raw
-            .map((row: unknown) => toSheetUser(mapRawToEmployee(row)))
-            .filter((user: SheetUser) => {
-              const status = String(user.raw?.EMSStatus || user.raw?.emsStatus || '').toLowerCase();
-              const salary = Number(user.raw?.BaseSalary || user.raw?.baseSalary || 0);
-              return status === 'active' && Number.isFinite(salary) && salary > 0;
-            })
+          raw.map((row: unknown) => {
+            const record = mapRawToEmployee(row);
+            const sheetUser = toSheetUser(record);
+            const salary = parseBaseSalary(record.baseSalary);
+            return {
+              ...sheetUser,
+              eligible: hasPayrollSalary(record),
+              reason: payrollEligibilityReason(record),
+              salaryLabel: salary > 0 ? String(salary) : '—',
+            };
+          })
         );
       }
     } catch (error: unknown) {
@@ -159,26 +174,37 @@ export default function SalarySlipRunsPage() {
     boot();
   }, [load]);
 
+  const eligibleEmployees = useMemo(
+    () => employees.filter((employee) => employee.eligible),
+    [employees]
+  );
+
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return employees;
-    return employees.filter(
+    const pool = mode === 'all' ? eligibleEmployees : employees;
+    if (!q) return pool;
+    return pool.filter(
       (employee) =>
         employee.name.toLowerCase().includes(q) ||
         employee.email.toLowerCase().includes(q) ||
         employee.employeeId.toLowerCase().includes(q)
     );
-  }, [employees, search]);
+  }, [employees, eligibleEmployees, mode, search]);
 
   const toggleId = (id: string) => {
+    const target = employees.find((employee) => employee.employeeId === id);
+    if (!target?.eligible) return;
     setSelectedIds((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
     );
   };
 
   const toggleAllVisible = () => {
-    const visibleIds = filteredEmployees.map((employee) => employee.employeeId);
-    const allSelected = visibleIds.every((id) => selectedIds.includes(id));
+    const visibleIds = filteredEmployees
+      .filter((employee) => employee.eligible)
+      .map((employee) => employee.employeeId);
+    const allSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
     if (allSelected) {
       setSelectedIds((current) => current.filter((id) => !visibleIds.includes(id)));
     } else {
@@ -346,14 +372,17 @@ export default function SalarySlipRunsPage() {
 
             <p className="mt-3 text-xs text-muted">
               {mode === 'all'
-                ? `${employees.length} active employee${employees.length === 1 ? '' : 's'} with base salary.`
-                : `${selectedIds.length} selected.`}
+                ? `${eligibleEmployees.length} employee${eligibleEmployees.length === 1 ? '' : 's'} with base salary.`
+                : `${selectedIds.length} selected of ${eligibleEmployees.length} with salary.`}
+              {employees.length > eligibleEmployees.length
+                ? ` ${employees.length - eligibleEmployees.length} missing base salary.`
+                : ''}
             </p>
 
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={submitting || employees.length === 0}
+              disabled={submitting || eligibleEmployees.length === 0}
               className="mt-5 inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-50"
             >
               {submitting ? (
@@ -373,8 +402,10 @@ export default function SalarySlipRunsPage() {
           <div className="rounded-lg border border-border bg-surface shadow-panel">
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div>
-                <h2 className="text-sm font-semibold text-ink">Eligible employees</h2>
-                <p className="text-xs text-muted">Active EMS accounts with a base salary.</p>
+                <h2 className="text-sm font-semibold text-ink">Employees</h2>
+                <p className="text-xs text-muted">
+                  Anyone with a base salary can be included in a run.
+                </p>
               </div>
               {mode === 'selected' && (
                 <button
@@ -397,22 +428,33 @@ export default function SalarySlipRunsPage() {
             </div>
             <div className="max-h-72 overflow-y-auto">
               {filteredEmployees.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted">No eligible employees.</p>
+                <p className="px-4 py-8 text-center text-sm text-muted">
+                  {employees.length === 0
+                    ? 'No employees found.'
+                    : 'No employees with a base salary. Set Base Salary on the employee profile.'}
+                </p>
               ) : (
                 <ul className="divide-y divide-border">
                   {filteredEmployees.map((employee) => {
                     const checked = selectedIds.includes(employee.employeeId);
+                    const selectable = employee.eligible && mode === 'selected';
                     return (
                       <li key={employee.employeeId}>
                         <label
-                          className={`flex cursor-pointer items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-canvas/70 ${
-                            mode === 'all' ? 'opacity-70' : ''
+                          className={`flex items-center gap-3 px-4 py-3 text-sm transition-colors ${
+                            selectable
+                              ? 'cursor-pointer hover:bg-canvas/70'
+                              : 'cursor-default opacity-70'
                           }`}
                         >
                           <input
                             type="checkbox"
-                            disabled={mode === 'all'}
-                            checked={mode === 'all' ? true : checked}
+                            disabled={!selectable}
+                            checked={
+                              mode === 'all'
+                                ? employee.eligible
+                                : employee.eligible && checked
+                            }
                             onChange={() => toggleId(employee.employeeId)}
                             className="h-4 w-4 accent-[var(--ink)]"
                           />
@@ -423,9 +465,14 @@ export default function SalarySlipRunsPage() {
                             <span className="block truncate text-xs text-muted">
                               {employee.employeeId} · {employee.email}
                             </span>
+                            {!employee.eligible && employee.reason && (
+                              <span className="mt-0.5 block text-xs text-danger">
+                                {employee.reason}
+                              </span>
+                            )}
                           </span>
                           <span className="shrink-0 text-xs text-muted">
-                            {String(employee.raw?.BaseSalary || employee.raw?.baseSalary || '—')}
+                            {employee.salaryLabel}
                           </span>
                         </label>
                       </li>

@@ -29,17 +29,32 @@ export function monthName(month: number): string {
   return MONTH_NAMES[month - 1] || String(month);
 }
 
-function isActiveWithSalary(employee: EmployeeRecord): boolean {
-  const active = employee.emsStatus.trim().toLowerCase() === 'active';
-  const salary = Number(employee.baseSalary);
-  return active && Number.isFinite(salary) && salary > 0;
+/** Parses salary strings like "99999", "99,999", "PKR 50000". */
+export function parseBaseSalary(value: unknown): number {
+  const cleaned = String(value ?? '')
+    .replace(/[^0-9.-]/g, '')
+    .trim();
+  if (!cleaned) return NaN;
+  const salary = Number(cleaned);
+  return Number.isFinite(salary) ? salary : NaN;
+}
+
+export function hasPayrollSalary(employee: EmployeeRecord): boolean {
+  return parseBaseSalary(employee.baseSalary) > 0;
+}
+
+export function payrollEligibilityReason(employee: EmployeeRecord): string | null {
+  if (!hasPayrollSalary(employee)) {
+    return 'Base salary is missing or zero — set it on the employee profile';
+  }
+  return null;
 }
 
 export async function resolvePayrollEmployees(
   employeeIds?: string[]
 ): Promise<EmployeeRecord[]> {
   const all = await fetchEmployees();
-  const eligible = all.filter(isActiveWithSalary);
+  const eligible = all.filter(hasPayrollSalary);
 
   if (!employeeIds || employeeIds.length === 0) return eligible;
 
@@ -49,7 +64,7 @@ export async function resolvePayrollEmployees(
   );
 
   if (selected.length === 0) {
-    throw new Error('No eligible employees matched the selection (need Active + base salary).');
+    throw new Error('No eligible employees matched the selection (need a base salary > 0).');
   }
 
   return selected;
