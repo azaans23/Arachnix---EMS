@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import {
   Banknote,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   RefreshCw,
@@ -60,6 +61,14 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'Failed', value: 'failed' },
 ];
 
+const PAGE_SIZE_OPTIONS = [
+  { label: '5 / page', value: '5' },
+  { label: '10 / page', value: '10' },
+  { label: '20 / page', value: '20' },
+  { label: '50 / page', value: '50' },
+  { label: '100 / page', value: '100' },
+];
+
 function currentYearOptions() {
   const year = new Date().getFullYear();
   return [year - 1, year, year + 1].map((value) => ({
@@ -111,6 +120,8 @@ export default function SalarySlipRunsPage() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState('10');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -207,7 +218,7 @@ export default function SalarySlipRunsPage() {
 
   const hasActiveFilters = search.trim() !== '' || statusFilter !== 'all';
 
-  const displayedRuns = useMemo(() => {
+  const filteredRuns = useMemo(() => {
     const q = search.trim().toLowerCase();
     return runs.filter((run) => {
       if (statusFilter !== 'all' && run.status.toLowerCase() !== statusFilter) return false;
@@ -222,9 +233,28 @@ export default function SalarySlipRunsPage() {
     });
   }, [runs, search, statusFilter]);
 
+  const pageSizeNum = Number(pageSize) || 10;
+  const totalPages = Math.max(1, Math.ceil(filteredRuns.length / pageSizeNum));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRuns = useMemo(() => {
+    const start = (currentPage - 1) * pageSizeNum;
+    return filteredRuns.slice(start, start + pageSizeNum);
+  }, [filteredRuns, currentPage, pageSizeNum]);
+  const rangeStart = filteredRuns.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRuns.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const clearFilters = () => {
     setSearch('');
     setStatusFilter('all');
+    setPage(1);
   };
 
   const toggleId = (id: string) => {
@@ -304,7 +334,7 @@ export default function SalarySlipRunsPage() {
     loading && runs.length === 0
       ? 'Loading runs…'
       : hasActiveFilters
-        ? `${displayedRuns.length} of ${runs.length} run${runs.length === 1 ? '' : 's'}`
+        ? `${filteredRuns.length} of ${runs.length} run${runs.length === 1 ? '' : 's'}`
         : `${runs.length} run${runs.length === 1 ? '' : 's'}`;
 
   const generateCount = mode === 'all' ? eligibleEmployees.length : selectedIds.length;
@@ -566,7 +596,7 @@ export default function SalarySlipRunsPage() {
               onAction={canGenerate ? () => setShowGenerate(true) : undefined}
               actionIcon={<Banknote className="h-4 w-4" />}
             />
-          ) : displayedRuns.length === 0 ? (
+          ) : filteredRuns.length === 0 ? (
             <EmptyState
               icon={<Search className="h-5 w-5" />}
               title="No matching runs"
@@ -576,71 +606,112 @@ export default function SalarySlipRunsPage() {
               actionIcon={<X className="h-4 w-4" />}
             />
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      <th className="px-5 py-3.5 font-semibold">Period</th>
-                      <th className="px-5 py-3.5 font-semibold">Run</th>
-                      <th className="px-5 py-3.5 font-semibold">Triggered by</th>
-                      <th className="px-5 py-3.5 font-semibold">Status</th>
-                      <th className="px-5 py-3.5 font-semibold">Results</th>
-                      <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border text-sm text-ink">
-                    {displayedRuns.map((run) => (
-                      <tr
-                        key={run.runId}
-                        onClick={() =>
-                          router.push(`/dashboard/salary-slip-run-details?runId=${run.runId}`)
-                        }
-                        className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
-                      >
-                        <td className="px-5 py-3.5 font-medium">
-                          {monthLabel(run.month)} {run.year}
-                        </td>
-                        <td className="px-5 py-3.5 text-muted">
-                          <div>#{run.runId}</div>
-                          <div className="text-xs">{displayDate(run.runDate)}</div>
-                        </td>
-                        <td className="truncate px-5 py-3.5 text-muted">{run.triggeredBy}</td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(run.status)}`}
-                          >
-                            {run.status.toLowerCase() === 'processing' ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : run.status.toLowerCase() === 'failed' ? (
-                              <XCircle className="h-3 w-3" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3" />
-                            )}
-                            {run.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-muted">
-                          {run.successCount} ok
-                          {run.failCount > 0 ? (
-                            <span className="text-danger"> · {run.failCount} failed</span>
-                          ) : null}
-                        </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <Link
-                            href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
-                          >
-                            Open <ChevronRight className="h-3.5 w-3.5" />
-                          </Link>
-                        </td>
+            <>
+              <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        <th className="px-5 py-3.5 font-semibold">Period</th>
+                        <th className="px-5 py-3.5 font-semibold">Run</th>
+                        <th className="px-5 py-3.5 font-semibold">Triggered by</th>
+                        <th className="px-5 py-3.5 font-semibold">Status</th>
+                        <th className="px-5 py-3.5 font-semibold">Results</th>
+                        <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border text-sm text-ink">
+                      {pagedRuns.map((run) => (
+                        <tr
+                          key={run.runId}
+                          onClick={() =>
+                            router.push(`/dashboard/salary-slip-run-details?runId=${run.runId}`)
+                          }
+                          className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
+                        >
+                          <td className="px-5 py-3.5 font-medium">
+                            {monthLabel(run.month)} {run.year}
+                          </td>
+                          <td className="px-5 py-3.5 text-muted">
+                            <div>#{run.runId}</div>
+                            <div className="text-xs">{displayDate(run.runDate)}</div>
+                          </td>
+                          <td className="truncate px-5 py-3.5 text-muted">{run.triggeredBy}</td>
+                          <td className="px-5 py-3.5">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(run.status)}`}
+                            >
+                              {run.status.toLowerCase() === 'processing' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : run.status.toLowerCase() === 'failed' ? (
+                                <XCircle className="h-3 w-3" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3" />
+                              )}
+                              {run.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-muted">
+                            {run.successCount} ok
+                            {run.failCount > 0 ? (
+                              <span className="text-danger"> · {run.failCount} failed</span>
+                            ) : null}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <Link
+                              href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
+                            >
+                              Open <ChevronRight className="h-3.5 w-3.5" />
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted">
+                  Showing {rangeStart}–{rangeEnd} of {filteredRuns.length}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-[7.5rem]">
+                    <CustomDropdown
+                      id="runs-page-size"
+                      name="pageSize"
+                      options={PAGE_SIZE_OPTIONS}
+                      value={pageSize}
+                      onChange={setPageSize}
+                      onBlur={() => {}}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </button>
+                  <span className="min-w-[4.5rem] text-center text-xs font-medium text-muted">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, Fragment } from 'react';
 import {
   ArrowUpDown,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   History,
   RefreshCw,
@@ -19,7 +21,13 @@ import type { AuditLogRecord } from '@/types/audit';
 type SortKey = 'timestamp' | 'userEmail' | 'action' | 'recordType';
 type SortDirection = 'asc' | 'desc';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [
+  { label: '5 / page', value: '5' },
+  { label: '10 / page', value: '10' },
+  { label: '20 / page', value: '20' },
+  { label: '50 / page', value: '50' },
+  { label: '100 / page', value: '100' },
+];
 
 async function requestAuditLog(): Promise<AuditLogRecord[]> {
   const token = localStorage.getItem('token');
@@ -80,6 +88,7 @@ export default function AuditLogPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState('10');
 
   const loadAuditLog = async () => {
     setLoading(true);
@@ -161,13 +170,25 @@ export default function AuditLogPage() {
       });
   }, [records, search, actionFilter, typeFilter, sortKey, sortDirection]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const pageSizeNum = Number(pageSize) || 10;
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSizeNum));
   const currentPage = Math.min(page, totalPages);
   const visibleRecords = filteredRecords.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
+    (currentPage - 1) * pageSizeNum,
+    currentPage * pageSizeNum
   );
   const hasFilters = Boolean(search.trim() || actionFilter !== 'all' || typeFilter !== 'all');
+  const rangeStart =
+    filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRecords.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, actionFilter, typeFilter, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const clearFilters = () => {
     setSearch('');
@@ -416,27 +437,42 @@ export default function AuditLogPage() {
             </div>
           </div>
 
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-muted">
-              <span>
-                Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex gap-2">
+          {filteredRecords.length > 0 && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted">
+                Showing {rangeStart}–{rangeEnd} of {filteredRecords.length}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="w-[7.5rem]">
+                  <CustomDropdown
+                    id="audit-page-size"
+                    name="pageSize"
+                    options={PAGE_SIZE_OPTIONS}
+                    value={pageSize}
+                    onChange={setPageSize}
+                    onBlur={() => {}}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={currentPage === 1}
-                  className="cursor-pointer rounded-md border border-border bg-surface px-3 py-1.5 font-medium text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={currentPage <= 1}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Previous
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
                 </button>
+                <span className="min-w-[4.5rem] text-center text-xs font-medium text-muted">
+                  {currentPage} / {totalPages}
+                </span>
                 <button
                   type="button"
                   onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                  disabled={currentPage === totalPages}
-                  className="cursor-pointer rounded-md border border-border bg-surface px-3 py-1.5 font-medium text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={currentPage >= totalPages}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>

@@ -17,6 +17,8 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -40,6 +42,14 @@ const STATUS_OPTIONS = [
   { label: 'Inactive', value: 'inactive' },
 ];
 
+const PAGE_SIZE_OPTIONS = [
+  { label: '5 / page', value: '5' },
+  { label: '10 / page', value: '10' },
+  { label: '20 / page', value: '20' },
+  { label: '50 / page', value: '50' },
+  { label: '100 / page', value: '100' },
+];
+
 function getEmsStatus(user: SheetUser) {
   return String(user.raw?.EMSStatus || user.raw?.emsStatus || '').toLowerCase().trim();
 }
@@ -55,6 +65,8 @@ export default function EmployeesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState('10');
   const { openModal } = useModal();
   const router = useRouter();
 
@@ -122,6 +134,7 @@ export default function EmployeesPage() {
     setSearch('');
     setRoleFilter('all');
     setStatusFilter('all');
+    setPage(1);
   };
 
   const handleSort = (key: SortKey) => {
@@ -131,9 +144,10 @@ export default function EmployeesPage() {
       setSortKey(key);
       setSortDir('asc');
     }
+    setPage(1);
   };
 
-  const displayedUsers = useMemo(() => {
+  const filteredUsers = useMemo(() => {
     let list = [...users];
     const q = search.trim().toLowerCase();
 
@@ -174,6 +188,23 @@ export default function EmployeesPage() {
 
     return list;
   }, [users, search, roleFilter, statusFilter, sortKey, sortDir]);
+
+  const pageSizeNum = Number(pageSize) || 10;
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSizeNum));
+  const currentPage = Math.min(page, totalPages);
+
+  const pagedUsers = useMemo(() => {
+    const start = (currentPage - 1) * pageSizeNum;
+    return filteredUsers.slice(start, start + pageSizeNum);
+  }, [filteredUsers, currentPage, pageSizeNum]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter, statusFilter, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -265,8 +296,12 @@ export default function EmployeesPage() {
     loading && users.length === 0
       ? 'Syncing roster…'
       : hasActiveFilters
-        ? `${displayedUsers.length} of ${users.length} record${users.length === 1 ? '' : 's'}`
+        ? `${filteredUsers.length} of ${users.length} record${users.length === 1 ? '' : 's'}`
         : `${users.length} record${users.length === 1 ? '' : 's'}`;
+
+  const rangeStart =
+    filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeEnd = Math.min(currentPage * pageSizeNum, filteredUsers.length);
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
@@ -370,7 +405,7 @@ export default function EmployeesPage() {
             )}
           </div>
 
-          {displayedUsers.length === 0 ? (
+          {filteredUsers.length === 0 ? (
             <EmptyState
               icon={<Search className="h-5 w-5" />}
               title="No matching employees"
@@ -380,85 +415,126 @@ export default function EmployeesPage() {
               actionIcon={<X className="h-4 w-4" />}
             />
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      <SortableHeader column="name" label="Name" />
-                      <SortableHeader column="email" label="Email" />
-                      <SortableHeader column="role" label="Role" />
-                      <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border text-sm text-ink">
-                    {displayedUsers.map((user, idx) => {
-                      const isActive = getEmsStatus(user) === 'active';
-                      return (
-                        <tr
-                          key={user.employeeId || user.email || idx}
-                          onClick={() => router.push(profilePath(user))}
-                          className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
-                        >
-                          <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
-                          <td className="px-5 py-3.5 text-muted">{user.email}</td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${getRoleBadgeClasses(user.role)}`}
-                            >
-                              {user.role}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {isActive ? (
-                                <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
-                                  Active
-                                </span>
-                              ) : actorRole && canAssignRole(actorRole, user.role) ? (
+            <>
+              <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        <SortableHeader column="name" label="Name" />
+                        <SortableHeader column="email" label="Email" />
+                        <SortableHeader column="role" label="Role" />
+                        <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border text-sm text-ink">
+                      {pagedUsers.map((user, idx) => {
+                        const isActive = getEmsStatus(user) === 'active';
+                        return (
+                          <tr
+                            key={user.employeeId || user.email || idx}
+                            onClick={() => router.push(profilePath(user))}
+                            className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
+                          >
+                            <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
+                            <td className="px-5 py-3.5 text-muted">{user.email}</td>
+                            <td className="px-5 py-3.5">
+                              <span
+                                className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${getRoleBadgeClasses(user.role)}`}
+                              >
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {isActive ? (
+                                  <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+                                    Active
+                                  </span>
+                                ) : actorRole && canAssignRole(actorRole, user.role) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openModal('registerEmployee', {
+                                        user,
+                                        onSuccess: fetchUsers,
+                                      });
+                                    }}
+                                    className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5" />
+                                    Register
+                                  </button>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                    title="You cannot grant EMS access for this role"
+                                  >
+                                    Restricted
+                                  </span>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openModal('registerEmployee', {
-                                      user,
-                                      onSuccess: fetchUsers,
-                                    });
+                                    router.push(profilePath(user));
                                   }}
-                                  className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
+                                  title="Open profile"
                                 >
-                                  <UserPlus className="h-3.5 w-3.5" />
-                                  Register
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </button>
-                              ) : (
-                                <span
-                                  className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
-                                  title="You cannot grant EMS access for this role"
-                                >
-                                  Restricted
-                                </span>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(profilePath(user));
-                                }}
-                                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
-                                title="Open profile"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted">
+                  Showing {rangeStart}–{rangeEnd} of {filteredUsers.length}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-[7.5rem]">
+                    <CustomDropdown
+                      id="page-size"
+                      name="pageSize"
+                      options={PAGE_SIZE_OPTIONS}
+                      value={pageSize}
+                      onChange={setPageSize}
+                      onBlur={() => {}}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </button>
+                  <span className="min-w-[4.5rem] text-center text-xs font-medium text-muted">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

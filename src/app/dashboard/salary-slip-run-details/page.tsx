@@ -7,6 +7,8 @@ import {
   ArrowLeft,
   Banknote,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -47,6 +49,14 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'Failed', value: 'failed' },
 ];
 
+const PAGE_SIZE_OPTIONS = [
+  { label: '5 / page', value: '5' },
+  { label: '10 / page', value: '10' },
+  { label: '20 / page', value: '20' },
+  { label: '50 / page', value: '50' },
+  { label: '100 / page', value: '100' },
+];
+
 function statusClasses(status: string) {
   switch (status.toLowerCase()) {
     case 'success':
@@ -81,6 +91,8 @@ export default function SalarySlipRunDetailsPage() {
   const [details, setDetails] = useState<SalarySlipRunDetail[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState('10');
 
   const load = useCallback(async () => {
     if (!runId) {
@@ -162,9 +174,29 @@ export default function SalarySlipRunDetailsPage() {
     });
   }, [details, search, statusFilter]);
 
+  const pageSizeNum = Number(pageSize) || 10;
+  const totalPages = Math.max(1, Math.ceil(filteredDetails.length / pageSizeNum));
+  const currentPage = Math.min(page, totalPages);
+  const pagedDetails = useMemo(() => {
+    const start = (currentPage - 1) * pageSizeNum;
+    return filteredDetails.slice(start, start + pageSizeNum);
+  }, [filteredDetails, currentPage, pageSizeNum]);
+  const rangeStart =
+    filteredDetails.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeEnd = Math.min(currentPage * pageSizeNum, filteredDetails.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, pageSize, runId]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const clearFilters = () => {
     setSearch('');
     setStatusFilter('all');
+    setPage(1);
   };
 
   if (allowed === null) {
@@ -362,73 +394,114 @@ export default function SalarySlipRunDetailsPage() {
               actionIcon={<X className="h-4 w-4" />}
             />
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px] border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      <th className="px-5 py-3.5 font-semibold">Employee</th>
-                      <th className="px-5 py-3.5 font-semibold">Status</th>
-                      <th className="px-5 py-3.5 font-semibold">Email</th>
-                      <th className="px-5 py-3.5 font-semibold">PDF</th>
-                      <th className="px-5 py-3.5 font-semibold">Error</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border text-sm text-ink">
-                    {filteredDetails.map((detail) => (
-                      <tr
-                        key={`${detail.runId}-${detail.employeeId}`}
-                        className="transition-colors duration-150 hover:bg-canvas/70"
-                      >
-                        <td className="px-5 py-3.5">
-                          <div className="font-medium">
-                            {detail.employeeName || detail.employeeId}
-                          </div>
-                          <div className="text-xs text-muted">
-                            {detail.runDetailId || detail.employeeId}
-                            {detail.employeeEmail ? ` · ${detail.employeeEmail}` : ''}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(detail.status)}`}
-                          >
-                            {detail.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(detail.emailStatus)}`}
-                          >
-                            {detail.emailStatus}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {detail.pdfLink ? (
-                            <a
-                              href={detail.pdfLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
-                            >
-                              Open <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted">—</span>
-                          )}
-                        </td>
-                        <td
-                          className="max-w-xs truncate px-5 py-3.5 text-xs text-danger"
-                          title={detail.errorReason}
-                        >
-                          {detail.errorReason || '—'}
-                        </td>
+            <>
+              <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[800px] border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        <th className="px-5 py-3.5 font-semibold">Employee</th>
+                        <th className="px-5 py-3.5 font-semibold">Status</th>
+                        <th className="px-5 py-3.5 font-semibold">Email</th>
+                        <th className="px-5 py-3.5 font-semibold">PDF</th>
+                        <th className="px-5 py-3.5 font-semibold">Error</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border text-sm text-ink">
+                      {pagedDetails.map((detail) => (
+                        <tr
+                          key={`${detail.runId}-${detail.employeeId}`}
+                          className="transition-colors duration-150 hover:bg-canvas/70"
+                        >
+                          <td className="px-5 py-3.5">
+                            <div className="font-medium">
+                              {detail.employeeName || detail.employeeId}
+                            </div>
+                            <div className="text-xs text-muted">
+                              {detail.runDetailId || detail.employeeId}
+                              {detail.employeeEmail ? ` · ${detail.employeeEmail}` : ''}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(detail.status)}`}
+                            >
+                              {detail.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(detail.emailStatus)}`}
+                            >
+                              {detail.emailStatus}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {detail.pdfLink ? (
+                              <a
+                                href={detail.pdfLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
+                              >
+                                Open <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+                          <td
+                            className="max-w-xs truncate px-5 py-3.5 text-xs text-danger"
+                            title={detail.errorReason}
+                          >
+                            {detail.errorReason || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted">
+                  Showing {rangeStart}–{rangeEnd} of {filteredDetails.length}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-[7.5rem]">
+                    <CustomDropdown
+                      id="details-page-size"
+                      name="pageSize"
+                      options={PAGE_SIZE_OPTIONS}
+                      value={pageSize}
+                      onChange={setPageSize}
+                      onBlur={() => {}}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </button>
+                  <span className="min-w-[4.5rem] text-center text-xs font-medium text-muted">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
