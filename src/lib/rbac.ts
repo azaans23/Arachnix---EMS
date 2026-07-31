@@ -304,12 +304,6 @@ export const NAV_ITEMS: NavItemConfig[] = [
     section: 'hr',
   },
   {
-    href: '/dashboard/salary-slip-run-details',
-    label: 'Slip Run Details',
-    resource: 'salary_slip_run_details',
-    section: 'hr',
-  },
-  {
     href: '/dashboard/generated-documents',
     label: 'Generated Documents',
     resource: 'generated_documents',

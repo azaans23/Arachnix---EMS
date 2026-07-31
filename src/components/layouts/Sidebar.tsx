@@ -13,7 +13,6 @@ import {
   Users,
   ScrollText,
   Banknote,
-  FileStack,
   FolderOpen,
   CalendarDays,
   CalendarRange,
@@ -41,7 +40,6 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard/leave-balances': CalendarRange,
   '/dashboard/holiday-calendar': CalendarDays,
   '/dashboard/salary-slip-runs': Banknote,
-  '/dashboard/salary-slip-run-details': FileStack,
   '/dashboard/generated-documents': FolderOpen,
   '/dashboard/accounting-records': Calculator,
   '/dashboard/audit-log': ScrollText,
@@ -105,6 +103,13 @@ export default function Sidebar() {
 
   const isActive = (path: string) => {
     if (path === '/dashboard') return pathname === '/dashboard';
+    if (path === '/dashboard/salary-slip-runs') {
+      return (
+        pathname === path ||
+        pathname.startsWith(`${path}/`) ||
+        pathname.startsWith('/dashboard/salary-slip-run-details')
+      );
+    }
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 

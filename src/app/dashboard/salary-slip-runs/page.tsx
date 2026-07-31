@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -11,6 +12,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  X,
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -50,6 +52,14 @@ const MONTH_OPTIONS = [
   { label: 'December', value: '12' },
 ];
 
+const STATUS_FILTER_OPTIONS = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Partial', value: 'partial' },
+  { label: 'Failed', value: 'failed' },
+];
+
 function currentYearOptions() {
   const year = new Date().getFullYear();
   return [year - 1, year, year + 1].map((value) => ({
@@ -61,15 +71,11 @@ function currentYearOptions() {
 function statusClasses(status: string) {
   switch (status.toLowerCase()) {
     case 'completed':
-      return 'border-success/25 bg-success/10 text-success';
-    case 'processing':
-      return 'border-border bg-canvas text-ink';
-    case 'partial':
-      return 'border-border bg-canvas text-ink';
+      return 'border-border bg-success/10 text-success';
     case 'failed':
       return 'border-danger-border bg-danger-bg text-danger';
     default:
-      return 'border-border bg-surface text-muted';
+      return 'border-border bg-canvas text-ink';
   }
 }
 
@@ -97,11 +103,19 @@ export default function SalarySlipRunsPage() {
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
   const [mode, setMode] = useState<'all' | 'selected'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const token = () => localStorage.getItem('token');
 
@@ -181,35 +195,42 @@ export default function SalarySlipRunsPage() {
   );
 
   const filteredEmployees = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const pool = mode === 'all' ? eligibleEmployees : employees;
-    if (!q) return pool;
-    return pool.filter(
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return eligibleEmployees;
+    return eligibleEmployees.filter(
       (employee) =>
         employee.name.toLowerCase().includes(q) ||
         employee.email.toLowerCase().includes(q) ||
         employee.employeeId.toLowerCase().includes(q)
     );
-  }, [employees, eligibleEmployees, mode, search]);
+  }, [eligibleEmployees, employeeSearch]);
+
+  const hasActiveFilters = search.trim() !== '' || statusFilter !== 'all';
+
+  const displayedRuns = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return runs.filter((run) => {
+      if (statusFilter !== 'all' && run.status.toLowerCase() !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        String(run.runId).includes(q) ||
+        monthLabel(run.month).toLowerCase().includes(q) ||
+        String(run.year).includes(q) ||
+        run.triggeredBy.toLowerCase().includes(q) ||
+        run.status.toLowerCase().includes(q)
+      );
+    });
+  }, [runs, search, statusFilter]);
+
+  const clearFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+  };
 
   const toggleId = (id: string) => {
-    const target = employees.find((employee) => employee.employeeId === id);
-    if (!target?.eligible) return;
     setSelectedIds((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
     );
-  };
-
-  const toggleAllVisible = () => {
-    const visibleIds = filteredEmployees
-      .filter((employee) => employee.eligible)
-      .map((employee) => employee.employeeId);
-    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
-    if (allSelected) {
-      setSelectedIds((current) => current.filter((id) => !visibleIds.includes(id)));
-    } else {
-      setSelectedIds((current) => [...new Set([...current, ...visibleIds])]);
-    }
   };
 
   const handleGenerate = async () => {
@@ -238,6 +259,9 @@ export default function SalarySlipRunsPage() {
         throw new Error(result.error || 'Failed to start salary slip run.');
       }
       toast.success(result.message || 'Salary slip run started.');
+      setShowGenerate(false);
+      setSelectedIds([]);
+      setMode('all');
       await load();
       if (result.data?.runId) {
         router.push(`/dashboard/salary-slip-run-details?runId=${result.data.runId}`);
@@ -249,19 +273,15 @@ export default function SalarySlipRunsPage() {
     }
   };
 
-  if (allowed === null || (allowed && loading && runs.length === 0 && employees.length === 0)) {
+  if (allowed === null) {
     return (
       <div className="mx-auto max-w-6xl animate-fade-in-up">
         <div className="mb-8 space-y-2 border-b border-border pb-6">
-          <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-9 w-56" />
-          <Skeleton className="h-4 w-80 max-w-full" />
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-4 w-32" />
         </div>
-        <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
-          <Skeleton className="h-64 w-full rounded-lg" />
-          <Skeleton className="h-64 w-full rounded-lg" />
-        </div>
-        <TableSkeleton columns={6} rows={6} actions={false} />
+        <TableSkeleton columns={5} rows={8} />
       </div>
     );
   }
@@ -274,323 +294,321 @@ export default function SalarySlipRunsPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can manage salary slip runs.
+          Only Super Admin and HR Manager can manage salary slips.
         </p>
       </div>
     );
   }
 
+  const recordLabel =
+    loading && runs.length === 0
+      ? 'Loading runs…'
+      : hasActiveFilters
+        ? `${displayedRuns.length} of ${runs.length} run${runs.length === 1 ? '' : 's'}`
+        : `${runs.length} run${runs.length === 1 ? '' : 's'}`;
+
+  const generateCount = mode === 'all' ? eligibleEmployees.length : selectedIds.length;
+
+  const generateModal =
+    showGenerate && mounted
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+            onClick={() => setShowGenerate(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="generate-slips-title"
+              onClick={(event) => event.stopPropagation()}
+              className="relative flex max-h-[min(90vh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+            >
+              <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+                <div>
+                  <h2 id="generate-slips-title" className="text-lg font-semibold tracking-tight text-ink">
+                    Generate salary slips
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Choose the period and who should receive slips.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowGenerate(false)}
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-muted">Month</label>
+                    <CustomDropdown
+                      id="slip-month"
+                      name="month"
+                      options={MONTH_OPTIONS}
+                      value={month}
+                      onChange={setMonth}
+                      onBlur={() => {}}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-muted">Year</label>
+                    <CustomDropdown
+                      id="slip-year"
+                      name="year"
+                      options={currentYearOptions()}
+                      value={year}
+                      onChange={setYear}
+                      onBlur={() => {}}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('all')}
+                    className={`h-9 flex-1 rounded-lg border text-sm font-medium ${
+                      mode === 'all'
+                        ? 'border-ink bg-ink text-accent-fg'
+                        : 'border-border bg-surface text-ink hover:bg-canvas'
+                    }`}
+                  >
+                    All employees
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('selected')}
+                    className={`h-9 flex-1 rounded-lg border text-sm font-medium ${
+                      mode === 'selected'
+                        ? 'border-ink bg-ink text-accent-fg'
+                        : 'border-border bg-surface text-ink hover:bg-canvas'
+                    }`}
+                  >
+                    Select employees
+                  </button>
+                </div>
+
+                {mode === 'selected' && (
+                  <div className="rounded-lg border border-border">
+                    <div className="border-b border-border p-2">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                        <input
+                          type="search"
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          placeholder="Search employees…"
+                          className="h-9 w-full rounded-md bg-canvas py-1 pl-8 pr-3 text-sm text-ink placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                        />
+                      </div>
+                    </div>
+                    <ul className="max-h-[7.5rem] overflow-y-auto overscroll-contain">
+                      {filteredEmployees.length === 0 ? (
+                        <li className="px-3 py-6 text-center text-sm text-muted">
+                          No employees with a base salary.
+                        </li>
+                      ) : (
+                        filteredEmployees.map((employee) => (
+                          <li
+                            key={employee.employeeId}
+                            className="border-t border-border first:border-t-0"
+                          >
+                            <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-canvas">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(employee.employeeId)}
+                                onChange={() => toggleId(employee.employeeId)}
+                                className="h-4 w-4 accent-[var(--ink)]"
+                              />
+                              <span className="min-w-0 flex-1 truncate">
+                                <span className="font-medium text-ink">{employee.name}</span>
+                                <span className="ml-2 text-xs text-muted">
+                                  {employee.employeeId}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted">
+                  {mode === 'all'
+                    ? `${eligibleEmployees.length} employees will receive slips.`
+                    : `${selectedIds.length} selected.`}
+                </p>
+              </div>
+
+              <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowGenerate(false)}
+                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={submitting || generateCount === 0}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Banknote className="h-4 w-4" />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-            Salary slip runs
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Payroll</p>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+            Salary slips
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            Generate slips for {monthLabel(Number(month))} {year}, track delivery, and review
-            history.
-          </p>
+          <p className="mt-1.5 text-sm text-muted">{recordLabel}</p>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
 
-      {canGenerate && (
-        <section className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <div className="rounded-lg border border-border bg-surface p-5 shadow-panel sm:p-6">
-            <div className="mb-5">
-              <h2 className="text-base font-semibold tracking-tight text-ink">
-                Generate salary slips
-              </h2>
-              <p className="mt-1 text-sm leading-5 text-muted">
-                Create PDFs and send them by email in one payroll run.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Month
-                </label>
-                <CustomDropdown
-                  id="slip-month"
-                  name="month"
-                  options={MONTH_OPTIONS}
-                  value={month}
-                  onChange={setMonth}
-                  onBlur={() => {}}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Year
-                </label>
-                <CustomDropdown
-                  id="slip-year"
-                  name="year"
-                  options={currentYearOptions()}
-                  value={year}
-                  onChange={setYear}
-                  onBlur={() => {}}
-                />
-              </div>
-            </div>
-
-            <div
-              className="mt-5 grid grid-cols-2 rounded-lg bg-canvas p-1"
-              role="group"
-              aria-label="Employee scope"
-            >
-              <button
-                type="button"
-                onClick={() => setMode('all')}
-                aria-pressed={mode === 'all'}
-                className={`h-9 rounded-md text-sm font-medium transition-colors ${
-                  mode === 'all' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
-                }`}
-              >
-                All eligible
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('selected')}
-                aria-pressed={mode === 'selected'}
-                className={`h-9 rounded-md text-sm font-medium transition-colors ${
-                  mode === 'selected'
-                    ? 'bg-surface text-ink shadow-sm'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                Select people
-              </button>
-            </div>
-
-            <p className="mt-3 text-xs leading-5 text-muted">
-              {mode === 'all'
-                ? `${eligibleEmployees.length} employee${eligibleEmployees.length === 1 ? '' : 's'} with base salary.`
-                : `${selectedIds.length} selected of ${eligibleEmployees.length} with salary.`}
-              {employees.length > eligibleEmployees.length
-                ? ` ${employees.length - eligibleEmployees.length} missing base salary.`
-                : ''}
-            </p>
-
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          {canGenerate && (
             <button
               type="button"
-              onClick={handleGenerate}
-              disabled={submitting || eligibleEmployees.length === 0}
-              className="mt-5 inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setShowGenerate(true)}
+              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover"
             >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Starting run…
-                </>
-              ) : (
-                <>
-                  <Banknote className="h-4 w-4" />
-                  Generate salary slips
-                </>
-              )}
+              <Banknote className="h-4 w-4" />
+              Generate slips
             </button>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-            <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
-              <div>
-                <h2 className="text-sm font-semibold text-ink">Employees</h2>
-                <p className="text-xs text-muted">
-                  Anyone with a base salary can be included in a run.
-                </p>
-              </div>
-              {mode === 'selected' && (
-                <button
-                  type="button"
-                  onClick={toggleAllVisible}
-                  className="text-xs font-semibold text-ink hover:underline"
-                >
-                  Toggle visible
-                </button>
-              )}
-            </div>
-            <div className="border-b border-border px-4 py-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search name, email, or ID…"
-                  aria-label="Search employees"
-                  className="h-10 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted/60 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                />
-              </div>
-            </div>
-            <div className="max-h-72 overflow-y-auto">
-              {filteredEmployees.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted">
-                  {employees.length === 0
-                    ? 'No employees found.'
-                    : 'No employees with a base salary. Set Base Salary on the employee profile.'}
-                </p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {filteredEmployees.map((employee) => {
-                    const checked = selectedIds.includes(employee.employeeId);
-                    const selectable = employee.eligible && mode === 'selected';
-                    return (
-                      <li key={employee.employeeId}>
-                        <label
-                          className={`flex items-center gap-3 px-4 py-3 text-sm transition-colors ${
-                            selectable
-                              ? 'cursor-pointer hover:bg-canvas/70'
-                              : 'cursor-default opacity-70'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            disabled={!selectable}
-                            checked={
-                              mode === 'all' ? employee.eligible : employee.eligible && checked
-                            }
-                            onChange={() => toggleId(employee.employeeId)}
-                            className="h-4 w-4 accent-[var(--ink)]"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium text-ink">
-                              {employee.name}
-                            </span>
-                            <span className="block truncate text-xs text-muted">
-                              {employee.employeeId} · {employee.email}
-                            </span>
-                            {!employee.eligible && employee.reason && (
-                              <span className="mt-0.5 block text-xs text-danger">
-                                {employee.reason}
-                              </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-right">
-                            <span className="block text-xs font-medium text-ink">
-                              {employee.salaryLabel}
-                            </span>
-                            <span className="block text-[11px] text-muted">base salary</span>
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold tracking-tight text-ink">Run history</h2>
-            <p className="mt-1 text-xs text-muted">Open a run to review each employee result.</p>
-          </div>
-          <p className="text-xs text-muted">
-            {runs.length} run{runs.length === 1 ? '' : 's'}
-          </p>
+          )}
         </div>
+      </div>
 
-        {runs.length === 0 ? (
-          <EmptyState
-            icon={<Banknote className="h-5 w-5" />}
-            title="No salary slip runs yet"
-            description="Generate your first batch to see status, success counts, and delivery history here."
-          />
-        ) : (
-          <>
-            <div className="space-y-2 md:hidden">
-              {runs.map((run) => (
-                <Link
-                  key={run.runId}
-                  href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
-                  className="block rounded-lg border border-border bg-surface p-4 transition-colors duration-200 hover:border-ink/25 hover:bg-canvas/50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-ink">
-                        {monthLabel(run.month)} {run.year}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted">
-                        Run #{run.runId} · {displayDate(run.runDate)}
-                      </p>
-                    </div>
-                    <span
-                      className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${statusClasses(run.status)}`}
-                    >
-                      {run.status.toLowerCase() === 'processing' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : run.status.toLowerCase() === 'failed' ? (
-                        <XCircle className="h-3 w-3" />
-                      ) : (
-                        <CheckCircle2 className="h-3 w-3" />
-                      )}
-                      {run.status}
-                    </span>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted">
-                    <span>
-                      <strong className="font-semibold text-ink">{run.successCount}</strong> sent
-                      {run.failCount > 0 && (
-                        <>
-                          {' '}
-                          · <strong className="font-semibold text-danger">
-                            {run.failCount}
-                          </strong>{' '}
-                          failed
-                        </>
-                      )}
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-semibold text-ink">
-                      Details <ChevronRight className="h-3.5 w-3.5" />
-                    </span>
-                  </div>
-                </Link>
-              ))}
+      {loading && runs.length === 0 ? (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="h-10 w-full sm:w-40" />
+          </div>
+          <TableSkeleton columns={5} rows={8} />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search month, year, run ID, email…"
+                className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+              />
             </div>
-            <div className="hidden overflow-hidden rounded-lg border border-border bg-surface shadow-panel md:block">
+            <div className="sm:w-40">
+              <CustomDropdown
+                id="status-filter"
+                name="statusFilter"
+                options={STATUS_FILTER_OPTIONS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                onBlur={() => {}}
+                placeholder="All statuses"
+              />
+            </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-muted transition-colors duration-200 hover:border-ink/25 hover:text-ink sm:shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            )}
+          </div>
+
+          {runs.length === 0 ? (
+            <EmptyState
+              icon={<Banknote className="h-5 w-5" />}
+              title="No salary slip runs"
+              description="Generate slips to create your first payroll run."
+              actionLabel={canGenerate ? 'Generate slips' : undefined}
+              onAction={canGenerate ? () => setShowGenerate(true) : undefined}
+              actionIcon={<Banknote className="h-4 w-4" />}
+            />
+          ) : displayedRuns.length === 0 ? (
+            <EmptyState
+              icon={<Search className="h-5 w-5" />}
+              title="No matching runs"
+              description="Try a different search or clear the filters."
+              actionLabel="Clear filters"
+              onAction={clearFilters}
+              actionIcon={<X className="h-4 w-4" />}
+            />
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] border-collapse text-left">
                   <thead>
                     <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      <th className="px-4 py-3.5">Run</th>
-                      <th className="px-4 py-3.5">Period</th>
-                      <th className="px-4 py-3.5">Triggered by</th>
-                      <th className="px-4 py-3.5">Status</th>
-                      <th className="px-4 py-3.5">Results</th>
-                      <th className="px-4 py-3.5 text-right">Open</th>
+                      <th className="px-5 py-3.5 font-semibold">Period</th>
+                      <th className="px-5 py-3.5 font-semibold">Run</th>
+                      <th className="px-5 py-3.5 font-semibold">Triggered by</th>
+                      <th className="px-5 py-3.5 font-semibold">Status</th>
+                      <th className="px-5 py-3.5 font-semibold">Results</th>
+                      <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border text-sm">
-                    {runs.map((run) => (
+                  <tbody className="divide-y divide-border text-sm text-ink">
+                    {displayedRuns.map((run) => (
                       <tr
                         key={run.runId}
-                        className="transition-colors duration-150 hover:bg-canvas/60"
+                        onClick={() =>
+                          router.push(`/dashboard/salary-slip-run-details?runId=${run.runId}`)
+                        }
+                        className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
                       >
-                        <td className="px-4 py-3.5">
-                          <div className="font-medium text-ink">#{run.runId}</div>
-                          <div className="text-xs text-muted">{displayDate(run.runDate)}</div>
-                        </td>
-                        <td className="px-4 py-3.5 text-ink">
+                        <td className="px-5 py-3.5 font-medium">
                           {monthLabel(run.month)} {run.year}
                         </td>
-                        <td className="truncate px-4 py-3.5 text-muted">{run.triggeredBy}</td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-5 py-3.5 text-muted">
+                          <div>#{run.runId}</div>
+                          <div className="text-xs">{displayDate(run.runDate)}</div>
+                        </td>
+                        <td className="truncate px-5 py-3.5 text-muted">{run.triggeredBy}</td>
+                        <td className="px-5 py-3.5">
                           <span
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${statusClasses(run.status)}`}
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${statusClasses(run.status)}`}
                           >
                             {run.status.toLowerCase() === 'processing' ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -602,22 +620,19 @@ export default function SalarySlipRunsPage() {
                             {run.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-muted">
-                          <span className="text-ink">{run.successCount}</span> ok
+                        <td className="px-5 py-3.5 text-muted">
+                          {run.successCount} ok
                           {run.failCount > 0 ? (
-                            <>
-                              {' · '}
-                              <span className="text-danger">{run.failCount}</span> failed
-                            </>
+                            <span className="text-danger"> · {run.failCount} failed</span>
                           ) : null}
                         </td>
-                        <td className="px-4 py-3.5 text-right">
+                        <td className="px-5 py-3.5 text-right">
                           <Link
                             href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
                           >
-                            Details <ChevronRight className="h-3.5 w-3.5" />
+                            Open <ChevronRight className="h-3.5 w-3.5" />
                           </Link>
                         </td>
                       </tr>
@@ -626,9 +641,11 @@ export default function SalarySlipRunsPage() {
                 </table>
               </div>
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </div>
+      )}
+
+      {generateModal}
     </div>
   );
 }
