@@ -4,6 +4,7 @@ import {
   createSalarySlipRun,
   updateSalarySlipRun,
   upsertSalarySlipRunDetail,
+  buildRunDetailId,
 } from '@/lib/db/salary-slips';
 import { createAuditLog } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
@@ -150,6 +151,7 @@ export async function startSalarySlipRun(
     triggeredBy: actorEmail,
     employeeIds,
     employees: employees.map((employee) => ({
+      RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
       EmployeeID: employee.employeeId,
       FullName: employee.fullName,
       Email: employee.email,

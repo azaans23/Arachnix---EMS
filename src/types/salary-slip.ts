@@ -29,6 +29,7 @@ export interface SalarySlipRun {
 }
 
 export interface SalarySlipRunDetail {
+  runDetailId: string;
   runId: string;
   employeeId: string;
   employeeName?: string;

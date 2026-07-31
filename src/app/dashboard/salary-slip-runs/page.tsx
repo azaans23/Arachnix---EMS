@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Loader2,
   RefreshCw,
+  Search,
   ShieldAlert,
   XCircle,
 } from 'lucide-react';
@@ -60,7 +61,7 @@ function currentYearOptions() {
 function statusClasses(status: string) {
   switch (status.toLowerCase()) {
     case 'completed':
-      return 'border-border bg-ink text-accent-fg';
+      return 'border-success/25 bg-success/10 text-success';
     case 'processing':
       return 'border-border bg-canvas text-ink';
     case 'partial':
@@ -203,8 +204,7 @@ export default function SalarySlipRunsPage() {
     const visibleIds = filteredEmployees
       .filter((employee) => employee.eligible)
       .map((employee) => employee.employeeId);
-    const allSelected =
-      visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
     if (allSelected) {
       setSelectedIds((current) => current.filter((id) => !visibleIds.includes(id)));
     } else {
@@ -284,19 +284,19 @@ export default function SalarySlipRunsPage() {
     <div className="mx-auto max-w-6xl animate-fade-in-up">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Payroll</p>
-          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-            Salary Slip Runs
+          <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+            Salary slip runs
           </h1>
-          <p className="mt-1.5 text-sm text-muted">
-            Generate slips for {monthLabel(Number(month))} {year}, track delivery, and review history.
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+            Generate slips for {monthLabel(Number(month))} {year}, track delivery, and review
+            history.
           </p>
         </div>
         <button
           type="button"
           onClick={load}
           disabled={loading}
-          className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-50"
+          className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -305,15 +305,14 @@ export default function SalarySlipRunsPage() {
 
       {canGenerate && (
         <section className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <div className="rounded-lg border border-border bg-surface p-5 shadow-panel">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-canvas text-muted">
-                <Banknote className="h-4 w-4" />
-              </span>
-              <div>
-                <h2 className="text-sm font-semibold text-ink">Generate salary slips</h2>
-                <p className="text-xs text-muted">One click runs PDF + email via n8n.</p>
-              </div>
+          <div className="rounded-lg border border-border bg-surface p-5 shadow-panel sm:p-6">
+            <div className="mb-5">
+              <h2 className="text-base font-semibold tracking-tight text-ink">
+                Generate salary slips
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-muted">
+                Create PDFs and send them by email in one payroll run.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -345,14 +344,17 @@ export default function SalarySlipRunsPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex gap-2">
+            <div
+              className="mt-5 grid grid-cols-2 rounded-lg bg-canvas p-1"
+              role="group"
+              aria-label="Employee scope"
+            >
               <button
                 type="button"
                 onClick={() => setMode('all')}
-                className={`h-9 flex-1 rounded-lg border text-sm font-medium transition-colors ${
-                  mode === 'all'
-                    ? 'border-ink bg-ink text-accent-fg'
-                    : 'border-border bg-surface text-ink hover:bg-canvas'
+                aria-pressed={mode === 'all'}
+                className={`h-9 rounded-md text-sm font-medium transition-colors ${
+                  mode === 'all' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                 }`}
               >
                 All eligible
@@ -360,17 +362,18 @@ export default function SalarySlipRunsPage() {
               <button
                 type="button"
                 onClick={() => setMode('selected')}
-                className={`h-9 flex-1 rounded-lg border text-sm font-medium transition-colors ${
+                aria-pressed={mode === 'selected'}
+                className={`h-9 rounded-md text-sm font-medium transition-colors ${
                   mode === 'selected'
-                    ? 'border-ink bg-ink text-accent-fg'
-                    : 'border-border bg-surface text-ink hover:bg-canvas'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-muted hover:text-ink'
                 }`}
               >
                 Select people
               </button>
             </div>
 
-            <p className="mt-3 text-xs text-muted">
+            <p className="mt-3 text-xs leading-5 text-muted">
               {mode === 'all'
                 ? `${eligibleEmployees.length} employee${eligibleEmployees.length === 1 ? '' : 's'} with base salary.`
                 : `${selectedIds.length} selected of ${eligibleEmployees.length} with salary.`}
@@ -383,7 +386,7 @@ export default function SalarySlipRunsPage() {
               type="button"
               onClick={handleGenerate}
               disabled={submitting || eligibleEmployees.length === 0}
-              className="mt-5 inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-50"
+              className="mt-5 inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? (
                 <>
@@ -399,8 +402,8 @@ export default function SalarySlipRunsPage() {
             </button>
           </div>
 
-          <div className="rounded-lg border border-border bg-surface shadow-panel">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
               <div>
                 <h2 className="text-sm font-semibold text-ink">Employees</h2>
                 <p className="text-xs text-muted">
@@ -418,13 +421,17 @@ export default function SalarySlipRunsPage() {
               )}
             </div>
             <div className="border-b border-border px-4 py-2">
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search name, email, ID…"
-                className="h-9 w-full rounded-md border border-border bg-canvas px-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-              />
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search name, email, or ID…"
+                  aria-label="Search employees"
+                  className="h-10 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted/60 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                />
+              </div>
             </div>
             <div className="max-h-72 overflow-y-auto">
               {filteredEmployees.length === 0 ? (
@@ -451,9 +458,7 @@ export default function SalarySlipRunsPage() {
                             type="checkbox"
                             disabled={!selectable}
                             checked={
-                              mode === 'all'
-                                ? employee.eligible
-                                : employee.eligible && checked
+                              mode === 'all' ? employee.eligible : employee.eligible && checked
                             }
                             onChange={() => toggleId(employee.employeeId)}
                             className="h-4 w-4 accent-[var(--ink)]"
@@ -471,8 +476,11 @@ export default function SalarySlipRunsPage() {
                               </span>
                             )}
                           </span>
-                          <span className="shrink-0 text-xs text-muted">
-                            {employee.salaryLabel}
+                          <span className="shrink-0 text-right">
+                            <span className="block text-xs font-medium text-ink">
+                              {employee.salaryLabel}
+                            </span>
+                            <span className="block text-[11px] text-muted">base salary</span>
                           </span>
                         </label>
                       </li>
@@ -486,9 +494,14 @@ export default function SalarySlipRunsPage() {
       )}
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">Run history</h2>
-          <p className="text-xs text-muted">{runs.length} run{runs.length === 1 ? '' : 's'}</p>
+        <div className="mb-3 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight text-ink">Run history</h2>
+            <p className="mt-1 text-xs text-muted">Open a run to review each employee result.</p>
+          </div>
+          <p className="text-xs text-muted">
+            {runs.length} run{runs.length === 1 ? '' : 's'}
+          </p>
         </div>
 
         {runs.length === 0 ? (
@@ -498,74 +511,122 @@ export default function SalarySlipRunsPage() {
             description="Generate your first batch to see status, success counts, and delivery history here."
           />
         ) : (
-          <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                    <th className="px-4 py-3.5">Run</th>
-                    <th className="px-4 py-3.5">Period</th>
-                    <th className="px-4 py-3.5">Triggered by</th>
-                    <th className="px-4 py-3.5">Status</th>
-                    <th className="px-4 py-3.5">Results</th>
-                    <th className="px-4 py-3.5 text-right">Open</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border text-sm">
-                  {runs.map((run) => (
-                    <tr
-                      key={run.runId}
-                      onClick={() =>
-                        router.push(`/dashboard/salary-slip-run-details?runId=${run.runId}`)
-                      }
-                      className="cursor-pointer hover:bg-canvas/60"
-                    >
-                      <td className="px-4 py-3.5">
-                        <div className="font-medium text-ink">#{run.runId}</div>
-                        <div className="text-xs text-muted">{displayDate(run.runDate)}</div>
-                      </td>
-                      <td className="px-4 py-3.5 text-ink">
+          <>
+            <div className="space-y-2 md:hidden">
+              {runs.map((run) => (
+                <Link
+                  key={run.runId}
+                  href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
+                  className="block rounded-lg border border-border bg-surface p-4 transition-colors duration-200 hover:border-ink/25 hover:bg-canvas/50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink">
                         {monthLabel(run.month)} {run.year}
-                      </td>
-                      <td className="truncate px-4 py-3.5 text-muted">{run.triggeredBy}</td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${statusClasses(run.status)}`}
-                        >
-                          {run.status.toLowerCase() === 'processing' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : run.status.toLowerCase() === 'failed' ? (
-                            <XCircle className="h-3 w-3" />
-                          ) : (
-                            <CheckCircle2 className="h-3 w-3" />
-                          )}
-                          {run.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-muted">
-                        <span className="text-ink">{run.successCount}</span> ok
-                        {run.failCount > 0 ? (
-                          <>
-                            {' · '}
-                            <span className="text-danger">{run.failCount}</span> failed
-                          </>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3.5 text-right">
-                        <Link
-                          href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
-                          onClick={(event) => event.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
-                        >
-                          Details <ChevronRight className="h-3.5 w-3.5" />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </p>
+                      <p className="mt-1 truncate text-xs text-muted">
+                        Run #{run.runId} · {displayDate(run.runDate)}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${statusClasses(run.status)}`}
+                    >
+                      {run.status.toLowerCase() === 'processing' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : run.status.toLowerCase() === 'failed' ? (
+                        <XCircle className="h-3 w-3" />
+                      ) : (
+                        <CheckCircle2 className="h-3 w-3" />
+                      )}
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted">
+                    <span>
+                      <strong className="font-semibold text-ink">{run.successCount}</strong> sent
+                      {run.failCount > 0 && (
+                        <>
+                          {' '}
+                          · <strong className="font-semibold text-danger">
+                            {run.failCount}
+                          </strong>{' '}
+                          failed
+                        </>
+                      )}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-ink">
+                      Details <ChevronRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                </Link>
+              ))}
             </div>
-          </div>
+            <div className="hidden overflow-hidden rounded-lg border border-border bg-surface shadow-panel md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      <th className="px-4 py-3.5">Run</th>
+                      <th className="px-4 py-3.5">Period</th>
+                      <th className="px-4 py-3.5">Triggered by</th>
+                      <th className="px-4 py-3.5">Status</th>
+                      <th className="px-4 py-3.5">Results</th>
+                      <th className="px-4 py-3.5 text-right">Open</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border text-sm">
+                    {runs.map((run) => (
+                      <tr
+                        key={run.runId}
+                        className="transition-colors duration-150 hover:bg-canvas/60"
+                      >
+                        <td className="px-4 py-3.5">
+                          <div className="font-medium text-ink">#{run.runId}</div>
+                          <div className="text-xs text-muted">{displayDate(run.runDate)}</div>
+                        </td>
+                        <td className="px-4 py-3.5 text-ink">
+                          {monthLabel(run.month)} {run.year}
+                        </td>
+                        <td className="truncate px-4 py-3.5 text-muted">{run.triggeredBy}</td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${statusClasses(run.status)}`}
+                          >
+                            {run.status.toLowerCase() === 'processing' ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : run.status.toLowerCase() === 'failed' ? (
+                              <XCircle className="h-3 w-3" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3" />
+                            )}
+                            {run.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-muted">
+                          <span className="text-ink">{run.successCount}</span> ok
+                          {run.failCount > 0 ? (
+                            <>
+                              {' · '}
+                              <span className="text-danger">{run.failCount}</span> failed
+                            </>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <Link
+                            href={`/dashboard/salary-slip-run-details?runId=${run.runId}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
+                          >
+                            Details <ChevronRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </div>

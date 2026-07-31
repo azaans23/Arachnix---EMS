@@ -17,6 +17,7 @@ type RunRow = {
 };
 
 type DetailRow = {
+  rundetailid?: string | null;
   runid: number;
   employeeid: string;
   status: string;
@@ -27,6 +28,11 @@ type DetailRow = {
 
 const RUNS_TABLE = 'salaryslipruns';
 const DETAILS_TABLE = 'salarysliprundetails';
+
+/** Composite key used in Sheets + Supabase, e.g. `9-EMP-001`. */
+export function buildRunDetailId(runId: string | number, employeeId: string): string {
+  return `${String(runId).trim()}-${String(employeeId).trim()}`;
+}
 
 export function mapRunRow(row: RunRow): SalarySlipRun {
   return {
@@ -42,9 +48,12 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
 }
 
 export function mapDetailRow(row: DetailRow): SalarySlipRunDetail {
+  const runId = String(row.runid);
+  const employeeId = row.employeeid;
   return {
-    runId: String(row.runid),
-    employeeId: row.employeeid,
+    runDetailId: row.rundetailid || buildRunDetailId(runId, employeeId),
+    runId,
+    employeeId,
     status: row.status,
     pdfLink: row.pdflink || '',
     emailStatus: row.emailstatus || 'Pending',
@@ -114,6 +123,7 @@ export async function createSalarySlipRun(input: {
   const run = mapRunRow(data as RunRow);
   if (input.employeeIds.length > 0) {
     const details = input.employeeIds.map((employeeId) => ({
+      rundetailid: buildRunDetailId(run.runId, employeeId),
       runid: Number(run.runId),
       employeeid: employeeId,
       status: 'Pending',
@@ -165,6 +175,7 @@ export async function upsertSalarySlipRunDetail(input: {
 }): Promise<void> {
   const { error } = await getSupabaseAdmin().from(DETAILS_TABLE).upsert(
     {
+      rundetailid: buildRunDetailId(input.runId, input.employeeId),
       runid: Number(input.runId),
       employeeid: input.employeeId,
       status: input.status,
