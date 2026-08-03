@@ -33,14 +33,51 @@ export async function POST(request: Request) {
     const employeeIds = Array.isArray(body.employeeIds)
       ? body.employeeIds.map((id: unknown) => String(id))
       : undefined;
+    const confirmIncomplete = Boolean(body.confirmIncomplete);
+    const salaryDetails = Array.isArray(body.salaryDetails)
+      ? body.salaryDetails.map((row: Record<string, unknown>) => ({
+          employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
+          salary: String(row.salary ?? row.Salary ?? '').trim(),
+          allowance: String(row.allowance ?? row.Allowance ?? '').trim(),
+          tax: String(row.tax ?? row.Tax ?? '').trim(),
+          accountNumber: String(
+            row.accountNumber ?? row.AccountNumber ?? row['Account Number'] ?? ''
+          ).trim(),
+          accountName: String(
+            row.accountName ?? row.AccountName ?? row['Account Name'] ?? ''
+          ).trim(),
+          bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
+        }))
+      : undefined;
 
-    const { run, message } = await startSalarySlipRun(user?.email || '', {
+    const result = await startSalarySlipRun(user?.email || '', {
       month,
       year,
       employeeIds,
+      confirmIncomplete,
+      salaryDetails,
     });
 
-    return NextResponse.json({ success: true, data: run, message });
+    if ('needsConfirmation' in result && result.needsConfirmation) {
+      return NextResponse.json(
+        {
+          success: false,
+          needsConfirmation: true,
+          message: result.message,
+          data: {
+            incomplete: result.incomplete,
+            details: result.details,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: result.run,
+      message: result.message,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to start salary slip run.';
     return NextResponse.json({ success: false, error: message }, { status: 400 });

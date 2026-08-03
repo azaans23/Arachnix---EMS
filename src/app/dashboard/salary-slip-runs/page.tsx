@@ -30,7 +30,12 @@ import {
   payrollEligibilityReason,
 } from '@/lib/payroll/generate';
 import { toSheetUser, type SheetUser } from '@/types/employee';
-import type { SalarySlipRun } from '@/types/salary-slip';
+import type {
+  IncompleteSalaryDetail,
+  SalaryDetailInput,
+  SalaryDetailRecord,
+  SalarySlipRun,
+} from '@/types/salary-slip';
 
 type PayrollEmployee = SheetUser & {
   eligible: boolean;
@@ -103,6 +108,85 @@ function monthLabel(month: number) {
   return MONTH_OPTIONS.find((option) => option.value === String(month))?.label || String(month);
 }
 
+const SALARY_FORM_FIELDS = [
+  { key: 'salary', label: 'Salary', missing: 'Salary' },
+  { key: 'allowance', label: 'Allowance', missing: 'Allowance' },
+  { key: 'tax', label: 'Tax', missing: 'Tax' },
+  { key: 'accountNumber', label: 'Account Number', missing: 'Account Number' },
+  { key: 'accountName', label: 'Account Name', missing: 'Account Name' },
+  { key: 'bankName', label: 'Bank Name', missing: 'Bank Name' },
+] as const;
+
+type SalaryFormFieldKey = (typeof SALARY_FORM_FIELDS)[number]['key'];
+
+function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInput {
+  return {
+    employeeId: detail.employeeId,
+    salary: detail.salary,
+    allowance: detail.allowance,
+    tax: detail.tax,
+    accountNumber: detail.accountNumber,
+    accountName: detail.accountName,
+    bankName: detail.bankName,
+  };
+}
+
+function buildSalaryForms(
+  incomplete: IncompleteSalaryDetail[],
+  details: SalaryDetailRecord[],
+  employees: PayrollEmployee[] = []
+): SalaryDetailInput[] {
+  const byId = new Map(
+    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
+  );
+  const employeeById = new Map(
+    employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
+  );
+
+  return incomplete.map((row) => {
+    const key = row.employeeId.trim().toLowerCase();
+    const existing = byId.get(key);
+    const employee = employeeById.get(key);
+    const fallbackSalary =
+      employee?.salaryLabel && employee.salaryLabel !== '—' ? employee.salaryLabel : '';
+    return {
+      employeeId: row.employeeId,
+      salary: existing?.salary || fallbackSalary,
+      allowance: existing?.allowance || '',
+      tax: existing?.tax || '',
+      accountNumber: existing?.accountNumber || '',
+      accountName: existing?.accountName || '',
+      bankName: existing?.bankName || '',
+    };
+  });
+}
+
+function enrichIncompleteRows(
+  incomplete: IncompleteSalaryDetail[],
+  details: SalaryDetailRecord[],
+  employees: PayrollEmployee[]
+): IncompleteSalaryDetail[] {
+  const byId = new Map(
+    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
+  );
+  const employeeById = new Map(
+    employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
+  );
+
+  return incomplete.map((row) => {
+    const key = row.employeeId.trim().toLowerCase();
+    const detail = byId.get(key);
+    const employee = employeeById.get(key);
+    return {
+      ...row,
+      fullName: row.fullName || detail?.fullName || employee?.name || '',
+      email: row.email || detail?.email || employee?.email || '',
+      department: row.department || detail?.department || '',
+      designation: row.designation || detail?.designation || '',
+    };
+  });
+}
+
 export default function SalarySlipRunsPage() {
   const router = useRouter();
   const now = new Date();
@@ -113,6 +197,11 @@ export default function SalarySlipRunsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [incompleteConfirm, setIncompleteConfirm] = useState<IncompleteSalaryDetail[] | null>(
+    null
+  );
+  const [salaryForms, setSalaryForms] = useState<SalaryDetailInput[]>([]);
+  const [savingDetails, setSavingDetails] = useState(false);
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
   const [mode, setMode] = useState<'all' | 'selected'>('all');
@@ -263,7 +352,12 @@ export default function SalarySlipRunsPage() {
     );
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (
+    options: {
+      confirmIncomplete?: boolean;
+      salaryDetails?: SalaryDetailInput[];
+    } = {}
+  ) => {
     if (!canGenerate) return;
     if (mode === 'selected' && selectedIds.length === 0) {
       toast.error('Select at least one employee.');
@@ -282,12 +376,91 @@ export default function SalarySlipRunsPage() {
           month: Number(month),
           year: Number(year),
           employeeIds: mode === 'selected' ? selectedIds : undefined,
+          confirmIncomplete: options.confirmIncomplete || undefined,
+          salaryDetails: options.salaryDetails,
         }),
       });
       const result = await response.json();
+
+      if (response.status === 409 && result.needsConfirmation) {
+        const incomplete = (result.data?.incomplete || []) as IncompleteSalaryDetail[];
+        const details = (result.data?.details || []) as SalaryDetailRecord[];
+
+        // Prefer fetched rows that are already complete — continue without the popup.
+        const completeDetails = details.filter(
+          (detail) =>
+            detail.employeeId &&
+            detail.salary &&
+            detail.allowance &&
+            detail.tax &&
+            detail.accountNumber &&
+            detail.accountName &&
+            detail.bankName
+        );
+
+        const incompleteIds = new Set(
+          incomplete.map((row) => row.employeeId.trim().toLowerCase())
+        );
+        const completeCoversAllIncomplete =
+          incomplete.length > 0 &&
+          incomplete.every((row) =>
+            completeDetails.some(
+              (detail) =>
+                detail.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
+            )
+          );
+
+        if (completeCoversAllIncomplete) {
+          await handleGenerate({
+            confirmIncomplete: true,
+            salaryDetails: completeDetails.map(toSalaryDetailInput),
+          });
+          return;
+        }
+
+        // If every selected employee already has a complete fetched row, continue.
+        if (incomplete.length === 0 && completeDetails.length > 0) {
+          await handleGenerate({
+            confirmIncomplete: true,
+            salaryDetails: completeDetails.map(toSalaryDetailInput),
+          });
+          return;
+        }
+
+        const forms = buildSalaryForms(incomplete, details, employees);
+        const stillMissing = forms.filter((row) =>
+          SALARY_FORM_FIELDS.some((field) => !String(row[field.key] || '').trim())
+        );
+
+        if (stillMissing.length === 0 && forms.length > 0) {
+          await handleGenerate({
+            confirmIncomplete: true,
+            salaryDetails: forms,
+          });
+          return;
+        }
+
+        // Only show popup for employees that still have empty required fields.
+        const reallyIncomplete = incomplete.filter((row) => incompleteIds.has(row.employeeId.trim().toLowerCase()) && stillMissing.some((form) => form.employeeId === row.employeeId));
+
+        setIncompleteConfirm(
+          enrichIncompleteRows(
+            reallyIncomplete.length > 0 ? reallyIncomplete : incomplete,
+            details,
+            employees
+          )
+        );
+        setSalaryForms(forms);
+        toast.message(result.message || 'Some salary details are incomplete.');
+        return;
+      }
+
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to start salary slip run.');
       }
+
+      setIncompleteConfirm(null);
+      setSalaryForms([]);
       toast.success(result.message || 'Salary slip run started.');
       setShowGenerate(false);
       setSelectedIds([]);
@@ -300,6 +473,59 @@ export default function SalarySlipRunsPage() {
       toast.error(error instanceof Error ? error.message : 'Failed to generate salary slips.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const updateSalaryFormField = (
+    employeeId: string,
+    field: SalaryFormFieldKey,
+    value: string
+  ) => {
+    setSalaryForms((current) =>
+      current.map((row) =>
+        row.employeeId === employeeId ? { ...row, [field]: value } : row
+      )
+    );
+  };
+
+  const handleSaveDetailsAndGenerate = async () => {
+    if (!incompleteConfirm || salaryForms.length === 0) return;
+
+    for (const row of salaryForms) {
+      const incomplete = incompleteConfirm.find((item) => item.employeeId === row.employeeId);
+      const missing = incomplete?.missingFields || [];
+      for (const field of SALARY_FORM_FIELDS) {
+        if (missing.includes(field.missing) && !String(row[field.key] || '').trim()) {
+          toast.error(`Enter ${field.label} for ${row.employeeId}.`);
+          return;
+        }
+      }
+    }
+
+    setSavingDetails(true);
+    try {
+      const updateRes = await fetch('/api/salary-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify({ details: salaryForms }),
+      });
+      const updateJson = await updateRes.json();
+      if (!updateRes.ok || !updateJson.success) {
+        throw new Error(updateJson.error || 'Failed to update salary details.');
+      }
+
+      toast.success(updateJson.message || 'Salary details updated.');
+      await handleGenerate({
+        confirmIncomplete: true,
+        salaryDetails: salaryForms,
+      });
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update salary details.');
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -486,7 +712,7 @@ export default function SalarySlipRunsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleGenerate}
+                  onClick={() => void handleGenerate()}
                   disabled={submitting || generateCount === 0}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                 >
@@ -500,6 +726,135 @@ export default function SalarySlipRunsPage() {
                       <Banknote className="h-4 w-4" />
                       Generate
                     </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  const incompleteModal =
+    mounted && incompleteConfirm
+      ? createPortal(
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="incomplete-salary-title"
+              className="flex max-h-[min(90vh,40rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+            >
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h2
+                    id="incomplete-salary-title"
+                    className="text-lg font-semibold tracking-tight text-ink"
+                  >
+                    Enter missing salary details
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    These values will be saved via update-salary-detail, then slips will generate.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIncompleteConfirm(null);
+                    setSalaryForms([]);
+                  }}
+                  className="rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                {salaryForms.map((row) => {
+                  const meta =
+                    incompleteConfirm.find((item) => item.employeeId === row.employeeId) || null;
+                  const missing = meta?.missingFields || [];
+                  return (
+                    <div
+                      key={row.employeeId}
+                      className="rounded-lg border border-border bg-canvas/40 p-4"
+                    >
+                      <div className="mb-3 border-b border-border pb-3">
+                        <p className="text-sm font-semibold text-ink">
+                          {meta?.fullName || row.employeeId}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {row.employeeId}
+                          {meta?.designation ? ` · ${meta.designation}` : ''}
+                          {meta?.department ? ` · ${meta.department}` : ''}
+                        </p>
+                        {meta?.email ? (
+                          <p className="mt-0.5 truncate text-xs text-muted">{meta.email}</p>
+                        ) : null}
+                        {missing.length > 0 ? (
+                          <p className="mt-1.5 text-xs text-danger">
+                            Missing: {missing.join(', ')}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {SALARY_FORM_FIELDS.map((field) => {
+                          const isMissing = missing.includes(field.missing);
+                          return (
+                            <label key={field.key} className="block text-xs">
+                              <span
+                                className={`mb-1 block font-medium ${
+                                  isMissing ? 'text-danger' : 'text-muted'
+                                }`}
+                              >
+                                {field.label}
+                                {isMissing ? ' *' : ''}
+                              </span>
+                              <input
+                                type="text"
+                                value={row[field.key]}
+                                onChange={(e) =>
+                                  updateSalaryFormField(row.employeeId, field.key, e.target.value)
+                                }
+                                className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                                  isMissing ? 'border-danger-border' : 'border-border'
+                                }`}
+                                placeholder={isMissing ? `Enter ${field.label}` : undefined}
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIncompleteConfirm(null);
+                    setSalaryForms([]);
+                  }}
+                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveDetailsAndGenerate()}
+                  disabled={submitting || savingDetails}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {savingDetails || submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save & generate'
                   )}
                 </button>
               </div>
@@ -717,6 +1072,7 @@ export default function SalarySlipRunsPage() {
       )}
 
       {generateModal}
+      {incompleteModal}
     </div>
   );
 }

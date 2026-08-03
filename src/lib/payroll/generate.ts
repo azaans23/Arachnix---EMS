@@ -9,7 +9,19 @@ import {
 import { createAuditLog } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
-import type { GenerateSalarySlipsInput, SalarySlipRun } from '@/types/salary-slip';
+import type {
+  GenerateSalarySlipsInput,
+  IncompleteSalaryDetail,
+  SalaryDetailRecord,
+  SalarySlipRun,
+} from '@/types/salary-slip';
+import {
+  fetchSalaryDetails,
+  findIncompleteSalaryDetails,
+  isSalaryDetailComplete,
+  mergeSalaryDetails,
+  toSalaryDetailWebhookFields,
+} from '@/lib/payroll/salary-details';
 
 const MONTH_NAMES = [
   'January',
@@ -145,11 +157,22 @@ async function logSalarySlipRunAudit(
  * Creates a Supabase run, fires the n8n generate-salary-slip webhook, and
  * updates run/detail rows when the workflow returns per-employee results.
  * If n8n responds immediately (ack only), the run stays "Processing".
+ *
+ * Prefetches salary details (allowance/tax/bank). When fields are missing and
+ * confirmIncomplete is not set, returns needsConfirmation instead of creating a run.
  */
 export async function startSalarySlipRun(
   actorEmail: string,
   input: GenerateSalarySlipsInput
-): Promise<{ run: SalarySlipRun; message: string }> {
+): Promise<
+  | { run: SalarySlipRun; message: string }
+  | {
+      needsConfirmation: true;
+      incomplete: IncompleteSalaryDetail[];
+      details: SalaryDetailRecord[];
+      message: string;
+    }
+> {
   const month = Number(input.month);
   const year = Number(input.year);
 
@@ -162,6 +185,32 @@ export async function startSalarySlipRun(
 
   const employees = await resolvePayrollEmployees(input.employeeIds);
   const employeeIds = employees.map((employee) => employee.employeeId);
+
+  let salaryDetails = await fetchSalaryDetails(employeeIds);
+  if (input.salaryDetails && input.salaryDetails.length > 0) {
+    salaryDetails = mergeSalaryDetails(salaryDetails, input.salaryDetails);
+  }
+
+  // Drop any false positives: if a fetched row is complete, never ask for it.
+  let incomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails).filter((row) => {
+    const detail = salaryDetails.find(
+      (item) => item.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
+    );
+    return !detail || !isSalaryDetailComplete(detail);
+  });
+
+  if (incomplete.length > 0 && !input.confirmIncomplete) {
+    return {
+      needsConfirmation: true,
+      incomplete,
+      details: salaryDetails,
+      message: `${incomplete.length} employee${incomplete.length === 1 ? '' : 's'} are missing salary detail fields (Allowance, Tax, bank info, etc.). Enter the missing values to update them, then continue.`,
+    };
+  }
+
+  const detailsById = new Map(
+    salaryDetails.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
+  );
 
   const run = await createSalarySlipRun({
     triggeredBy: actorEmail,
@@ -181,6 +230,7 @@ export async function startSalarySlipRun(
       employeeCount: employeeIds.length,
       employeeIds,
       triggeredBy: actorEmail,
+      incompleteCount: incomplete.length,
     },
   });
 
@@ -191,16 +241,38 @@ export async function startSalarySlipRun(
     monthName: monthName(month),
     triggeredBy: actorEmail,
     employeeIds,
-    employees: employees.map((employee) => ({
-      RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
-      EmployeeID: employee.employeeId,
-      FullName: employee.fullName,
-      Email: employee.email,
-      BaseSalary: employee.baseSalary,
-      Department: employee.department,
-      Designation: employee.designation,
-      BankAccountDetails: employee.bankAccountDetails,
+    salaryDetails: salaryDetails.map((detail) => ({
+      EmployeeID: detail.employeeId,
+      FullName: detail.fullName,
+      Email: detail.email,
+      Department: detail.department,
+      Designation: detail.designation,
+      Phone: detail.phone,
+      EmployeeType: detail.employeeType,
+      Salary: detail.salary,
+      Allowance: detail.allowance,
+      Tax: detail.tax,
+      'Account Number': detail.accountNumber,
+      'Account Name': detail.accountName,
+      'Bank Name': detail.bankName,
+      AccountNumber: detail.accountNumber,
+      AccountName: detail.accountName,
+      BankName: detail.bankName,
     })),
+    employees: employees.map((employee) => {
+      const detail = detailsById.get(employee.employeeId.trim().toLowerCase());
+      return {
+        RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
+        EmployeeID: employee.employeeId,
+        FullName: detail?.fullName || employee.fullName,
+        Email: detail?.email || employee.email,
+        BaseSalary: employee.baseSalary,
+        Department: detail?.department || employee.department,
+        Designation: detail?.designation || employee.designation,
+        BankAccountDetails: employee.bankAccountDetails,
+        ...toSalaryDetailWebhookFields(detail),
+      };
+    }),
   };
 
   let webhookOk = false;

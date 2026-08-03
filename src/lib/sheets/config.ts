@@ -1,8 +1,9 @@
 export const SHEETS_WEBHOOKS = {
   getUsers: 'https://n8n.arachnix.io/webhook/get-users',
-  updateUser: 'https://n8n.arachnix.io/webhook/update-user',
+  updateUser: 'https://n8n.arachnix.io/webhook-test/update-user',
   getAuditLog: 'https://n8n.arachnix.io/webhook/get-audit-log',
   createAudit: 'https://n8n.arachnix.io/webhook/create-audit',
-  /** Week 2 test workflow — generate + email salary slips */
   generateSalarySlip: 'https://n8n.arachnix.io/webhook-test/generate-salary-slip',
+  getSalaryDetail: 'https://n8n.arachnix.io/webhook/get-salary-detail',
+  updateSalaryDetail: 'https://n8n.arachnix.io/webhook/update-salary-detail',
 } as const;
