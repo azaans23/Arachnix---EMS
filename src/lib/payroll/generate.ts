@@ -114,6 +114,33 @@ function parseWebhookBody(text: string): {
   return { ackOnly: true, results: [] };
 }
 
+/** Dual-writes to Supabase + Sheets; never fails the payroll run. */
+async function logSalarySlipRunAudit(
+  actorEmail: string,
+  input: {
+    action: string;
+    runId: string;
+    oldValue?: unknown;
+    newValue: unknown;
+  }
+): Promise<void> {
+  const email = actorEmail.trim() || 'system@arachnix.io';
+  try {
+    await createAuditLog(
+      { email },
+      {
+        action: input.action,
+        recordType: 'SalarySlipRun',
+        recordId: input.runId,
+        oldValue: input.oldValue,
+        newValue: input.newValue,
+      }
+    );
+  } catch (auditError) {
+    console.error('Salary slip run audit failed:', auditError);
+  }
+}
+
 /**
  * Creates a Supabase run, fires the n8n generate-salary-slip webhook, and
  * updates run/detail rows when the workflow returns per-employee results.
@@ -141,6 +168,20 @@ export async function startSalarySlipRun(
     month,
     year,
     employeeIds,
+  });
+
+  await logSalarySlipRunAudit(actorEmail, {
+    action: AUDIT_ACTIONS.GENERATE,
+    runId: run.runId,
+    newValue: {
+      month,
+      year,
+      monthName: monthName(month),
+      status: 'Processing',
+      employeeCount: employeeIds.length,
+      employeeIds,
+      triggeredBy: actorEmail,
+    },
   });
 
   const payload = {
@@ -195,6 +236,19 @@ export async function startSalarySlipRun(
         errorReason: message,
       });
     }
+    await logSalarySlipRunAudit(actorEmail, {
+      action: AUDIT_ACTIONS.UPDATE,
+      runId: run.runId,
+      oldValue: { status: 'Processing' },
+      newValue: {
+        month,
+        year,
+        status: 'Failed',
+        successCount: 0,
+        failCount: employeeIds.length,
+        error: message,
+      },
+    });
     throw new Error(message);
   }
 
@@ -232,51 +286,24 @@ export async function startSalarySlipRun(
       failCount,
     });
 
-    try {
-      await createAuditLog(
-        { email: actorEmail },
-        {
-          action: AUDIT_ACTIONS.GENERATE,
-          recordType: 'SalarySlipRun',
-          recordId: run.runId,
-          newValue: {
-            month,
-            year,
-            status,
-            successCount,
-            failCount,
-            employeeCount: employeeIds.length,
-          },
-        }
-      );
-    } catch (auditError) {
-      console.error('Salary slip run audit failed:', auditError);
-    }
+    await logSalarySlipRunAudit(actorEmail, {
+      action: AUDIT_ACTIONS.UPDATE,
+      runId: run.runId,
+      oldValue: { status: 'Processing' },
+      newValue: {
+        month,
+        year,
+        status,
+        successCount,
+        failCount,
+        employeeCount: employeeIds.length,
+      },
+    });
 
     return {
       run: updated,
       message: `Salary slip run ${status.toLowerCase()}: ${successCount} succeeded, ${failCount} failed.`,
     };
-  }
-
-  try {
-    await createAuditLog(
-      { email: actorEmail },
-      {
-        action: AUDIT_ACTIONS.GENERATE,
-        recordType: 'SalarySlipRun',
-        recordId: run.runId,
-        newValue: {
-          month,
-          year,
-          status: 'Processing',
-          employeeCount: employeeIds.length,
-          note: 'Workflow acknowledged; awaiting completion.',
-        },
-      }
-    );
-  } catch (auditError) {
-    console.error('Salary slip run audit failed:', auditError);
   }
 
   return {
