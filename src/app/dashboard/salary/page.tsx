@@ -19,14 +19,18 @@ import {
   ChevronRight,
   X,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
+import { mapRawToEmployee } from '@/lib/sheets/employees';
+import { toSheetUser, type SheetUser } from '@/types/employee';
 import type { SalaryDetailInput, SalaryDetailRecord } from '@/types/salary-slip';
 
 type SortKey = 'fullName' | 'email' | 'designation' | 'department' | 'salary';
 type SortDir = 'asc' | 'desc';
+type CreateStep = 'pick' | 'form';
 
 const PAGE_SIZE_OPTIONS = [
   { label: '5 / page', value: '5' },
@@ -45,7 +49,25 @@ const SALARY_FORM_FIELDS = [
   { key: 'bankName', label: 'Bank Name' },
 ] as const;
 
+const SALARY_STATUS_OPTIONS = [
+  { label: 'Pending', value: 'Pending' },
+  { label: 'Processed', value: 'Processed' },
+  { label: 'Paid', value: 'Paid' },
+];
+
 type SalaryFormFieldKey = (typeof SALARY_FORM_FIELDS)[number]['key'];
+
+type EmployeeOption = SheetUser & {
+  department: string;
+  designation: string;
+  emsStatus: string;
+  baseSalary: string;
+  bankAccountDetails: string;
+};
+
+function currentPeriod(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
 
 function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
   return {
@@ -61,6 +83,46 @@ function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
     totalEarning: detail.totalEarning,
     totalDeduction: detail.totalDeduction,
   };
+}
+
+function emptyCreateForm(employee: EmployeeOption, period: string): SalaryDetailInput {
+  return {
+    employeeId: employee.employeeId,
+    salary: employee.baseSalary || '',
+    allowance: '',
+    tax: '',
+    accountNumber: employee.bankAccountDetails || '',
+    accountName: employee.name || '',
+    bankName: '',
+    period,
+    status: 'Pending',
+  };
+}
+
+function findExactSalary(
+  employeeId: string,
+  period: string,
+  rows: SalaryDetailRecord[]
+): SalaryDetailRecord | null {
+  const key = employeeId.trim().toLowerCase();
+  return (
+    rows.find(
+      (row) =>
+        row.employeeId.trim().toLowerCase() === key &&
+        (row.period || '').trim() === period.trim()
+    ) || null
+  );
+}
+
+function findLatestSalary(
+  employeeId: string,
+  rows: SalaryDetailRecord[]
+): SalaryDetailRecord | null {
+  const key = employeeId.trim().toLowerCase();
+  const matches = rows
+    .filter((row) => row.employeeId.trim().toLowerCase() === key)
+    .sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
+  return matches[0] || null;
 }
 
 function formatCurrency(value: unknown) {
@@ -129,6 +191,17 @@ export default function SalaryPage() {
   const [editing, setEditing] = useState<SalaryDetailRecord | null>(null);
   const [editForm, setEditForm] = useState<SalaryDetailInput | null>(null);
   const [saving, setSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState<CreateStep>('pick');
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeeDeptFilter, setEmployeeDeptFilter] = useState('all');
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeOption | null>(null);
+  const [createForm, setCreateForm] = useState<SalaryDetailInput | null>(null);
+  const [createExisting, setCreateExisting] = useState<SalaryDetailRecord | null>(null);
+  const [savingCreate, setSavingCreate] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -392,6 +465,97 @@ export default function SalaryPage() {
     setEditForm((current) => (current ? { ...current, [field]: value } : current));
   };
 
+  const loadEmployees = async () => {
+    setEmployeesLoading(true);
+    try {
+      const response = await fetch('/api/get-users', {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load employees.');
+      }
+      const raw = Array.isArray(result.data)
+        ? result.data
+        : result.data
+          ? [result.data]
+          : [];
+      setEmployees(
+        raw.map((row: unknown) => {
+          const record = mapRawToEmployee(row);
+          const sheetUser = toSheetUser(record);
+          return {
+            ...sheetUser,
+            department: record.department,
+            designation: record.designation,
+            emsStatus: record.emsStatus,
+            baseSalary: record.baseSalary,
+            bankAccountDetails: record.bankAccountDetails,
+          } as EmployeeOption;
+        })
+      );
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load employees.');
+      setEmployees([]);
+    } finally {
+      setEmployeesLoading(false);
+    }
+  };
+
+  const openCreate = async () => {
+    setCreateOpen(true);
+    setCreateStep('pick');
+    setSelectedEmployee(null);
+    setCreateForm(null);
+    setCreateExisting(null);
+    setEmployeeSearch('');
+    setEmployeeDeptFilter('all');
+    setEmployeeStatusFilter('all');
+    await loadEmployees();
+  };
+
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setCreateStep('pick');
+    setSelectedEmployee(null);
+    setCreateForm(null);
+    setCreateExisting(null);
+  };
+
+  const selectEmployeeForCreate = (employee: EmployeeOption, period = currentPeriod()) => {
+    const exact = findExactSalary(employee.employeeId, period, rows);
+    const latest = exact || findLatestSalary(employee.employeeId, rows);
+    setSelectedEmployee(employee);
+    setCreateExisting(exact);
+    setCreateForm(
+      exact
+        ? { ...toEditForm(exact), period: exact.period || period }
+        : latest
+          ? {
+              ...toEditForm(latest),
+              period,
+              status: latest.status || 'Pending',
+            }
+          : emptyCreateForm(employee, period)
+    );
+    setCreateStep('form');
+  };
+
+  const updateCreateField = (field: keyof SalaryDetailInput, value: string) => {
+    setCreateForm((current) => {
+      if (!current || !selectedEmployee) return current;
+      if (field === 'period') {
+        const exact = findExactSalary(selectedEmployee.employeeId, value, rows);
+        setCreateExisting(exact);
+        if (exact) {
+          return { ...toEditForm(exact), period: value };
+        }
+        return { ...current, period: value };
+      }
+      return { ...current, [field]: value };
+    });
+  };
+
   const handleSave = async () => {
     if (!editForm) return;
 
@@ -426,6 +590,104 @@ export default function SalaryPage() {
       setSaving(false);
     }
   };
+
+  const handleCreateSave = async () => {
+    if (!createForm || !selectedEmployee) return;
+
+    if (!String(createForm.period || '').trim()) {
+      toast.error('Enter a period (YYYY-MM).');
+      return;
+    }
+
+    for (const field of SALARY_FORM_FIELDS) {
+      if (!String(createForm[field.key] || '').trim()) {
+        toast.error(`Enter ${field.label}.`);
+        return;
+      }
+    }
+
+    setSavingCreate(true);
+    try {
+      const response = await fetch('/api/salary-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token()}`,
+        },
+        body: JSON.stringify({ details: [createForm] }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save salary details.');
+      }
+
+      toast.success(
+        createExisting
+          ? result.message || 'Salary details updated.'
+          : result.message || 'Salary details created.'
+      );
+      closeCreate();
+      await fetchDetails();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save salary details.');
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+  const employeeDeptOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(employees.map((employee) => employee.department.trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    return [
+      { label: 'All departments', value: 'all' },
+      ...values.map((value) => ({ label: value, value })),
+    ];
+  }, [employees]);
+
+  const employeeStatusOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(employees.map((employee) => employee.emsStatus.trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    return [
+      { label: 'All statuses', value: 'all' },
+      ...values.map((value) => ({ label: value, value })),
+    ];
+  }, [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    let list = [...employees];
+    const q = employeeSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((employee) => {
+        const haystack = [
+          employee.name,
+          employee.email,
+          employee.employeeId,
+          employee.department,
+          employee.designation,
+          employee.role,
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+        return haystack.some((value) => value.includes(q));
+      });
+    }
+    if (employeeDeptFilter !== 'all') {
+      list = list.filter(
+        (employee) =>
+          employee.department.trim().toLowerCase() === employeeDeptFilter.toLowerCase()
+      );
+    }
+    if (employeeStatusFilter !== 'all') {
+      list = list.filter(
+        (employee) =>
+          employee.emsStatus.trim().toLowerCase() === employeeStatusFilter.toLowerCase()
+      );
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [employees, employeeSearch, employeeDeptFilter, employeeStatusFilter]);
 
   const SortIcon = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) {
@@ -593,6 +855,287 @@ export default function SalaryPage() {
         )
       : null;
 
+  const createModal =
+    mounted && createOpen
+      ? createPortal(
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-salary-title"
+              className="flex max-h-[min(90vh,44rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+            >
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h2
+                    id="create-salary-title"
+                    className="text-lg font-semibold tracking-tight text-ink"
+                  >
+                    {createStep === 'pick'
+                      ? 'Select employee'
+                      : createExisting
+                        ? 'Update salary details'
+                        : 'Create salary details'}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    {createStep === 'pick'
+                      ? 'Search and filter employees, then choose one to create or update salary info.'
+                      : selectedEmployee
+                        ? `${selectedEmployee.name || selectedEmployee.employeeId}${
+                            selectedEmployee.designation
+                              ? ` · ${selectedEmployee.designation}`
+                              : ''
+                          }${
+                            selectedEmployee.department
+                              ? ` · ${selectedEmployee.department}`
+                              : ''
+                          }`
+                        : 'Enter salary details for the selected employee.'}
+                  </p>
+                  {createStep === 'form' && selectedEmployee?.email ? (
+                    <p className="mt-0.5 text-xs text-muted">{selectedEmployee.email}</p>
+                  ) : null}
+                  {createStep === 'form' && createExisting ? (
+                    <p className="mt-1.5 text-xs font-medium text-ink">
+                      Existing record for {createExisting.period || 'this period'} — values
+                      prefilled below.
+                    </p>
+                  ) : null}
+                  {createStep === 'form' && !createExisting && createForm?.period ? (
+                    <p className="mt-1.5 text-xs text-muted">
+                      No salary row for {createForm.period} yet — saving will create one.
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCreate}
+                  className="rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                {createStep === 'pick' ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="relative min-w-0 flex-1">
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                        <input
+                          type="search"
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          placeholder="Search name, email, ID, designation…"
+                          className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:flex sm:w-auto sm:shrink-0">
+                        <div className="sm:w-44">
+                          <CustomDropdown
+                            id="create-employee-dept"
+                            name="employeeDeptFilter"
+                            options={employeeDeptOptions}
+                            value={employeeDeptFilter}
+                            onChange={setEmployeeDeptFilter}
+                            onBlur={() => {}}
+                            placeholder="All departments"
+                          />
+                        </div>
+                        <div className="sm:w-40">
+                          <CustomDropdown
+                            id="create-employee-status"
+                            name="employeeStatusFilter"
+                            options={employeeStatusOptions}
+                            value={employeeStatusFilter}
+                            onChange={setEmployeeStatusFilter}
+                            onBlur={() => {}}
+                            placeholder="All statuses"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {employeesLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading employees…
+                      </div>
+                    ) : filteredEmployees.length === 0 ? (
+                      <div className="rounded-lg border border-border bg-canvas px-4 py-10 text-center text-sm text-muted">
+                        No employees match these filters.
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden rounded-lg border border-border">
+                        <div className="max-h-[min(50vh,24rem)] overflow-y-auto">
+                          <table className="w-full border-collapse text-left text-sm">
+                            <thead className="sticky top-0 bg-canvas">
+                              <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                                <th className="px-4 py-3">Name</th>
+                                <th className="px-4 py-3">Department</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {filteredEmployees.map((employee) => {
+                                const hasSalary = Boolean(
+                                  findLatestSalary(employee.employeeId, rows)
+                                );
+                                return (
+                                  <tr
+                                    key={employee.employeeId || employee.email}
+                                    className="hover:bg-canvas/70"
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div className="font-medium text-ink">
+                                        {employee.name || 'N/A'}
+                                      </div>
+                                      <div className="mt-0.5 text-xs text-muted">
+                                        {employee.employeeId || '—'}
+                                        {employee.email ? ` · ${employee.email}` : ''}
+                                      </div>
+                                      {employee.designation ? (
+                                        <div className="mt-0.5 text-xs text-muted">
+                                          {employee.designation}
+                                        </div>
+                                      ) : null}
+                                    </td>
+                                    <td className="px-4 py-3 text-muted">
+                                      {employee.department || '—'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {employee.emsStatus ? (
+                                          <span
+                                            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(employee.emsStatus)}`}
+                                          >
+                                            {employee.emsStatus}
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted">—</span>
+                                        )}
+                                        {hasSalary ? (
+                                          <span className="inline-flex items-center rounded-md border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                                            Has salary
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => selectEmployeeForCreate(employee)}
+                                        className="inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-canvas"
+                                      >
+                                        Select
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : createForm ? (
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs">
+                        <span className="mb-1 block font-medium text-muted">
+                          Period (YYYY-MM)
+                        </span>
+                        <input
+                          type="month"
+                          value={createForm.period || ''}
+                          onChange={(e) => updateCreateField('period', e.target.value)}
+                          className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                        />
+                      </label>
+                      <div className="block text-xs">
+                        <span className="mb-1 block font-medium text-muted">Status</span>
+                        <CustomDropdown
+                          id="create-salary-status"
+                          name="createSalaryStatus"
+                          options={SALARY_STATUS_OPTIONS}
+                          value={createForm.status || 'Pending'}
+                          onChange={(value) => updateCreateField('status', value)}
+                          onBlur={() => {}}
+                          placeholder="Status"
+                        />
+                      </div>
+                      {SALARY_FORM_FIELDS.map((field) => (
+                        <label key={field.key} className="block text-xs">
+                          <span className="mb-1 block font-medium text-muted">{field.label}</span>
+                          <input
+                            type="text"
+                            value={createForm[field.key] || ''}
+                            onChange={(e) => updateCreateField(field.key, e.target.value)}
+                            className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                            placeholder={`Enter ${field.label}`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-5 py-4">
+                <div>
+                  {createStep === 'form' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateStep('pick');
+                        setSelectedEmployee(null);
+                        setCreateForm(null);
+                        setCreateExisting(null);
+                      }}
+                      className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+                    >
+                      Back
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={closeCreate}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+                  >
+                    Cancel
+                  </button>
+                  {createStep === 'form' ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateSave()}
+                      disabled={savingCreate}
+                      className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
+                    >
+                      {savingCreate ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Saving…
+                        </>
+                      ) : createExisting ? (
+                        'Update salary'
+                      ) : (
+                        'Create salary'
+                      )}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -608,6 +1151,16 @@ export default function SalaryPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => void openCreate()}
+              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors duration-200 hover:bg-accent-hover"
+            >
+              <Plus className="h-4 w-4" />
+              Create salary detail
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={fetchDetails}
@@ -629,10 +1182,14 @@ export default function SalaryPage() {
         <EmptyState
           icon={<Database className="h-5 w-5" />}
           title="No salary details found"
-          description="No payroll rows were retrieved. Confirm the sheet has records, then sync again."
-          actionLabel="Retry sync"
-          onAction={fetchDetails}
-          actionIcon={<RefreshCw className="h-4 w-4" />}
+          description={
+            canEdit
+              ? 'Create a salary detail for an employee, or sync again if records should already exist.'
+              : 'No payroll rows were retrieved. Confirm the sheet has records, then sync again.'
+          }
+          actionLabel={canEdit ? 'Create salary detail' : 'Retry sync'}
+          onAction={canEdit ? () => void openCreate() : fetchDetails}
+          actionIcon={canEdit ? <Plus className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
         />
       ) : (
         <div className="space-y-4">
@@ -871,6 +1428,7 @@ export default function SalaryPage() {
       )}
 
       {editModal}
+      {createModal}
     </div>
   );
 }
