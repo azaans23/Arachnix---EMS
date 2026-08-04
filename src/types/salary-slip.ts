@@ -64,7 +64,7 @@ export interface GenerateSalarySlipsInput {
   salaryExtras?: SalaryRunExtraInput[];
 }
 
-/** Fields the user can enter / send to update-salary-detail. */
+/** Fields the user can enter / send to update-salary-detail (+ Supabase salaries). */
 export interface SalaryDetailInput {
   employeeId: string;
   salary: string;
@@ -73,6 +73,11 @@ export interface SalaryDetailInput {
   accountNumber: string;
   accountName: string;
   bankName: string;
+  /** Period key, e.g. `2026-08`. Defaults to current month when omitted. */
+  period?: string;
+  status?: string;
+  totalEarning?: string;
+  totalDeduction?: string;
 }
 
 /** Run-specific earnings / deductions collected before generate. */
@@ -84,7 +89,7 @@ export interface SalaryRunExtraInput {
   others: string;
 }
 
-/** Row from n8n get-salary-detail webhook. */
+/** Salary row enriched with employee profile fields for UI / payroll. */
 export interface SalaryDetailRecord {
   employeeId: string;
   fullName: string;
@@ -105,6 +110,9 @@ export interface SalaryDetailRecord {
   accountName: string;
   bankName: string;
   bankAccountDetails: string;
+  period?: string;
+  status?: string;
+  salaryId?: string;
   raw: Record<string, unknown>;
 }
 

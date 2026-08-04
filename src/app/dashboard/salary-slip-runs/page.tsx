@@ -189,13 +189,18 @@ function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInput {
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
+    period: detail.period,
+    status: detail.status,
+    totalEarning: detail.totalEarning,
+    totalDeduction: detail.totalDeduction,
   };
 }
 
 function buildSalaryForms(
   incomplete: IncompleteSalaryDetail[],
   details: SalaryDetailRecord[],
-  employees: PayrollEmployee[] = []
+  employees: PayrollEmployee[] = [],
+  period?: string
 ): SalaryDetailInput[] {
   const byId = new Map(
     details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
@@ -218,6 +223,8 @@ function buildSalaryForms(
       accountNumber: existing?.accountNumber || '',
       accountName: existing?.accountName || '',
       bankName: existing?.bankName || '',
+      period: existing?.period || period || '',
+      status: existing?.status || 'Pending',
     };
   });
 }
@@ -509,7 +516,8 @@ export default function SalarySlipRunsPage() {
           return;
         }
 
-        const forms = buildSalaryForms(incomplete, details, employees);
+        const runPeriod = `${year}-${String(Number(month)).padStart(2, '0')}`;
+        const forms = buildSalaryForms(incomplete, details, employees, runPeriod);
         const stillMissing = forms.filter((row) =>
           SALARY_FORM_FIELDS.some((field) => !String(row[field.key] || '').trim())
         );

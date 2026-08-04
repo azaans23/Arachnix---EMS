@@ -48,6 +48,14 @@ export async function POST(request: Request) {
             row.accountName ?? row.AccountName ?? row['Account Name'] ?? ''
           ).trim(),
           bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
+          period: String(row.period ?? row.Period ?? '').trim() || undefined,
+          status: String(row.status ?? row.Status ?? '').trim() || undefined,
+          totalEarning: String(
+            row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? ''
+          ).trim() || undefined,
+          totalDeduction: String(
+            row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? ''
+          ).trim() || undefined,
         }))
       : undefined;
     const salaryExtras = Array.isArray(body.salaryExtras)

@@ -28,6 +28,14 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
       raw.accountName ?? raw.AccountName ?? raw['Account Name'] ?? ''
     ).trim(),
     bankName: String(raw.bankName ?? raw.BankName ?? raw['Bank Name'] ?? '').trim(),
+    period: String(raw.period ?? raw.Period ?? '').trim() || undefined,
+    status: String(raw.status ?? raw.Status ?? '').trim() || undefined,
+    totalEarning: String(
+      raw.totalEarning ?? raw.TotalEarning ?? raw['Total Earning'] ?? ''
+    ).trim() || undefined,
+    totalDeduction: String(
+      raw.totalDeduction ?? raw.TotalDeduction ?? raw['Total Deduction'] ?? ''
+    ).trim() || undefined,
   };
 }
 

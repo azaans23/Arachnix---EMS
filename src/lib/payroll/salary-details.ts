@@ -1,4 +1,14 @@
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import {
+  currentSalaryPeriod,
+  getSalaryDbRow,
+  listSalaryDbRows,
+  rollbackSalaryDbWrites,
+  salaryDbRowToDetail,
+  upsertSalaryDbRow,
+  type SalaryDbRow,
+} from '@/lib/db/salaries';
+import { listEmployeeDbRows, dbRowToEmployeeRecord } from '@/lib/db/employees';
 import type {
   IncompleteSalaryDetail,
   SalaryDetailInput,
@@ -141,6 +151,9 @@ function normalizeSalaryDetailsPayload(data: unknown): unknown[] {
 }
 
 function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
+  const period =
+    ('period' in detail ? detail.period : '') ||
+    currentSalaryPeriod();
   return {
     EmployeeID: detail.employeeId,
     Salary: detail.salary,
@@ -149,70 +162,63 @@ function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
     'Account Number': detail.accountNumber,
     'Account Name': detail.accountName,
     'Bank Name': detail.bankName,
+    AccountNumber: detail.accountNumber,
+    AccountName: detail.accountName,
+    BankName: detail.bankName,
+    Period: period,
+    Status: ('status' in detail && detail.status) || 'Pending',
+    TotalEarning:
+      ('totalEarning' in detail && detail.totalEarning) ||
+      String(Number(detail.salary || 0) + Number(detail.allowance || 0) || ''),
+    TotalDeduction:
+      ('totalDeduction' in detail && detail.totalDeduction) || detail.tax || '0',
+    'Total Earning':
+      ('totalEarning' in detail && detail.totalEarning) ||
+      String(Number(detail.salary || 0) + Number(detail.allowance || 0) || ''),
+    'Total Deduction':
+      ('totalDeduction' in detail && detail.totalDeduction) || detail.tax || '0',
   };
 }
 
-/** Fetch payroll detail rows from n8n for the given employee IDs (or all). */
+/**
+ * Read salary rows from Supabase `salaries`, enriched with employee profile fields.
+ * Optional filters: employeeIds and/or period (e.g. `2026-08`).
+ */
 export async function fetchSalaryDetails(
-  employeeIds?: string[]
+  employeeIds?: string[],
+  period?: string
 ): Promise<SalaryDetailRecord[]> {
-  const url = new URL(SHEETS_WEBHOOKS.getSalaryDetail);
-  if (employeeIds && employeeIds.length > 0) {
-    for (const id of employeeIds) {
-      const trimmed = id.trim();
-      if (trimmed) url.searchParams.append('employeeIds', trimmed);
-    }
-  }
+  const [salaryRows, employeeRows] = await Promise.all([
+    listSalaryDbRows({
+      employeeIds,
+      period: period?.trim() || undefined,
+    }),
+    listEmployeeDbRows(),
+  ]);
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  }).catch((error: unknown) => {
-    const cause =
-      error instanceof Error
-        ? error.cause instanceof Error
-          ? `${error.message} (${error.cause.message})`
-          : error.message
-        : String(error);
-    throw new Error(`get-salary-detail webhook request failed: ${cause}`);
+  const employeesById = new Map(
+    employeeRows.map((row) => {
+      const employee = dbRowToEmployeeRecord(row);
+      return [employee.employeeId.trim().toLowerCase(), employee] as const;
+    })
+  );
+
+  let rows = salaryRows.map((row) => {
+    const employee = employeesById.get(row.employeeid.trim().toLowerCase());
+    return salaryDbRowToDetail(row, employee);
   });
-
-  const text = await response.text();
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(
-        'get-salary-detail webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
-      );
-    }
-    throw new Error(text || `get-salary-detail webhook returned status ${response.status}.`);
-  }
-
-  let parsed: unknown = text;
-  try {
-    parsed = text.trim() ? JSON.parse(text) : [];
-  } catch {
-    throw new Error('get-salary-detail webhook returned non-JSON data.');
-  }
-
-  let rows = normalizeSalaryDetailsPayload(parsed)
-    .map(mapRawToSalaryDetail)
-    .filter((row) => Boolean(row.employeeId));
 
   if (employeeIds && employeeIds.length > 0) {
     const wanted = new Set(employeeIds.map((id) => id.trim().toLowerCase()));
-    const filtered = rows.filter((row) => wanted.has(row.employeeId.trim().toLowerCase()));
-    if (filtered.length > 0) {
-      rows = filtered;
-    }
+    rows = rows.filter((row) => wanted.has(row.employeeId.trim().toLowerCase()));
   }
 
   return rows;
 }
 
 /**
- * Persist salary detail rows via n8n (used when get-salary-detail is missing fields).
- * Accepts one or many employees.
+ * Dual-write salary rows: Supabase first, then n8n update-salary-detail.
+ * If the sheet/webhook write fails, Supabase changes are rolled back.
  */
 export async function updateSalaryDetails(
   details: SalaryDetailInput[]
@@ -227,45 +233,88 @@ export async function updateSalaryDetails(
     }
   }
 
+  const writes = details.map((detail) => ({
+    ...detail,
+    period: (detail.period || currentSalaryPeriod()).trim(),
+    status: detail.status || 'Pending',
+  }));
+
+  const snapshots: Array<{
+    previous: SalaryDbRow | null;
+    employeeId: string;
+    period: string;
+  }> = [];
+
+  try {
+    for (const detail of writes) {
+      const previous = await getSalaryDbRow(detail.employeeId, detail.period);
+      snapshots.push({
+        previous,
+        employeeId: detail.employeeId.trim(),
+        period: detail.period,
+      });
+      await upsertSalaryDbRow(detail);
+    }
+  } catch (dbError) {
+    try {
+      await rollbackSalaryDbWrites(snapshots);
+    } catch (rollbackError) {
+      console.error('Failed to roll back salaries after DB write failure:', rollbackError);
+    }
+    throw dbError;
+  }
+
   const payload = {
-    details: details.map(toWebhookSalaryRow),
+    details: writes.map(toWebhookSalaryRow),
   };
 
-  const response = await fetch(SHEETS_WEBHOOKS.updateSalaryDetail, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(
-        'update-salary-detail webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
-      );
-    }
-    throw new Error(text || `update-salary-detail webhook returned status ${response.status}.`);
-  }
-
-  let message = 'Salary details updated.';
   try {
-    const parsed = text.trim() ? JSON.parse(text) : null;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      message = String(
-        (parsed as Record<string, unknown>).message ||
-          (parsed as Record<string, unknown>).status ||
-          message
+    const response = await fetch(SHEETS_WEBHOOKS.updateSalaryDetail, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          'update-salary-detail webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
+        );
+      }
+      throw new Error(text || `update-salary-detail webhook returned status ${response.status}.`);
+    }
+
+    let message = 'Salary details updated.';
+    try {
+      const parsed = text.trim() ? JSON.parse(text) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        message = String(
+          (parsed as Record<string, unknown>).message ||
+            (parsed as Record<string, unknown>).status ||
+            message
+        );
+      }
+    } catch {
+      if (text.trim()) message = text.trim();
+    }
+
+    return { message };
+  } catch (sheetError) {
+    try {
+      await rollbackSalaryDbWrites(snapshots);
+    } catch (rollbackError) {
+      console.error(
+        'Failed to roll back Supabase salaries after sheet write failure:',
+        rollbackError
       );
     }
-  } catch {
-    if (text.trim()) message = text.trim();
+    throw sheetError;
   }
-
-  return { message };
 }
 
-/** Overlay user-provided rows onto fetched get-salary-detail rows. */
+/** Overlay user-provided rows onto fetched salary detail rows. */
 export function mergeSalaryDetails(
   existing: SalaryDetailRecord[],
   overrides: SalaryDetailInput[]
@@ -278,6 +327,9 @@ export function mergeSalaryDetails(
     const key = override.employeeId.trim().toLowerCase();
     if (!key) continue;
     const current = byId.get(key);
+    const salary = override.salary?.trim() || current?.salary || '';
+    const allowance = override.allowance?.trim() || current?.allowance || '';
+    const tax = override.tax?.trim() || current?.tax || '';
     byId.set(key, {
       employeeId: override.employeeId.trim(),
       fullName: current?.fullName || '',
@@ -289,15 +341,21 @@ export function mergeSalaryDetails(
       role: current?.role || '',
       emsStatus: current?.emsStatus || '',
       baseSalary: current?.baseSalary || '',
-      salary: override.salary?.trim() || current?.salary || '',
-      allowance: override.allowance?.trim() || current?.allowance || '',
-      tax: override.tax?.trim() || current?.tax || '',
-      totalEarning: current?.totalEarning || '',
-      totalDeduction: current?.totalDeduction || '',
+      salary,
+      allowance,
+      tax,
+      totalEarning:
+        override.totalEarning?.trim() ||
+        current?.totalEarning ||
+        String(Number(salary || 0) + Number(allowance || 0) || ''),
+      totalDeduction: override.totalDeduction?.trim() || current?.totalDeduction || tax,
       accountNumber: override.accountNumber?.trim() || current?.accountNumber || '',
       accountName: override.accountName?.trim() || current?.accountName || '',
       bankName: override.bankName?.trim() || current?.bankName || '',
       bankAccountDetails: current?.bankAccountDetails || '',
+      period: override.period?.trim() || current?.period || '',
+      status: override.status?.trim() || current?.status || '',
+      salaryId: current?.salaryId || '',
       raw: current?.raw || {},
     });
   }
@@ -408,5 +466,9 @@ export function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInp
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
+    period: detail.period,
+    status: detail.status,
+    totalEarning: detail.totalEarning,
+    totalDeduction: detail.totalDeduction,
   };
 }

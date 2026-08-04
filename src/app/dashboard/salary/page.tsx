@@ -56,6 +56,10 @@ function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
+    period: detail.period,
+    status: detail.status,
+    totalEarning: detail.totalEarning,
+    totalDeduction: detail.totalDeduction,
   };
 }
 
@@ -115,6 +119,7 @@ export default function SalaryPage() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [designationFilter, setDesignationFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState('all');
   const [completenessFilter, setCompletenessFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('fullName');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -165,7 +170,16 @@ export default function SalaryPage() {
     [rows]
   );
   const statusOptions = useMemo(
-    () => uniqueSortedOptions(rows, (row) => row.emsStatus, 'All statuses'),
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (row) => row.status || row.emsStatus,
+        'All statuses'
+      ),
+    [rows]
+  );
+  const periodOptions = useMemo(
+    () => uniqueSortedOptions(rows, (row) => row.period || '', 'All periods'),
     [rows]
   );
   const completenessOptions = [
@@ -179,6 +193,7 @@ export default function SalaryPage() {
     departmentFilter !== 'all' ||
     designationFilter !== 'all' ||
     statusFilter !== 'all' ||
+    periodFilter !== 'all' ||
     completenessFilter !== 'all';
 
   const clearFilters = () => {
@@ -186,6 +201,7 @@ export default function SalaryPage() {
     setDepartmentFilter('all');
     setDesignationFilter('all');
     setStatusFilter('all');
+    setPeriodFilter('all');
     setCompletenessFilter('all');
     setPage(1);
   };
@@ -238,8 +254,15 @@ export default function SalaryPage() {
     }
 
     if (statusFilter !== 'all') {
+      list = list.filter((row) => {
+        const value = (row.status || row.emsStatus || '').trim().toLowerCase();
+        return value === statusFilter.toLowerCase();
+      });
+    }
+
+    if (periodFilter !== 'all') {
       list = list.filter(
-        (row) => row.emsStatus.trim().toLowerCase() === statusFilter.toLowerCase()
+        (row) => (row.period || '').trim().toLowerCase() === periodFilter.toLowerCase()
       );
     }
 
@@ -268,6 +291,7 @@ export default function SalaryPage() {
     departmentFilter,
     designationFilter,
     statusFilter,
+    periodFilter,
     completenessFilter,
     sortKey,
     sortDir,
@@ -284,7 +308,7 @@ export default function SalaryPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, departmentFilter, designationFilter, statusFilter, completenessFilter, pageSize]);
+  }, [search, departmentFilter, designationFilter, statusFilter, periodFilter, completenessFilter, pageSize]);
 
   useEffect(() => {
     // Drop stale filter values if refreshed data no longer includes them.
@@ -306,13 +330,21 @@ export default function SalaryPage() {
     ) {
       setStatusFilter('all');
     }
+    if (
+      periodFilter !== 'all' &&
+      !periodOptions.some((option) => option.value === periodFilter)
+    ) {
+      setPeriodFilter('all');
+    }
   }, [
     departmentFilter,
     designationFilter,
     statusFilter,
+    periodFilter,
     departmentOptions,
     designationOptions,
     statusOptions,
+    periodOptions,
   ]);
 
   useEffect(() => {
@@ -487,6 +519,7 @@ export default function SalaryPage() {
                     {editing.fullName || editing.employeeId}
                     {editing.designation ? ` · ${editing.designation}` : ''}
                     {editing.department ? ` · ${editing.department}` : ''}
+                    {editing.period ? ` · ${editing.period}` : ''}
                   </p>
                   {editing.email ? (
                     <p className="mt-0.5 text-xs text-muted">{editing.email}</p>
@@ -648,6 +681,17 @@ export default function SalaryPage() {
                   placeholder="All statuses"
                 />
               </div>
+              <div className="lg:w-40">
+                <CustomDropdown
+                  id="period-filter"
+                  name="periodFilter"
+                  options={periodOptions}
+                  value={periodFilter}
+                  onChange={setPeriodFilter}
+                  onBlur={() => {}}
+                  placeholder="All periods"
+                />
+              </div>
               <div className="lg:w-44">
                 <CustomDropdown
                   id="completeness-filter"
@@ -701,7 +745,7 @@ export default function SalaryPage() {
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedRows.map((row, idx) => {
-                        const status = row.emsStatus || '';
+                        const status = row.status || row.emsStatus || '';
                         return (
                           <tr
                             key={row.employeeId || row.email || idx}
@@ -711,6 +755,11 @@ export default function SalaryPage() {
                               <div className="font-medium">{row.fullName || 'N/A'}</div>
                               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                                 <span>{row.employeeId || '—'}</span>
+                                {row.period ? (
+                                  <span className="inline-flex items-center rounded-md border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                                    {row.period}
+                                  </span>
+                                ) : null}
                                 {status ? (
                                   <span
                                     className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(status)}`}

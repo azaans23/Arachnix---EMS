@@ -6,6 +6,7 @@ import {
   upsertSalarySlipRunDetail,
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
+import { formatSalaryPeriod } from '@/lib/db/salaries';
 import { createAuditLog } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
@@ -192,7 +193,14 @@ export async function startSalarySlipRun(
   const employees = await resolvePayrollEmployees(input.employeeIds);
   const employeeIds = employees.map((employee) => employee.employeeId);
 
-  let salaryDetails = await fetchSalaryDetails(employeeIds);
+  let salaryDetails = await fetchSalaryDetails(
+    employeeIds,
+    formatSalaryPeriod(month, year)
+  );
+  // Fall back to any stored salary rows for these employees if the run period has none yet.
+  if (salaryDetails.length === 0) {
+    salaryDetails = await fetchSalaryDetails(employeeIds);
+  }
   if (input.salaryDetails && input.salaryDetails.length > 0) {
     salaryDetails = mergeSalaryDetails(salaryDetails, input.salaryDetails);
   }
