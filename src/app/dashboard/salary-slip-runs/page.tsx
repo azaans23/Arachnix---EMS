@@ -1008,9 +1008,10 @@ export default function SalarySlipRunsPage() {
                           </td>
                           <td className="px-5 py-3.5 text-muted">
                             {run.successCount} ok
-                            {run.failCount > 0 ? (
-                              <span className="text-danger"> · {run.failCount} failed</span>
-                            ) : null}
+                            <span className={run.failCount > 0 ? ' text-danger' : ''}>
+                              {' '}
+                              · {run.failCount} failed
+                            </span>
                           </td>
                           <td className="px-5 py-3.5 text-right">
                             <Link

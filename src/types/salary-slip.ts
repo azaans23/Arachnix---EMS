@@ -73,16 +73,22 @@ export interface SalaryDetailRecord {
   employeeId: string;
   fullName: string;
   email: string;
+  phone: string;
   department: string;
   designation: string;
-  phone: string;
   employeeType: string;
+  role: string;
+  emsStatus: string;
+  baseSalary: string;
   salary: string;
   allowance: string;
   tax: string;
+  totalEarning: string;
+  totalDeduction: string;
   accountNumber: string;
   accountName: string;
   bankName: string;
+  bankAccountDetails: string;
   raw: Record<string, unknown>;
 }
 

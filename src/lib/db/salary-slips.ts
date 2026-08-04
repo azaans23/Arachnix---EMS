@@ -34,6 +34,29 @@ export function buildRunDetailId(runId: string | number, employeeId: string): st
   return `${String(runId).trim()}-${String(employeeId).trim()}`;
 }
 
+function isSuccessStatus(status: string): boolean {
+  const value = status.trim().toLowerCase();
+  return value === 'success' || value === 'completed' || value === 'sent';
+}
+
+function isFailedStatus(status: string): boolean {
+  const value = status.trim().toLowerCase();
+  return value === 'failed' || value === 'fail' || value === 'error';
+}
+
+export function countDetailsByStatus(details: Array<{ status: string }>): {
+  successCount: number;
+  failCount: number;
+} {
+  let successCount = 0;
+  let failCount = 0;
+  for (const detail of details) {
+    if (isSuccessStatus(detail.status)) successCount += 1;
+    else if (isFailedStatus(detail.status)) failCount += 1;
+  }
+  return { successCount, failCount };
+}
+
 export function mapRunRow(row: RunRow): SalarySlipRun {
   return {
     runId: String(row.runid),
@@ -42,8 +65,8 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
     month: Number(row.month),
     year: Number(row.year),
     status: row.status,
-    successCount: Number(row.successcount || 0),
-    failCount: Number(row.failcount || 0),
+    successCount: Number(row.successcount ?? 0),
+    failCount: Number(row.failcount ?? 0),
   };
 }
 
@@ -61,6 +84,67 @@ export function mapDetailRow(row: DetailRow): SalarySlipRunDetail {
   };
 }
 
+/** Prefer detail-row tallies when the run aggregate is stale (n8n often skips counts). */
+async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]> {
+  if (runs.length === 0) return runs;
+
+  const runIds = runs.map((run) => Number(run.runId)).filter((id) => Number.isFinite(id));
+  if (runIds.length === 0) return runs;
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(DETAILS_TABLE)
+    .select('runid, status')
+    .in('runid', runIds);
+
+  if (error) {
+    console.error('Failed to load detail counts for salary slip runs:', error.message);
+    return runs;
+  }
+
+  const byRun = new Map<string, { successCount: number; failCount: number; total: number }>();
+  for (const row of (data as Array<{ runid: number; status: string }>) || []) {
+    const key = String(row.runid);
+    const current = byRun.get(key) || { successCount: 0, failCount: 0, total: 0 };
+    current.total += 1;
+    if (isSuccessStatus(row.status)) current.successCount += 1;
+    else if (isFailedStatus(row.status)) current.failCount += 1;
+    byRun.set(key, current);
+  }
+
+  const healed: SalarySlipRun[] = [];
+
+  for (const run of runs) {
+    const tallies = byRun.get(run.runId);
+    if (!tallies || tallies.total === 0) {
+      healed.push(run);
+      continue;
+    }
+
+    const next: SalarySlipRun = {
+      ...run,
+      successCount: tallies.successCount,
+      failCount: tallies.failCount,
+    };
+
+    // Heal stale aggregates so future reads and Sheets stay aligned.
+    if (
+      run.successCount !== tallies.successCount ||
+      run.failCount !== tallies.failCount
+    ) {
+      void updateSalarySlipRun(run.runId, {
+        successCount: tallies.successCount,
+        failCount: tallies.failCount,
+      }).catch((healError) => {
+        console.error(`Failed to heal counts for run ${run.runId}:`, healError);
+      });
+    }
+
+    healed.push(next);
+  }
+
+  return healed;
+}
+
 export async function listSalarySlipRuns(): Promise<SalarySlipRun[]> {
   const { data, error } = await getSupabaseAdmin()
     .from(RUNS_TABLE)
@@ -68,7 +152,7 @@ export async function listSalarySlipRuns(): Promise<SalarySlipRun[]> {
     .order('rundate', { ascending: false });
 
   if (error) throw new Error(`Failed to list salary slip runs: ${error.message}`);
-  return ((data as RunRow[]) || []).map(mapRunRow);
+  return applyDetailCounts(((data as RunRow[]) || []).map(mapRunRow));
 }
 
 export async function getSalarySlipRun(runId: string): Promise<SalarySlipRun | null> {
@@ -82,7 +166,10 @@ export async function getSalarySlipRun(runId: string): Promise<SalarySlipRun | n
     .maybeSingle();
 
   if (error) throw new Error(`Failed to load salary slip run: ${error.message}`);
-  return data ? mapRunRow(data as RunRow) : null;
+  if (!data) return null;
+
+  const [run] = await applyDetailCounts([mapRunRow(data as RunRow)]);
+  return run;
 }
 
 export async function listSalarySlipRunDetails(runId: string): Promise<SalarySlipRunDetail[]> {

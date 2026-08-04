@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
-import { updateSalaryDetails } from '@/lib/payroll/salary-details';
+import {
+  fetchSalaryDetails,
+  updateSalaryDetails,
+} from '@/lib/payroll/salary-details';
 import type { SalaryDetailInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +29,30 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
     ).trim(),
     bankName: String(raw.bankName ?? raw.BankName ?? raw['Bank Name'] ?? '').trim(),
   };
+}
+
+/** GET — plain get-salary-detail call (no employeeIds) for full salary rows. */
+export async function GET(request: Request) {
+  try {
+    const { errorResponse } = await verifyResourceAccess(
+      request,
+      'salary_slip_runs',
+      'read'
+    );
+    if (errorResponse) return errorResponse;
+
+    const details = await fetchSalaryDetails();
+
+    return NextResponse.json({
+      success: true,
+      data: details,
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to fetch salary details.';
+    console.error('[GET /api/salary-details]', message, error);
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
 }
 
 /** POST — write missing/updated salary detail rows via n8n update-salary-detail. */

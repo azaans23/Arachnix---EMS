@@ -1,9 +1,15 @@
+const N8N_BASE_URL = (
+  process.env.N8N_BASE_URL ||
+  process.env.NEXT_PUBLIC_N8N_BASE_URL ||
+  'https://n8n.arachnix.ai'
+).replace(/\/$/, '');
+
 export const SHEETS_WEBHOOKS = {
-  getUsers: 'https://n8n.arachnix.io/webhook/get-users',
-  updateUser: 'https://n8n.arachnix.io/webhook-test/update-user',
-  getAuditLog: 'https://n8n.arachnix.io/webhook/get-audit-log',
-  createAudit: 'https://n8n.arachnix.io/webhook/create-audit',
-  generateSalarySlip: 'https://n8n.arachnix.io/webhook-test/generate-salary-slip',
-  getSalaryDetail: 'https://n8n.arachnix.io/webhook/get-salary-detail',
-  updateSalaryDetail: 'https://n8n.arachnix.io/webhook/update-salary-detail',
+  getUsers: `${N8N_BASE_URL}/webhook/get-users`,
+  updateUser: `${N8N_BASE_URL}/webhook/update-user`,
+  getAuditLog: `${N8N_BASE_URL}/webhook/get-audit-log`,
+  createAudit: `${N8N_BASE_URL}/webhook/create-audit`,
+  generateSalarySlip: `${N8N_BASE_URL}/webhook/generate-salary-slip`,
+  getSalaryDetail: `${N8N_BASE_URL}/webhook/get-salary-detail`,
+  updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
 } as const;

@@ -288,6 +288,11 @@ export async function startSalarySlipRun(
     webhookText = await response.text();
     webhookOk = response.ok;
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          'generate-salary-slip webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
+        );
+      }
       throw new Error(
         webhookText || `generate-salary-slip webhook returned status ${response.status}.`
       );

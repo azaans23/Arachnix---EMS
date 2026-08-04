@@ -296,9 +296,7 @@ export default function SalarySlipRunDetailsPage() {
           </h1>
           <p className="mt-1.5 text-sm text-muted">
             {run
-              ? `${displayDate(run.runDate)} · ${run.successCount} ok${
-                  run.failCount > 0 ? ` · ${run.failCount} failed` : ''
-                } · ${recordLabel}`
+              ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${recordLabel}`
               : recordLabel}
           </p>
         </div>

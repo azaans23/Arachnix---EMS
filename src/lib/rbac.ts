@@ -241,6 +241,7 @@ export function canWrite(role: AppRole | string, resource: ResourceKey): boolean
 export const ROUTE_RESOURCES: { prefix: string; resource: ResourceKey }[] = [
   { prefix: '/dashboard/employees', resource: 'employees' },
   { prefix: '/dashboard/audit-log', resource: 'audit_log' },
+  { prefix: '/dashboard/salary', resource: 'salary_slip_runs' },
   { prefix: '/dashboard/salary-slip-runs', resource: 'salary_slip_runs' },
   { prefix: '/dashboard/salary-slip-run-details', resource: 'salary_slip_run_details' },
   { prefix: '/dashboard/payroll', resource: 'salary_slip_runs' },
@@ -295,6 +296,12 @@ export const NAV_ITEMS: NavItemConfig[] = [
     href: '/dashboard/holiday-calendar',
     label: 'Holiday Calendar',
     resource: 'holiday_calendar',
+    section: 'hr',
+  },
+  {
+    href: '/dashboard/salary',
+    label: 'Salary',
+    resource: 'salary_slip_runs',
     section: 'hr',
   },
   {

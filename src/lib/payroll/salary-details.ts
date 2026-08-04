@@ -73,25 +73,27 @@ export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
   const raw = unwrapRow(rawInput);
   return {
     employeeId: pick(raw, 'EmployeeID', 'employeeId', 'EmployeeId'),
-    fullName: pick(raw, 'FullName', 'fullName', 'Name', 'name'),
+    fullName:
+      pick(raw, 'FullName', 'fullName', 'Name', 'name') ||
+      pick(raw, 'Account Name', 'AccountName', 'accountName'),
     email: pick(raw, 'Email', 'email'),
+    phone: pick(raw, 'Phone', 'phone'),
     department: pick(raw, 'Department', 'department'),
     designation: pick(raw, 'Designation', 'designation'),
-    phone: pick(raw, 'Phone', 'phone'),
-    employeeType: pick(raw, 'EmployeeType', 'employeeType'),
-    salary: pick(raw, 'Salary', 'salary', 'BaseSalary', 'baseSalary'),
+    employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
+    role: pick(raw, 'Role', 'role'),
+    emsStatus: pick(raw, 'EMSStatus', 'emsStatus'),
+    baseSalary: pick(raw, 'BaseSalary', 'baseSalary'),
+    // Prefer payroll Salary column; fall back to BaseSalary only if Salary is blank.
+    salary: pick(raw, 'Salary', 'salary') || pick(raw, 'BaseSalary', 'baseSalary'),
     allowance: pick(raw, 'Allowance', 'allowance'),
     tax: pick(raw, 'Tax', 'tax'),
-    accountNumber: pick(
-      raw,
-      'Account Number',
-      'AccountNumber',
-      'accountNumber',
-      'BankAccountDetails',
-      'bankAccountDetails'
-    ),
+    totalEarning: pick(raw, 'Total Earning', 'TotalEarning', 'totalEarning'),
+    totalDeduction: pick(raw, 'Total Deduction', 'TotalDeduction', 'totalDeduction'),
+    accountNumber: pick(raw, 'Account Number', 'AccountNumber', 'accountNumber'),
     accountName: pick(raw, 'Account Name', 'AccountName', 'accountName'),
     bankName: pick(raw, 'Bank Name', 'BankName', 'bankName'),
+    bankAccountDetails: pick(raw, 'BankAccountDetails', 'bankAccountDetails'),
     raw,
   };
 }
@@ -166,10 +168,23 @@ export async function fetchSalaryDetails(
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
+  }).catch((error: unknown) => {
+    const cause =
+      error instanceof Error
+        ? error.cause instanceof Error
+          ? `${error.message} (${error.cause.message})`
+          : error.message
+        : String(error);
+    throw new Error(`get-salary-detail webhook request failed: ${cause}`);
   });
 
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(
+        'get-salary-detail webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
+      );
+    }
     throw new Error(text || `get-salary-detail webhook returned status ${response.status}.`);
   }
 
@@ -180,13 +195,10 @@ export async function fetchSalaryDetails(
     throw new Error('get-salary-detail webhook returned non-JSON data.');
   }
 
-  console.log('[get-salary-detail] raw response:', parsed);
-
   let rows = normalizeSalaryDetailsPayload(parsed)
     .map(mapRawToSalaryDetail)
     .filter((row) => Boolean(row.employeeId));
 
-  console.log('[get-salary-detail] mapped rows:', rows);
   if (employeeIds && employeeIds.length > 0) {
     const wanted = new Set(employeeIds.map((id) => id.trim().toLowerCase()));
     const filtered = rows.filter((row) => wanted.has(row.employeeId.trim().toLowerCase()));
@@ -228,6 +240,11 @@ export async function updateSalaryDetails(
 
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(
+        'update-salary-detail webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
+      );
+    }
     throw new Error(text || `update-salary-detail webhook returned status ${response.status}.`);
   }
 
@@ -265,16 +282,22 @@ export function mergeSalaryDetails(
       employeeId: override.employeeId.trim(),
       fullName: current?.fullName || '',
       email: current?.email || '',
+      phone: current?.phone || '',
       department: current?.department || '',
       designation: current?.designation || '',
-      phone: current?.phone || '',
       employeeType: current?.employeeType || '',
+      role: current?.role || '',
+      emsStatus: current?.emsStatus || '',
+      baseSalary: current?.baseSalary || '',
       salary: override.salary?.trim() || current?.salary || '',
       allowance: override.allowance?.trim() || current?.allowance || '',
       tax: override.tax?.trim() || current?.tax || '',
+      totalEarning: current?.totalEarning || '',
+      totalDeduction: current?.totalDeduction || '',
       accountNumber: override.accountNumber?.trim() || current?.accountNumber || '',
       accountName: override.accountName?.trim() || current?.accountName || '',
       bankName: override.bankName?.trim() || current?.bankName || '',
+      bankAccountDetails: current?.bankAccountDetails || '',
       raw: current?.raw || {},
     });
   }

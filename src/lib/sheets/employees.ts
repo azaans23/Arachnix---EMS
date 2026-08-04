@@ -253,10 +253,22 @@ async function parseWebhookError(response: Response, fallback: string): Promise<
   try {
     const jsonErr = JSON.parse(errText);
     if (jsonErr.message) {
-      return jsonErr.message + (jsonErr.hint ? ` ${jsonErr.hint}` : '');
+      const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
+      const message = String(jsonErr.message) + hint;
+      if (response.status === 404) {
+        return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
+      }
+      return message;
     }
   } catch {
     /* keep text */
+  }
+
+  if (response.status === 404) {
+    return (
+      errText ||
+      'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
+    );
   }
 
   return errText || fallback;
