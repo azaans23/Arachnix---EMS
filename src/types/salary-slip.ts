@@ -51,10 +51,17 @@ export interface GenerateSalarySlipsInput {
    */
   confirmIncomplete?: boolean;
   /**
+   * When true, proceed to create the run after earnings/deductions extras are collected.
+   * When false/omitted and base salary details are complete, the API returns needsExtras.
+   */
+  confirmExtras?: boolean;
+  /**
    * User-provided / just-updated salary rows. Merged over get-salary-detail results
    * so generate can use fresh values without waiting for sheet sync.
    */
   salaryDetails?: SalaryDetailInput[];
+  /** Per-employee overtime/bonus/contribution/others entered before generate. */
+  salaryExtras?: SalaryRunExtraInput[];
 }
 
 /** Fields the user can enter / send to update-salary-detail. */
@@ -66,6 +73,15 @@ export interface SalaryDetailInput {
   accountNumber: string;
   accountName: string;
   bankName: string;
+}
+
+/** Run-specific earnings / deductions collected before generate. */
+export interface SalaryRunExtraInput {
+  employeeId: string;
+  overtimePay: string;
+  performanceBonus: string;
+  contribution: string;
+  others: string;
 }
 
 /** Row from n8n get-salary-detail webhook. */

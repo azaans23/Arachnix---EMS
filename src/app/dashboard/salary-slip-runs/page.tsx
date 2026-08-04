@@ -34,6 +34,7 @@ import type {
   IncompleteSalaryDetail,
   SalaryDetailInput,
   SalaryDetailRecord,
+  SalaryRunExtraInput,
   SalarySlipRun,
 } from '@/types/salary-slip';
 
@@ -119,6 +120,66 @@ const SALARY_FORM_FIELDS = [
 
 type SalaryFormFieldKey = (typeof SALARY_FORM_FIELDS)[number]['key'];
 
+const EARNING_EXTRA_FIELDS = [
+  { key: 'overtimePay', label: 'Overtime Pay' },
+  { key: 'performanceBonus', label: 'Performance Bonus' },
+] as const;
+
+const DEDUCTION_EXTRA_FIELDS = [
+  { key: 'contribution', label: 'Contribution' },
+  { key: 'others', label: 'Others' },
+] as const;
+
+type ExtraFormFieldKey =
+  | (typeof EARNING_EXTRA_FIELDS)[number]['key']
+  | (typeof DEDUCTION_EXTRA_FIELDS)[number]['key'];
+
+function emptyExtraForm(employeeId: string): SalaryRunExtraInput {
+  return {
+    employeeId,
+    overtimePay: '',
+    performanceBonus: '',
+    contribution: '',
+    others: '',
+  };
+}
+
+function buildExtraForms(
+  employeeIds: string[],
+  details: SalaryDetailRecord[],
+  employees: PayrollEmployee[]
+): SalaryRunExtraInput[] {
+  const detailById = new Map(
+    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
+  );
+  const employeeById = new Map(
+    employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
+  );
+
+  return employeeIds.map((employeeId) => {
+    const key = employeeId.trim().toLowerCase();
+    const detail = detailById.get(key);
+    const employee = employeeById.get(key);
+    return emptyExtraForm(detail?.employeeId || employee?.employeeId || employeeId);
+  });
+}
+
+function extraMetaForEmployee(
+  employeeId: string,
+  details: SalaryDetailRecord[],
+  employees: PayrollEmployee[]
+) {
+  const key = employeeId.trim().toLowerCase();
+  const detail = details.find((row) => row.employeeId.trim().toLowerCase() === key);
+  const employee = employees.find((row) => row.employeeId.trim().toLowerCase() === key);
+  return {
+    fullName: detail?.fullName || employee?.name || employeeId,
+    email: detail?.email || employee?.email || '',
+    designation: detail?.designation || '',
+    department: detail?.department || '',
+  };
+}
+
 function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInput {
   return {
     employeeId: detail.employeeId,
@@ -202,6 +263,12 @@ export default function SalarySlipRunsPage() {
   );
   const [salaryForms, setSalaryForms] = useState<SalaryDetailInput[]>([]);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [extrasOpen, setExtrasOpen] = useState(false);
+  const [extraForms, setExtraForms] = useState<SalaryRunExtraInput[]>([]);
+  const [extrasDetails, setExtrasDetails] = useState<SalaryDetailRecord[]>([]);
+  const [pendingSalaryDetails, setPendingSalaryDetails] = useState<SalaryDetailInput[] | undefined>(
+    undefined
+  );
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
   const [mode, setMode] = useState<'all' | 'selected'>('all');
@@ -352,10 +419,27 @@ export default function SalarySlipRunsPage() {
     );
   };
 
+  const openExtrasStep = (
+    details: SalaryDetailRecord[],
+    employeeIds: string[],
+    salaryDetails?: SalaryDetailInput[]
+  ) => {
+    setIncompleteConfirm(null);
+    setSalaryForms([]);
+    setShowGenerate(false);
+    setExtrasDetails(details);
+    setPendingSalaryDetails(salaryDetails);
+    setExtraForms(buildExtraForms(employeeIds, details, employees));
+    setExtrasOpen(true);
+    toast.message('Enter earnings and deductions for each employee.');
+  };
+
   const handleGenerate = async (
     options: {
       confirmIncomplete?: boolean;
+      confirmExtras?: boolean;
       salaryDetails?: SalaryDetailInput[];
+      salaryExtras?: SalaryRunExtraInput[];
     } = {}
   ) => {
     if (!canGenerate) return;
@@ -377,7 +461,9 @@ export default function SalarySlipRunsPage() {
           year: Number(year),
           employeeIds: mode === 'selected' ? selectedIds : undefined,
           confirmIncomplete: options.confirmIncomplete || undefined,
+          confirmExtras: options.confirmExtras || undefined,
           salaryDetails: options.salaryDetails,
+          salaryExtras: options.salaryExtras,
         }),
       });
       const result = await response.json();
@@ -386,7 +472,7 @@ export default function SalarySlipRunsPage() {
         const incomplete = (result.data?.incomplete || []) as IncompleteSalaryDetail[];
         const details = (result.data?.details || []) as SalaryDetailRecord[];
 
-        // Prefer fetched rows that are already complete — continue without the popup.
+        // Prefer fetched rows that are already complete — continue to extras step.
         const completeDetails = details.filter(
           (detail) =>
             detail.employeeId &&
@@ -398,9 +484,6 @@ export default function SalarySlipRunsPage() {
             detail.bankName
         );
 
-        const incompleteIds = new Set(
-          incomplete.map((row) => row.employeeId.trim().toLowerCase())
-        );
         const completeCoversAllIncomplete =
           incomplete.length > 0 &&
           incomplete.every((row) =>
@@ -418,7 +501,6 @@ export default function SalarySlipRunsPage() {
           return;
         }
 
-        // If every selected employee already has a complete fetched row, continue.
         if (incomplete.length === 0 && completeDetails.length > 0) {
           await handleGenerate({
             confirmIncomplete: true,
@@ -440,8 +522,14 @@ export default function SalarySlipRunsPage() {
           return;
         }
 
-        // Only show popup for employees that still have empty required fields.
-        const reallyIncomplete = incomplete.filter((row) => incompleteIds.has(row.employeeId.trim().toLowerCase()) && stillMissing.some((form) => form.employeeId === row.employeeId));
+        const incompleteIds = new Set(
+          incomplete.map((row) => row.employeeId.trim().toLowerCase())
+        );
+        const reallyIncomplete = incomplete.filter(
+          (row) =>
+            incompleteIds.has(row.employeeId.trim().toLowerCase()) &&
+            stillMissing.some((form) => form.employeeId === row.employeeId)
+        );
 
         setIncompleteConfirm(
           enrichIncompleteRows(
@@ -455,12 +543,27 @@ export default function SalarySlipRunsPage() {
         return;
       }
 
+      if (response.status === 409 && result.needsExtras) {
+        const details = (result.data?.details || []) as SalaryDetailRecord[];
+        const employeeIdsFromApi = (result.data?.employeeIds || []) as string[];
+        const employeeIds =
+          employeeIdsFromApi.length > 0
+            ? employeeIdsFromApi
+            : details.map((detail) => detail.employeeId).filter(Boolean);
+        openExtrasStep(details, employeeIds, options.salaryDetails);
+        return;
+      }
+
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to start salary slip run.');
       }
 
       setIncompleteConfirm(null);
       setSalaryForms([]);
+      setExtrasOpen(false);
+      setExtraForms([]);
+      setExtrasDetails([]);
+      setPendingSalaryDetails(undefined);
       toast.success(result.message || 'Salary slip run started.');
       setShowGenerate(false);
       setSelectedIds([]);
@@ -488,7 +591,19 @@ export default function SalarySlipRunsPage() {
     );
   };
 
-  const handleSaveDetailsAndGenerate = async () => {
+  const updateExtraFormField = (
+    employeeId: string,
+    field: ExtraFormFieldKey,
+    value: string
+  ) => {
+    setExtraForms((current) =>
+      current.map((row) =>
+        row.employeeId === employeeId ? { ...row, [field]: value } : row
+      )
+    );
+  };
+
+  const handleSaveDetailsAndContinue = async () => {
     if (!incompleteConfirm || salaryForms.length === 0) return;
 
     for (const row of salaryForms) {
@@ -527,6 +642,16 @@ export default function SalarySlipRunsPage() {
     } finally {
       setSavingDetails(false);
     }
+  };
+
+  const handleConfirmExtrasAndGenerate = async () => {
+    if (extraForms.length === 0) return;
+    await handleGenerate({
+      confirmIncomplete: true,
+      confirmExtras: true,
+      salaryDetails: pendingSalaryDetails,
+      salaryExtras: extraForms,
+    });
   };
 
   if (allowed === null) {
@@ -754,7 +879,8 @@ export default function SalarySlipRunsPage() {
                     Enter missing salary details
                   </h2>
                   <p className="mt-1 text-sm text-muted">
-                    These values will be saved via update-salary-detail, then slips will generate.
+                    These values will be saved via update-salary-detail, then you can enter
+                    earnings and deductions.
                   </p>
                 </div>
                 <button
@@ -844,7 +970,7 @@ export default function SalarySlipRunsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleSaveDetailsAndGenerate()}
+                  onClick={() => void handleSaveDetailsAndContinue()}
                   disabled={submitting || savingDetails}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                 >
@@ -854,7 +980,158 @@ export default function SalarySlipRunsPage() {
                       Saving…
                     </>
                   ) : (
-                    'Save & generate'
+                    'Save & continue'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  const extrasModal =
+    mounted && extrasOpen
+      ? createPortal(
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="salary-extras-title"
+              className="flex max-h-[min(90vh,42rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+            >
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h2
+                    id="salary-extras-title"
+                    className="text-lg font-semibold tracking-tight text-ink"
+                  >
+                    Earnings & deductions
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Optional adjustments for this run. Leave blank for zero.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExtrasOpen(false);
+                    setExtraForms([]);
+                    setExtrasDetails([]);
+                    setPendingSalaryDetails(undefined);
+                  }}
+                  className="rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                {extraForms.map((row) => {
+                  const meta = extraMetaForEmployee(row.employeeId, extrasDetails, employees);
+                  return (
+                    <div
+                      key={row.employeeId}
+                      className="rounded-lg border border-border bg-canvas/40 p-4"
+                    >
+                      <div className="mb-3 border-b border-border pb-3">
+                        <p className="text-sm font-semibold text-ink">{meta.fullName}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {row.employeeId}
+                          {meta.designation ? ` · ${meta.designation}` : ''}
+                          {meta.department ? ` · ${meta.department}` : ''}
+                        </p>
+                        {meta.email ? (
+                          <p className="mt-0.5 truncate text-xs text-muted">{meta.email}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                            Earnings
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {EARNING_EXTRA_FIELDS.map((field) => (
+                              <label key={field.key} className="block text-xs">
+                                <span className="mb-1 block font-medium text-muted">
+                                  {field.label}
+                                </span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={row[field.key]}
+                                  onChange={(e) =>
+                                    updateExtraFormField(row.employeeId, field.key, e.target.value)
+                                  }
+                                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                                  placeholder="0"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                            Deductions
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {DEDUCTION_EXTRA_FIELDS.map((field) => (
+                              <label key={field.key} className="block text-xs">
+                                <span className="mb-1 block font-medium text-muted">
+                                  {field.label}
+                                </span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={row[field.key]}
+                                  onChange={(e) =>
+                                    updateExtraFormField(row.employeeId, field.key, e.target.value)
+                                  }
+                                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                                  placeholder="0"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExtrasOpen(false);
+                    setExtraForms([]);
+                    setExtrasDetails([]);
+                    setPendingSalaryDetails(undefined);
+                  }}
+                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmExtrasAndGenerate()}
+                  disabled={submitting}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Banknote className="h-4 w-4" />
+                      Generate slips
+                    </>
                   )}
                 </button>
               </div>
@@ -1074,6 +1351,7 @@ export default function SalarySlipRunsPage() {
 
       {generateModal}
       {incompleteModal}
+      {extrasModal}
     </div>
   );
 }

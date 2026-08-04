@@ -172,6 +172,12 @@ export async function startSalarySlipRun(
       details: SalaryDetailRecord[];
       message: string;
     }
+  | {
+      needsExtras: true;
+      details: SalaryDetailRecord[];
+      employeeIds: string[];
+      message: string;
+    }
 > {
   const month = Number(input.month);
   const year = Number(input.year);
@@ -208,6 +214,21 @@ export async function startSalarySlipRun(
     };
   }
 
+  const extrasById = new Map(
+    (input.salaryExtras || []).map((row) => [row.employeeId.trim().toLowerCase(), row])
+  );
+
+  // After base salary details are ready, collect overtime/bonus/contribution/others for everyone.
+  if (!input.confirmExtras) {
+    return {
+      needsExtras: true,
+      details: salaryDetails,
+      employeeIds,
+      message:
+        'Enter overtime, performance bonus, contribution, and other adjustments for each employee, then generate.',
+    };
+  }
+
   const detailsById = new Map(
     salaryDetails.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
   );
@@ -241,26 +262,36 @@ export async function startSalarySlipRun(
     monthName: monthName(month),
     triggeredBy: actorEmail,
     employeeIds,
-    salaryDetails: salaryDetails.map((detail) => ({
-      EmployeeID: detail.employeeId,
-      FullName: detail.fullName,
-      Email: detail.email,
-      Department: detail.department,
-      Designation: detail.designation,
-      Phone: detail.phone,
-      EmployeeType: detail.employeeType,
-      Salary: detail.salary,
-      Allowance: detail.allowance,
-      Tax: detail.tax,
-      'Account Number': detail.accountNumber,
-      'Account Name': detail.accountName,
-      'Bank Name': detail.bankName,
-      AccountNumber: detail.accountNumber,
-      AccountName: detail.accountName,
-      BankName: detail.bankName,
-    })),
+    salaryDetails: salaryDetails.map((detail) => {
+      const extras = extrasById.get(detail.employeeId.trim().toLowerCase());
+      return {
+        EmployeeID: detail.employeeId,
+        FullName: detail.fullName,
+        Email: detail.email,
+        Department: detail.department,
+        Designation: detail.designation,
+        Phone: detail.phone,
+        EmployeeType: detail.employeeType,
+        Salary: detail.salary,
+        Allowance: detail.allowance,
+        Tax: detail.tax,
+        'Account Number': detail.accountNumber,
+        'Account Name': detail.accountName,
+        'Bank Name': detail.bankName,
+        AccountNumber: detail.accountNumber,
+        AccountName: detail.accountName,
+        BankName: detail.bankName,
+        OvertimePay: extras?.overtimePay || '',
+        PerformanceBonus: extras?.performanceBonus || '',
+        Contribution: extras?.contribution || '',
+        Others: extras?.others || '',
+        'Overtime Pay': extras?.overtimePay || '',
+        'Performance Bonus': extras?.performanceBonus || '',
+      };
+    }),
     employees: employees.map((employee) => {
       const detail = detailsById.get(employee.employeeId.trim().toLowerCase());
+      const extras = extrasById.get(employee.employeeId.trim().toLowerCase());
       return {
         RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
         EmployeeID: employee.employeeId,
@@ -271,6 +302,12 @@ export async function startSalarySlipRun(
         Designation: detail?.designation || employee.designation,
         BankAccountDetails: employee.bankAccountDetails,
         ...toSalaryDetailWebhookFields(detail),
+        OvertimePay: extras?.overtimePay || '',
+        PerformanceBonus: extras?.performanceBonus || '',
+        Contribution: extras?.contribution || '',
+        Others: extras?.others || '',
+        'Overtime Pay': extras?.overtimePay || '',
+        'Performance Bonus': extras?.performanceBonus || '',
       };
     }),
   };
