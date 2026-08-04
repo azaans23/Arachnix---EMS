@@ -6,7 +6,7 @@ import {
   upsertSalarySlipRunDetail,
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
-import { formatSalaryPeriod } from '@/lib/db/salaries';
+import { formatSalaryPeriod, buildSalaryUniqueKey } from '@/lib/payroll/period';
 import { createAuditLog } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
@@ -159,8 +159,9 @@ async function logSalarySlipRunAudit(
  * updates run/detail rows when the workflow returns per-employee results.
  * If n8n responds immediately (ack only), the run stays "Processing".
  *
- * Prefetches salary details (allowance/tax/bank). When fields are missing and
- * confirmIncomplete is not set, returns needsConfirmation instead of creating a run.
+ * Prefetches salary details. When confirmIncomplete is not set, returns
+ * needsConfirmation so the UI can show one salary-details form (with empty
+ * fields highlighted) before creating the run.
  */
 export async function startSalarySlipRun(
   actorEmail: string,
@@ -171,12 +172,6 @@ export async function startSalarySlipRun(
       needsConfirmation: true;
       incomplete: IncompleteSalaryDetail[];
       details: SalaryDetailRecord[];
-      message: string;
-    }
-  | {
-      needsExtras: true;
-      details: SalaryDetailRecord[];
-      employeeIds: string[];
       message: string;
     }
 > {
@@ -190,50 +185,44 @@ export async function startSalarySlipRun(
     throw new Error('Year looks invalid.');
   }
 
+  const period = formatSalaryPeriod(month, year);
   const employees = await resolvePayrollEmployees(input.employeeIds);
   const employeeIds = employees.map((employee) => employee.employeeId);
+  const uniqueKeys = employeeIds.map((id) => buildSalaryUniqueKey(id, period));
 
-  let salaryDetails = await fetchSalaryDetails(
-    employeeIds,
-    formatSalaryPeriod(month, year)
-  );
-  // Fall back to any stored salary rows for these employees if the run period has none yet.
-  if (salaryDetails.length === 0) {
-    salaryDetails = await fetchSalaryDetails(employeeIds);
-  }
+  // Fetch by UniqueKey (EmployeeID-Period). Missing keys → empty fields in review modal.
+  let salaryDetails = await fetchSalaryDetails(employeeIds, period, uniqueKeys);
   if (input.salaryDetails && input.salaryDetails.length > 0) {
     salaryDetails = mergeSalaryDetails(salaryDetails, input.salaryDetails);
   }
 
-  // Drop any false positives: if a fetched row is complete, never ask for it.
-  let incomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails).filter((row) => {
-    const detail = salaryDetails.find(
-      (item) => item.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
-    );
-    return !detail || !isSalaryDetailComplete(detail);
-  });
-
-  if (incomplete.length > 0 && !input.confirmIncomplete) {
+  // Always collect / review salary details in one modal before creating the run.
+  if (!input.confirmIncomplete) {
+    const incomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails);
     return {
       needsConfirmation: true,
       incomplete,
       details: salaryDetails,
-      message: `${incomplete.length} employee${incomplete.length === 1 ? '' : 's'} are missing salary detail fields (Allowance, Tax, bank info, etc.). Enter the missing values to update them, then continue.`,
+      message:
+        'Review salary details for each employee. Empty fields are highlighted — fill required values, then generate.',
     };
   }
 
-  const extrasById = new Map(
-    (input.salaryExtras || []).map((row) => [row.employeeId.trim().toLowerCase(), row])
+  const stillIncomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails).filter(
+    (row) => {
+      const detail = salaryDetails.find(
+        (item) => item.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
+      );
+      return !detail || !isSalaryDetailComplete(detail);
+    }
   );
 
-  // After base salary details are ready, collect overtime/bonus/contribution/others for everyone.
-  if (!input.confirmExtras) {
+  if (stillIncomplete.length > 0) {
     return {
-      needsExtras: true,
+      needsConfirmation: true,
+      incomplete: stillIncomplete,
       details: salaryDetails,
-      employeeIds,
-      message:
-        'Enter overtime, performance bonus, contribution, and other adjustments for each employee, then generate.',
+      message: `${stillIncomplete.length} employee${stillIncomplete.length === 1 ? '' : 's'} are still missing Base Salary or bank details.`,
     };
   }
 
@@ -255,11 +244,11 @@ export async function startSalarySlipRun(
       month,
       year,
       monthName: monthName(month),
+      period,
       status: 'Processing',
       employeeCount: employeeIds.length,
       employeeIds,
       triggeredBy: actorEmail,
-      incompleteCount: incomplete.length,
     },
   });
 
@@ -268,54 +257,31 @@ export async function startSalarySlipRun(
     month,
     year,
     monthName: monthName(month),
+    period,
     triggeredBy: actorEmail,
     employeeIds,
-    salaryDetails: salaryDetails.map((detail) => {
-      const extras = extrasById.get(detail.employeeId.trim().toLowerCase());
-      return {
-        EmployeeID: detail.employeeId,
-        FullName: detail.fullName,
-        Email: detail.email,
-        Department: detail.department,
-        Designation: detail.designation,
-        Phone: detail.phone,
-        EmployeeType: detail.employeeType,
-        Salary: detail.salary,
-        Allowance: detail.allowance,
-        Tax: detail.tax,
-        'Account Number': detail.accountNumber,
-        'Account Name': detail.accountName,
-        'Bank Name': detail.bankName,
-        AccountNumber: detail.accountNumber,
-        AccountName: detail.accountName,
-        BankName: detail.bankName,
-        OvertimePay: extras?.overtimePay || '',
-        PerformanceBonus: extras?.performanceBonus || '',
-        Contribution: extras?.contribution || '',
-        Others: extras?.others || '',
-        'Overtime Pay': extras?.overtimePay || '',
-        'Performance Bonus': extras?.performanceBonus || '',
-      };
-    }),
+    salaryDetails: salaryDetails.map((detail) => ({
+      EmployeeID: detail.employeeId,
+      FullName: detail.fullName,
+      Email: detail.email,
+      Department: detail.department,
+      Designation: detail.designation,
+      Phone: detail.phone,
+      EmployeeType: detail.employeeType,
+      ...toSalaryDetailWebhookFields(detail),
+    })),
     employees: employees.map((employee) => {
       const detail = detailsById.get(employee.employeeId.trim().toLowerCase());
-      const extras = extrasById.get(employee.employeeId.trim().toLowerCase());
       return {
         RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
         EmployeeID: employee.employeeId,
         FullName: detail?.fullName || employee.fullName,
         Email: detail?.email || employee.email,
-        BaseSalary: employee.baseSalary,
+        BaseSalary: detail?.salary || employee.baseSalary,
         Department: detail?.department || employee.department,
         Designation: detail?.designation || employee.designation,
         BankAccountDetails: employee.bankAccountDetails,
         ...toSalaryDetailWebhookFields(detail),
-        OvertimePay: extras?.overtimePay || '',
-        PerformanceBonus: extras?.performanceBonus || '',
-        Contribution: extras?.contribution || '',
-        Others: extras?.others || '',
-        'Overtime Pay': extras?.overtimePay || '',
-        'Performance Bonus': extras?.performanceBonus || '',
       };
     }),
   };

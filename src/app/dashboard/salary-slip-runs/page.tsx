@@ -21,21 +21,23 @@ import CustomDropdown from '@/components/ui/Dropdown';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
-import { getTrustedRole } from '@/lib/rbac';
+import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
+import { buildSalaryUniqueKey, formatSalaryPeriod } from '@/lib/payroll/period';
 import {
   hasPayrollSalary,
   parseBaseSalary,
   payrollEligibilityReason,
 } from '@/lib/payroll/generate';
 import { toSheetUser, type SheetUser } from '@/types/employee';
-import type {
-  IncompleteSalaryDetail,
-  SalaryDetailInput,
-  SalaryDetailRecord,
-  SalaryRunExtraInput,
-  SalarySlipRun,
+import {
+  SALARY_DETAIL_FIELDS,
+  type IncompleteSalaryDetail,
+  type SalaryDetailFieldKey,
+  type SalaryDetailInput,
+  type SalaryDetailRecord,
+  type SalarySlipRun,
 } from '@/types/salary-slip';
 
 type PayrollEmployee = SheetUser & {
@@ -75,6 +77,13 @@ const PAGE_SIZE_OPTIONS = [
   { label: '100 / page', value: '100' },
 ];
 
+const REQUIRED_MISSING = new Set([
+  'Base Salary',
+  'Account Number',
+  'Account Name',
+  'Bank Name',
+]);
+
 function currentYearOptions() {
   const year = new Date().getFullYear();
   return [year - 1, year, year + 1].map((value) => ({
@@ -109,122 +118,69 @@ function monthLabel(month: number) {
   return MONTH_OPTIONS.find((option) => option.value === String(month))?.label || String(month);
 }
 
-const SALARY_FORM_FIELDS = [
-  { key: 'salary', label: 'Salary', missing: 'Salary' },
-  { key: 'allowance', label: 'Allowance', missing: 'Allowance' },
-  { key: 'tax', label: 'Tax', missing: 'Tax' },
-  { key: 'accountNumber', label: 'Account Number', missing: 'Account Number' },
-  { key: 'accountName', label: 'Account Name', missing: 'Account Name' },
-  { key: 'bankName', label: 'Bank Name', missing: 'Bank Name' },
-] as const;
-
-type SalaryFormFieldKey = (typeof SALARY_FORM_FIELDS)[number]['key'];
-
-const EARNING_EXTRA_FIELDS = [
-  { key: 'overtimePay', label: 'Overtime Pay' },
-  { key: 'performanceBonus', label: 'Performance Bonus' },
-] as const;
-
-const DEDUCTION_EXTRA_FIELDS = [
-  { key: 'contribution', label: 'Contribution' },
-  { key: 'others', label: 'Others' },
-] as const;
-
-type ExtraFormFieldKey =
-  | (typeof EARNING_EXTRA_FIELDS)[number]['key']
-  | (typeof DEDUCTION_EXTRA_FIELDS)[number]['key'];
-
-function emptyExtraForm(employeeId: string): SalaryRunExtraInput {
-  return {
-    employeeId,
-    overtimePay: '',
-    performanceBonus: '',
-    contribution: '',
-    others: '',
-  };
-}
-
-function buildExtraForms(
-  employeeIds: string[],
-  details: SalaryDetailRecord[],
-  employees: PayrollEmployee[]
-): SalaryRunExtraInput[] {
-  const detailById = new Map(
-    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
-  );
-  const employeeById = new Map(
-    employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
-  );
-
-  return employeeIds.map((employeeId) => {
-    const key = employeeId.trim().toLowerCase();
-    const detail = detailById.get(key);
-    const employee = employeeById.get(key);
-    return emptyExtraForm(detail?.employeeId || employee?.employeeId || employeeId);
-  });
-}
-
-function extraMetaForEmployee(
-  employeeId: string,
-  details: SalaryDetailRecord[],
-  employees: PayrollEmployee[]
-) {
-  const key = employeeId.trim().toLowerCase();
-  const detail = details.find((row) => row.employeeId.trim().toLowerCase() === key);
-  const employee = employees.find((row) => row.employeeId.trim().toLowerCase() === key);
-  return {
-    fullName: detail?.fullName || employee?.name || employeeId,
-    email: detail?.email || employee?.email || '',
-    designation: detail?.designation || '',
-    department: detail?.department || '',
-  };
-}
-
-function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInput {
-  return {
-    employeeId: detail.employeeId,
-    salary: detail.salary,
-    allowance: detail.allowance,
-    tax: detail.tax,
-    accountNumber: detail.accountNumber,
-    accountName: detail.accountName,
-    bankName: detail.bankName,
-    period: detail.period,
-    status: detail.status,
-    totalEarning: detail.totalEarning,
-    totalDeduction: detail.totalDeduction,
-  };
+function isEmptyValue(value: unknown) {
+  return String(value ?? '').trim() === '';
 }
 
 function buildSalaryForms(
   incomplete: IncompleteSalaryDetail[],
   details: SalaryDetailRecord[],
-  employees: PayrollEmployee[] = [],
   period?: string
 ): SalaryDetailInput[] {
+  const periodKey = (period || '').trim();
   const byId = new Map(
-    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
-  );
-  const employeeById = new Map(
-    employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
+    details
+      .filter((detail) => {
+        if (!periodKey) return true;
+        return (detail.period || '').trim() === periodKey;
+      })
+      .map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
   );
 
   return incomplete.map((row) => {
     const key = row.employeeId.trim().toLowerCase();
     const existing = byId.get(key);
-    const employee = employeeById.get(key);
-    const fallbackSalary =
-      employee?.salaryLabel && employee.salaryLabel !== '—' ? employee.salaryLabel : '';
+    // Only prefill when EmployeeID + Period match; otherwise empty fields for this period.
+    if (existing) {
+      return {
+        employeeId: row.employeeId,
+        salary: existing.salary || '',
+        allowance: existing.allowance || '',
+        tax: existing.tax || '',
+        overtimePay: existing.overtimePay || '',
+        performanceBonus: existing.performanceBonus || '',
+        contributions: existing.contributions || '',
+        others: existing.others || '',
+        netSalary: existing.netSalary || '',
+        accountNumber: existing.accountNumber || '',
+        accountName: existing.accountName || '',
+        bankName: existing.bankName || '',
+        period: existing.period || periodKey,
+        uniqueKey: existing.uniqueKey || '',
+        status: existing.status || 'Pending',
+        totalEarning: existing.totalEarning || '',
+        totalDeduction: existing.totalDeduction || '',
+      };
+    }
+
     return {
       employeeId: row.employeeId,
-      salary: existing?.salary || fallbackSalary,
-      allowance: existing?.allowance || '',
-      tax: existing?.tax || '',
-      accountNumber: existing?.accountNumber || '',
-      accountName: existing?.accountName || '',
-      bankName: existing?.bankName || '',
-      period: existing?.period || period || '',
-      status: existing?.status || 'Pending',
+      salary: '',
+      allowance: '',
+      tax: '',
+      overtimePay: '',
+      performanceBonus: '',
+      contributions: '',
+      others: '',
+      netSalary: '',
+      accountNumber: '',
+      accountName: '',
+      bankName: '',
+      period: periodKey,
+      uniqueKey: '',
+      status: 'Pending',
+      totalEarning: '',
+      totalDeduction: '',
     };
   });
 }
@@ -255,6 +211,12 @@ function enrichIncompleteRows(
   });
 }
 
+function emptyFieldsForForm(row: SalaryDetailInput): string[] {
+  return SALARY_DETAIL_FIELDS.filter((field) => isEmptyValue(row[field.key])).map(
+    (field) => field.missing
+  );
+}
+
 export default function SalarySlipRunsPage() {
   const router = useRouter();
   const now = new Date();
@@ -265,17 +227,9 @@ export default function SalarySlipRunsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
-  const [incompleteConfirm, setIncompleteConfirm] = useState<IncompleteSalaryDetail[] | null>(
-    null
-  );
+  const [salaryReview, setSalaryReview] = useState<IncompleteSalaryDetail[] | null>(null);
   const [salaryForms, setSalaryForms] = useState<SalaryDetailInput[]>([]);
   const [savingDetails, setSavingDetails] = useState(false);
-  const [extrasOpen, setExtrasOpen] = useState(false);
-  const [extraForms, setExtraForms] = useState<SalaryRunExtraInput[]>([]);
-  const [extrasDetails, setExtrasDetails] = useState<SalaryDetailRecord[]>([]);
-  const [pendingSalaryDetails, setPendingSalaryDetails] = useState<SalaryDetailInput[] | undefined>(
-    undefined
-  );
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
   const [mode, setMode] = useState<'all' | 'selected'>('all');
@@ -350,17 +304,25 @@ export default function SalarySlipRunsPage() {
       let role = getTrustedRole(session.user);
       try {
         const synced = await syncSessionCookies(session.access_token);
-        role = synced.role;
+        if (synced.role) role = synced.role;
       } catch {
-        /* keep JWT */
+        /* gate cookie optional for page boot */
       }
-      const canRead = role === 'super_admin' || role === 'hr_manager';
-      setAllowed(canRead);
-      setCanGenerate(canRead);
-      if (canRead) await load();
+      if (!role) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        role = (data?.role as string) || null;
+      }
+      const canView = canAccess(role || '', 'salary_slip_runs');
+      setCanGenerate(canWrite(role || '', 'salary_slip_runs'));
+      setAllowed(canView);
+      if (canView) await load();
       else setLoading(false);
     };
-    boot();
+    void boot();
   }, [load]);
 
   const eligibleEmployees = useMemo(
@@ -371,31 +333,39 @@ export default function SalarySlipRunsPage() {
   const filteredEmployees = useMemo(() => {
     const q = employeeSearch.trim().toLowerCase();
     if (!q) return eligibleEmployees;
-    return eligibleEmployees.filter(
-      (employee) =>
-        employee.name.toLowerCase().includes(q) ||
-        employee.email.toLowerCase().includes(q) ||
-        employee.employeeId.toLowerCase().includes(q)
-    );
+    return eligibleEmployees.filter((employee) => {
+      const haystack = [employee.name, employee.email, employee.employeeId, employee.role]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+      return haystack.some((value) => value.includes(q));
+    });
   }, [eligibleEmployees, employeeSearch]);
 
-  const hasActiveFilters = search.trim() !== '' || statusFilter !== 'all';
-
   const filteredRuns = useMemo(() => {
+    let list = [...runs];
     const q = search.trim().toLowerCase();
-    return runs.filter((run) => {
-      if (statusFilter !== 'all' && run.status.toLowerCase() !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        String(run.runId).includes(q) ||
-        monthLabel(run.month).toLowerCase().includes(q) ||
-        String(run.year).includes(q) ||
-        run.triggeredBy.toLowerCase().includes(q) ||
-        run.status.toLowerCase().includes(q)
-      );
-    });
+    if (q) {
+      list = list.filter((run) => {
+        const haystack = [
+          run.runId,
+          run.triggeredBy,
+          run.status,
+          monthLabel(run.month),
+          String(run.year),
+          formatSalaryPeriod(run.month, run.year),
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+        return haystack.some((value) => value.includes(q));
+      });
+    }
+    if (statusFilter !== 'all') {
+      list = list.filter((run) => run.status.toLowerCase() === statusFilter.toLowerCase());
+    }
+    return list;
   }, [runs, search, statusFilter]);
 
+  const hasActiveFilters = search.trim() !== '' || statusFilter !== 'all';
   const pageSizeNum = Number(pageSize) || 10;
   const totalPages = Math.max(1, Math.ceil(filteredRuns.length / pageSizeNum));
   const currentPage = Math.min(page, totalPages);
@@ -426,27 +396,15 @@ export default function SalarySlipRunsPage() {
     );
   };
 
-  const openExtrasStep = (
-    details: SalaryDetailRecord[],
-    employeeIds: string[],
-    salaryDetails?: SalaryDetailInput[]
-  ) => {
-    setIncompleteConfirm(null);
+  const closeSalaryReview = () => {
+    setSalaryReview(null);
     setSalaryForms([]);
-    setShowGenerate(false);
-    setExtrasDetails(details);
-    setPendingSalaryDetails(salaryDetails);
-    setExtraForms(buildExtraForms(employeeIds, details, employees));
-    setExtrasOpen(true);
-    toast.message('Enter earnings and deductions for each employee.');
   };
 
   const handleGenerate = async (
     options: {
       confirmIncomplete?: boolean;
-      confirmExtras?: boolean;
       salaryDetails?: SalaryDetailInput[];
-      salaryExtras?: SalaryRunExtraInput[];
     } = {}
   ) => {
     if (!canGenerate) return;
@@ -468,9 +426,7 @@ export default function SalarySlipRunsPage() {
           year: Number(year),
           employeeIds: mode === 'selected' ? selectedIds : undefined,
           confirmIncomplete: options.confirmIncomplete || undefined,
-          confirmExtras: options.confirmExtras || undefined,
           salaryDetails: options.salaryDetails,
-          salaryExtras: options.salaryExtras,
         }),
       });
       const result = await response.json();
@@ -478,87 +434,33 @@ export default function SalarySlipRunsPage() {
       if (response.status === 409 && result.needsConfirmation) {
         const incomplete = (result.data?.incomplete || []) as IncompleteSalaryDetail[];
         const details = (result.data?.details || []) as SalaryDetailRecord[];
-
-        // Prefer fetched rows that are already complete — continue to extras step.
-        const completeDetails = details.filter(
-          (detail) =>
-            detail.employeeId &&
-            detail.salary &&
-            detail.allowance &&
-            detail.tax &&
-            detail.accountNumber &&
-            detail.accountName &&
-            detail.bankName
+        const runPeriod = formatSalaryPeriod(Number(month), Number(year));
+        const forms = buildSalaryForms(
+          incomplete.length > 0
+            ? incomplete
+            : (mode === 'selected'
+                ? selectedIds
+                : eligibleEmployees.map((employee) => employee.employeeId)
+              ).map((employeeId) => ({ employeeId, missingFields: [] as string[] })),
+          details,
+          runPeriod
         );
 
-        const completeCoversAllIncomplete =
-          incomplete.length > 0 &&
-          incomplete.every((row) =>
-            completeDetails.some(
-              (detail) =>
-                detail.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
-            )
-          );
-
-        if (completeCoversAllIncomplete) {
-          await handleGenerate({
-            confirmIncomplete: true,
-            salaryDetails: completeDetails.map(toSalaryDetailInput),
-          });
-          return;
-        }
-
-        if (incomplete.length === 0 && completeDetails.length > 0) {
-          await handleGenerate({
-            confirmIncomplete: true,
-            salaryDetails: completeDetails.map(toSalaryDetailInput),
-          });
-          return;
-        }
-
-        const runPeriod = `${year}-${String(Number(month)).padStart(2, '0')}`;
-        const forms = buildSalaryForms(incomplete, details, employees, runPeriod);
-        const stillMissing = forms.filter((row) =>
-          SALARY_FORM_FIELDS.some((field) => !String(row[field.key] || '').trim())
-        );
-
-        if (stillMissing.length === 0 && forms.length > 0) {
-          await handleGenerate({
-            confirmIncomplete: true,
-            salaryDetails: forms,
-          });
-          return;
-        }
-
-        const incompleteIds = new Set(
-          incomplete.map((row) => row.employeeId.trim().toLowerCase())
-        );
-        const reallyIncomplete = incomplete.filter(
-          (row) =>
-            incompleteIds.has(row.employeeId.trim().toLowerCase()) &&
-            stillMissing.some((form) => form.employeeId === row.employeeId)
-        );
-
-        setIncompleteConfirm(
+        setShowGenerate(false);
+        setSalaryReview(
           enrichIncompleteRows(
-            reallyIncomplete.length > 0 ? reallyIncomplete : incomplete,
+            incomplete.length > 0
+              ? incomplete
+              : forms.map((form) => ({
+                  employeeId: form.employeeId,
+                  missingFields: emptyFieldsForForm(form),
+                })),
             details,
             employees
           )
         );
         setSalaryForms(forms);
-        toast.message(result.message || 'Some salary details are incomplete.');
-        return;
-      }
-
-      if (response.status === 409 && result.needsExtras) {
-        const details = (result.data?.details || []) as SalaryDetailRecord[];
-        const employeeIdsFromApi = (result.data?.employeeIds || []) as string[];
-        const employeeIds =
-          employeeIdsFromApi.length > 0
-            ? employeeIdsFromApi
-            : details.map((detail) => detail.employeeId).filter(Boolean);
-        openExtrasStep(details, employeeIds, options.salaryDetails);
+        toast.message(result.message || 'Review salary details, then generate.');
         return;
       }
 
@@ -566,12 +468,7 @@ export default function SalarySlipRunsPage() {
         throw new Error(result.error || 'Failed to start salary slip run.');
       }
 
-      setIncompleteConfirm(null);
-      setSalaryForms([]);
-      setExtrasOpen(false);
-      setExtraForms([]);
-      setExtrasDetails([]);
-      setPendingSalaryDetails(undefined);
+      closeSalaryReview();
       toast.success(result.message || 'Salary slip run started.');
       setShowGenerate(false);
       setSelectedIds([]);
@@ -589,7 +486,7 @@ export default function SalarySlipRunsPage() {
 
   const updateSalaryFormField = (
     employeeId: string,
-    field: SalaryFormFieldKey,
+    field: SalaryDetailFieldKey,
     value: string
   ) => {
     setSalaryForms((current) =>
@@ -599,31 +496,32 @@ export default function SalarySlipRunsPage() {
     );
   };
 
-  const updateExtraFormField = (
-    employeeId: string,
-    field: ExtraFormFieldKey,
-    value: string
-  ) => {
-    setExtraForms((current) =>
-      current.map((row) =>
-        row.employeeId === employeeId ? { ...row, [field]: value } : row
-      )
-    );
-  };
-
-  const handleSaveDetailsAndContinue = async () => {
-    if (!incompleteConfirm || salaryForms.length === 0) return;
+  const handleSaveDetailsAndGenerate = async () => {
+    if (!salaryReview || salaryForms.length === 0) return;
 
     for (const row of salaryForms) {
-      const incomplete = incompleteConfirm.find((item) => item.employeeId === row.employeeId);
-      const missing = incomplete?.missingFields || [];
-      for (const field of SALARY_FORM_FIELDS) {
-        if (missing.includes(field.missing) && !String(row[field.key] || '').trim()) {
+      for (const field of SALARY_DETAIL_FIELDS) {
+        if (REQUIRED_MISSING.has(field.missing) && isEmptyValue(row[field.key])) {
           toast.error(`Enter ${field.label} for ${row.employeeId}.`);
           return;
         }
       }
     }
+
+    const normalized = salaryForms.map((row) => {
+      const period = row.period || formatSalaryPeriod(Number(month), Number(year));
+      return {
+        ...row,
+        period,
+        uniqueKey: row.uniqueKey || buildSalaryUniqueKey(row.employeeId, period),
+        allowance: isEmptyValue(row.allowance) ? '0' : row.allowance,
+        tax: isEmptyValue(row.tax) ? '0' : row.tax,
+        overtimePay: isEmptyValue(row.overtimePay) ? '0' : row.overtimePay,
+        performanceBonus: isEmptyValue(row.performanceBonus) ? '0' : row.performanceBonus,
+        contributions: isEmptyValue(row.contributions) ? '0' : row.contributions,
+        others: isEmptyValue(row.others) ? '0' : row.others,
+      };
+    });
 
     setSavingDetails(true);
     try {
@@ -633,33 +531,23 @@ export default function SalarySlipRunsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({ details: salaryForms }),
+        body: JSON.stringify({ details: normalized }),
       });
       const updateJson = await updateRes.json();
       if (!updateRes.ok || !updateJson.success) {
         throw new Error(updateJson.error || 'Failed to update salary details.');
       }
 
-      toast.success(updateJson.message || 'Salary details updated.');
+      toast.success(updateJson.message || 'Salary details saved.');
       await handleGenerate({
         confirmIncomplete: true,
-        salaryDetails: salaryForms,
+        salaryDetails: normalized,
       });
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to update salary details.');
     } finally {
       setSavingDetails(false);
     }
-  };
-
-  const handleConfirmExtrasAndGenerate = async () => {
-    if (extraForms.length === 0) return;
-    await handleGenerate({
-      confirmIncomplete: true,
-      confirmExtras: true,
-      salaryDetails: pendingSalaryDetails,
-      salaryExtras: extraForms,
-    });
   };
 
   if (allowed === null) {
@@ -697,6 +585,7 @@ export default function SalarySlipRunsPage() {
         : `${runs.length} run${runs.length === 1 ? '' : 's'}`;
 
   const generateCount = mode === 'all' ? eligibleEmployees.length : selectedIds.length;
+  const runPeriodLabel = formatSalaryPeriod(Number(month), Number(year));
 
   const generateModal =
     showGenerate && mounted
@@ -714,7 +603,10 @@ export default function SalarySlipRunsPage() {
             >
               <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
                 <div>
-                  <h2 id="generate-slips-title" className="text-lg font-semibold tracking-tight text-ink">
+                  <h2
+                    id="generate-slips-title"
+                    className="text-lg font-semibold tracking-tight text-ink"
+                  >
                     Generate salary slips
                   </h2>
                   <p className="mt-0.5 text-xs text-muted">
@@ -756,6 +648,9 @@ export default function SalarySlipRunsPage() {
                     />
                   </div>
                 </div>
+                <p className="text-xs text-muted">
+                  Period key: <span className="font-medium text-ink">{runPeriodLabel}</span>
+                </p>
 
                 <div className="flex gap-2">
                   <button
@@ -798,44 +693,41 @@ export default function SalarySlipRunsPage() {
                     </div>
                     <ul className="max-h-[7.5rem] overflow-y-auto overscroll-contain">
                       {filteredEmployees.length === 0 ? (
-                        <li className="px-3 py-6 text-center text-sm text-muted">
-                          No employees with a base salary.
+                        <li className="px-3 py-4 text-center text-xs text-muted">
+                          No eligible employees found.
                         </li>
                       ) : (
-                        filteredEmployees.map((employee) => (
-                          <li
-                            key={employee.employeeId}
-                            className="border-t border-border first:border-t-0"
-                          >
-                            <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-canvas">
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.includes(employee.employeeId)}
-                                onChange={() => toggleId(employee.employeeId)}
-                                className="h-4 w-4 accent-[var(--ink)]"
-                              />
-                              <span className="min-w-0 flex-1 truncate">
-                                <span className="font-medium text-ink">{employee.name}</span>
-                                <span className="ml-2 text-xs text-muted">
-                                  {employee.employeeId}
+                        filteredEmployees.map((employee) => {
+                          const checked = selectedIds.includes(employee.employeeId);
+                          return (
+                            <li key={employee.employeeId}>
+                              <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-canvas">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleId(employee.employeeId)}
+                                  className="h-4 w-4 rounded border-border"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-ink">
+                                    {employee.name || employee.employeeId}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted">
+                                    {employee.employeeId}
+                                    {employee.email ? ` · ${employee.email}` : ''}
+                                  </span>
                                 </span>
-                              </span>
-                            </label>
-                          </li>
-                        ))
+                              </label>
+                            </li>
+                          );
+                        })
                       )}
                     </ul>
                   </div>
                 )}
-
-                <p className="text-xs text-muted">
-                  {mode === 'all'
-                    ? `${eligibleEmployees.length} employees will receive slips.`
-                    : `${selectedIds.length} selected.`}
-                </p>
               </div>
 
-              <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-4">
+              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
                 <button
                   type="button"
                   onClick={() => setShowGenerate(false)}
@@ -852,12 +744,12 @@ export default function SalarySlipRunsPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Generating…
+                      Loading…
                     </>
                   ) : (
                     <>
                       <Banknote className="h-4 w-4" />
-                      Generate
+                      Continue ({generateCount})
                     </>
                   )}
                 </button>
@@ -868,35 +760,32 @@ export default function SalarySlipRunsPage() {
         )
       : null;
 
-  const incompleteModal =
-    mounted && incompleteConfirm
+  const salaryReviewModal =
+    mounted && salaryReview
       ? createPortal(
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4">
             <div
               role="dialog"
               aria-modal="true"
-              aria-labelledby="incomplete-salary-title"
-              className="flex max-h-[min(90vh,40rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+              aria-labelledby="salary-review-title"
+              className="flex max-h-[min(90vh,46rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
             >
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
                 <div>
                   <h2
-                    id="incomplete-salary-title"
+                    id="salary-review-title"
                     className="text-lg font-semibold tracking-tight text-ink"
                   >
-                    Enter missing salary details
+                    Salary details
                   </h2>
                   <p className="mt-1 text-sm text-muted">
-                    These values will be saved via update-salary-detail, then you can enter
-                    earnings and deductions.
+                    Period <span className="font-medium text-ink">{runPeriodLabel}</span>. Empty
+                    fields are highlighted — fill required values, then generate.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIncompleteConfirm(null);
-                    setSalaryForms([]);
-                  }}
+                  onClick={closeSalaryReview}
                   className="rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
                   aria-label="Close"
                 >
@@ -907,8 +796,8 @@ export default function SalarySlipRunsPage() {
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                 {salaryForms.map((row) => {
                   const meta =
-                    incompleteConfirm.find((item) => item.employeeId === row.employeeId) || null;
-                  const missing = meta?.missingFields || [];
+                    salaryReview.find((item) => item.employeeId === row.employeeId) || null;
+                  const empty = emptyFieldsForForm(row);
                   return (
                     <div
                       key={row.employeeId}
@@ -926,35 +815,44 @@ export default function SalarySlipRunsPage() {
                         {meta?.email ? (
                           <p className="mt-0.5 truncate text-xs text-muted">{meta.email}</p>
                         ) : null}
-                        {missing.length > 0 ? (
-                          <p className="mt-1.5 text-xs text-danger">
-                            Missing: {missing.join(', ')}
-                          </p>
+                        {empty.length > 0 ? (
+                          <p className="mt-1.5 text-xs text-danger">Empty: {empty.join(', ')}</p>
                         ) : null}
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {SALARY_FORM_FIELDS.map((field) => {
-                          const isMissing = missing.includes(field.missing);
+                        {SALARY_DETAIL_FIELDS.map((field) => {
+                          const isEmpty = isEmptyValue(row[field.key]);
+                          const isRequired = REQUIRED_MISSING.has(field.missing);
                           return (
                             <label key={field.key} className="block text-xs">
                               <span
                                 className={`mb-1 block font-medium ${
-                                  isMissing ? 'text-danger' : 'text-muted'
+                                  isEmpty ? 'text-danger' : 'text-muted'
                                 }`}
                               >
                                 {field.label}
-                                {isMissing ? ' *' : ''}
+                                {isRequired ? ' *' : ''}
+                                {isEmpty ? ' (empty)' : ''}
                               </span>
                               <input
                                 type="text"
-                                value={row[field.key]}
+                                inputMode={
+                                  field.key === 'accountNumber' ||
+                                  field.key === 'accountName' ||
+                                  field.key === 'bankName'
+                                    ? 'text'
+                                    : 'decimal'
+                                }
+                                value={row[field.key] || ''}
                                 onChange={(e) =>
                                   updateSalaryFormField(row.employeeId, field.key, e.target.value)
                                 }
                                 className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
-                                  isMissing ? 'border-danger-border' : 'border-border'
+                                  isEmpty
+                                    ? 'border-danger-border ring-1 ring-danger/30'
+                                    : 'border-border'
                                 }`}
-                                placeholder={isMissing ? `Enter ${field.label}` : undefined}
+                                placeholder={isEmpty ? `Enter ${field.label}` : undefined}
                               />
                             </label>
                           );
@@ -968,17 +866,14 @@ export default function SalarySlipRunsPage() {
               <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIncompleteConfirm(null);
-                    setSalaryForms([]);
-                  }}
+                  onClick={closeSalaryReview}
                   className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleSaveDetailsAndContinue()}
+                  onClick={() => void handleSaveDetailsAndGenerate()}
                   disabled={submitting || savingDetails}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                 >
@@ -988,157 +883,9 @@ export default function SalarySlipRunsPage() {
                       Saving…
                     </>
                   ) : (
-                    'Save & continue'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )
-      : null;
-
-  const extrasModal =
-    mounted && extrasOpen
-      ? createPortal(
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="salary-extras-title"
-              className="flex max-h-[min(90vh,42rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
-            >
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
-                <div>
-                  <h2
-                    id="salary-extras-title"
-                    className="text-lg font-semibold tracking-tight text-ink"
-                  >
-                    Earnings & deductions
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Optional adjustments for this run. Leave blank for zero.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExtrasOpen(false);
-                    setExtraForms([]);
-                    setExtrasDetails([]);
-                    setPendingSalaryDetails(undefined);
-                  }}
-                  className="rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                {extraForms.map((row) => {
-                  const meta = extraMetaForEmployee(row.employeeId, extrasDetails, employees);
-                  return (
-                    <div
-                      key={row.employeeId}
-                      className="rounded-lg border border-border bg-canvas/40 p-4"
-                    >
-                      <div className="mb-3 border-b border-border pb-3">
-                        <p className="text-sm font-semibold text-ink">{meta.fullName}</p>
-                        <p className="mt-0.5 text-xs text-muted">
-                          {row.employeeId}
-                          {meta.designation ? ` · ${meta.designation}` : ''}
-                          {meta.department ? ` · ${meta.department}` : ''}
-                        </p>
-                        {meta.email ? (
-                          <p className="mt-0.5 truncate text-xs text-muted">{meta.email}</p>
-                        ) : null}
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                            Earnings
-                          </p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {EARNING_EXTRA_FIELDS.map((field) => (
-                              <label key={field.key} className="block text-xs">
-                                <span className="mb-1 block font-medium text-muted">
-                                  {field.label}
-                                </span>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={row[field.key]}
-                                  onChange={(e) =>
-                                    updateExtraFormField(row.employeeId, field.key, e.target.value)
-                                  }
-                                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                                  placeholder="0"
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                            Deductions
-                          </p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {DEDUCTION_EXTRA_FIELDS.map((field) => (
-                              <label key={field.key} className="block text-xs">
-                                <span className="mb-1 block font-medium text-muted">
-                                  {field.label}
-                                </span>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={row[field.key]}
-                                  onChange={(e) =>
-                                    updateExtraFormField(row.employeeId, field.key, e.target.value)
-                                  }
-                                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                                  placeholder="0"
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExtrasOpen(false);
-                    setExtraForms([]);
-                    setExtrasDetails([]);
-                    setPendingSalaryDetails(undefined);
-                  }}
-                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleConfirmExtrasAndGenerate()}
-                  disabled={submitting}
-                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Generating…
-                    </>
-                  ) : (
                     <>
                       <Banknote className="h-4 w-4" />
-                      Generate slips
+                      Save & generate
                     </>
                   )}
                 </button>
@@ -1270,7 +1017,7 @@ export default function SalarySlipRunsPage() {
                           className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
                         >
                           <td className="px-5 py-3.5 font-medium">
-                            {monthLabel(run.month)} {run.year}
+                            {formatSalaryPeriod(run.month, run.year)}
                           </td>
                           <td className="px-5 py-3.5 text-muted">
                             <div>#{run.runId}</div>
@@ -1358,8 +1105,7 @@ export default function SalarySlipRunsPage() {
       )}
 
       {generateModal}
-      {incompleteModal}
-      {extrasModal}
+      {salaryReviewModal}
     </div>
   );
 }

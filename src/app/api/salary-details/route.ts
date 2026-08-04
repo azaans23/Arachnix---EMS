@@ -18,9 +18,26 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
 
   return {
     employeeId,
-    salary: String(raw.salary ?? raw.Salary ?? '').trim(),
+    salary: String(
+      raw.salary ?? raw.Salary ?? raw.BaseSalary ?? raw.baseSalary ?? ''
+    ).trim(),
     allowance: String(raw.allowance ?? raw.Allowance ?? '').trim(),
     tax: String(raw.tax ?? raw.Tax ?? '').trim(),
+    overtimePay: String(
+      raw.overtimePay ?? raw.OvertimePay ?? raw['Overtime Pay'] ?? ''
+    ).trim(),
+    performanceBonus: String(
+      raw.performanceBonus ?? raw.PerformanceBonus ?? raw['Performance Bonus'] ?? ''
+    ).trim(),
+    contributions: String(
+      raw.contributions ??
+        raw.Contributions ??
+        raw.contribution ??
+        raw.Contribution ??
+        ''
+    ).trim(),
+    others: String(raw.others ?? raw.Others ?? '').trim(),
+    netSalary: String(raw.netSalary ?? raw.NetSalary ?? '').trim() || undefined,
     accountNumber: String(
       raw.accountNumber ?? raw.AccountNumber ?? raw['Account Number'] ?? ''
     ).trim(),
@@ -29,6 +46,7 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
     ).trim(),
     bankName: String(raw.bankName ?? raw.BankName ?? raw['Bank Name'] ?? '').trim(),
     period: String(raw.period ?? raw.Period ?? '').trim() || undefined,
+    uniqueKey: String(raw.uniqueKey ?? raw.UniqueKey ?? '').trim() || undefined,
     status: String(raw.status ?? raw.Status ?? '').trim() || undefined,
     totalEarning: String(
       raw.totalEarning ?? raw.TotalEarning ?? raw['Total Earning'] ?? ''
@@ -39,7 +57,7 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
   };
 }
 
-/** GET — plain get-salary-detail call (no employeeIds) for full salary rows. */
+/** GET — salary rows from Supabase. Prefer `?uniqueKeys=` or `?period=` + `employeeIds`. */
 export async function GET(request: Request) {
   try {
     const { errorResponse } = await verifyResourceAccess(
@@ -49,11 +67,30 @@ export async function GET(request: Request) {
     );
     if (errorResponse) return errorResponse;
 
-    const details = await fetchSalaryDetails();
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period')?.trim() || undefined;
+    const employeeIdsRaw = searchParams.get('employeeIds')?.trim();
+    const uniqueKeysRaw = searchParams.get('uniqueKeys')?.trim();
+    const employeeIds = employeeIdsRaw
+      ? employeeIdsRaw
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
+    const uniqueKeys = uniqueKeysRaw
+      ? uniqueKeysRaw
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean)
+      : undefined;
+
+    const details = await fetchSalaryDetails(employeeIds, period, uniqueKeys);
 
     return NextResponse.json({
       success: true,
       data: details,
+      period: period || null,
+      uniqueKeys: uniqueKeys || null,
     });
   } catch (error: unknown) {
     const message =

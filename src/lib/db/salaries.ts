@@ -1,13 +1,37 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import {
+  buildSalaryUniqueKey,
+  computeSalaryTotals,
+  currentSalaryPeriod,
+  formatSalaryPeriod,
+  monthInputToPeriod,
+  parseSalaryPeriod,
+  periodToMonthInput,
+} from '@/lib/payroll/period';
 import type { SalaryDetailInput, SalaryDetailRecord } from '@/types/salary-slip';
+
+export {
+  buildSalaryUniqueKey,
+  computeSalaryTotals,
+  currentSalaryPeriod,
+  formatSalaryPeriod,
+  monthInputToPeriod,
+  parseSalaryPeriod,
+  periodToMonthInput,
+};
 
 /** Matches public.salaries columns (Postgres lowercases unquoted identifiers). */
 export type SalaryDbRow = {
   salaryid: number;
   employeeid: string;
-  salary: number;
+  basesalary: number;
+  netsalary: number;
+  overtimepay: number | null;
+  performancebonus: number | null;
+  contributions: number | null;
   allowance: number | null;
   tax: number | null;
+  others: number | null;
   accountnumber: string;
   accountname: string;
   bankname: string;
@@ -15,6 +39,8 @@ export type SalaryDbRow = {
   totalearning: number;
   period: string;
   status: string;
+  /** Generated: EmployeeID || '-' || Period */
+  uniquekey?: string;
   createdat?: string;
   updatedat?: string;
 };
@@ -24,6 +50,7 @@ export type SalaryDbWriteInput = SalaryDetailInput & {
   status?: string;
   totalEarning?: string;
   totalDeduction?: string;
+  netSalary?: string;
 };
 
 const TABLE = 'salaries';
@@ -44,24 +71,14 @@ function moneyToString(value: number | null | undefined): string {
   return String(value);
 }
 
-/** Canonical period key used with UNIQUE (EmployeeID, Period), e.g. `2026-08`. */
-export function formatSalaryPeriod(month: number, year: number): string {
-  return `${year}-${String(month).padStart(2, '0')}`;
-}
-
-export function currentSalaryPeriod(date = new Date()): string {
-  return formatSalaryPeriod(date.getMonth() + 1, date.getFullYear());
-}
-
-export function toSalaryDbRow(input: SalaryDbWriteInput): Omit<SalaryDbRow, 'salaryid' | 'createdat'> {
+export function toSalaryDbRow(
+  input: SalaryDbWriteInput
+): Omit<SalaryDbRow, 'salaryid' | 'createdat' | 'uniquekey'> {
   const employeeid = input.employeeId.trim();
-  const period = input.period.trim();
+  const period = monthInputToPeriod(input.period.trim());
   if (!employeeid) throw new Error('EmployeeID is required for salaries write.');
   if (!period) throw new Error('Period is required for salaries write.');
 
-  const salary = toMoney(input.salary, 'Salary');
-  const allowance = toMoney(input.allowance, 'Allowance');
-  const tax = toMoney(input.tax, 'Tax');
   const accountnumber = String(input.accountNumber ?? '').trim();
   const accountname = String(input.accountName ?? '').trim();
   const bankname = String(input.bankName ?? '').trim();
@@ -70,14 +87,24 @@ export function toSalaryDbRow(input: SalaryDbWriteInput): Omit<SalaryDbRow, 'sal
   if (!accountname) throw new Error(`Account Name is required for ${employeeid}.`);
   if (!bankname) throw new Error(`Bank Name is required for ${employeeid}.`);
 
+  const computed = computeSalaryTotals(input);
+  const basesalary = computed.basesalary;
+  if (basesalary <= 0 && String(input.salary ?? '').trim() === '') {
+    throw new Error(`Base Salary is required for ${employeeid}.`);
+  }
+
   const totalearning =
     input.totalEarning !== undefined && String(input.totalEarning).trim() !== ''
       ? toMoney(input.totalEarning, 'TotalEarning')
-      : salary + allowance;
+      : computed.totalearning;
   const totaldeduction =
     input.totalDeduction !== undefined && String(input.totalDeduction).trim() !== ''
       ? toMoney(input.totalDeduction, 'TotalDeduction')
-      : tax;
+      : computed.totaldeduction;
+  const netsalary =
+    input.netSalary !== undefined && String(input.netSalary).trim() !== ''
+      ? toMoney(input.netSalary, 'NetSalary')
+      : computed.netsalary;
 
   const status = (input.status || 'Pending').trim() || 'Pending';
   if (!['Pending', 'Processed', 'Paid'].includes(status)) {
@@ -86,9 +113,14 @@ export function toSalaryDbRow(input: SalaryDbWriteInput): Omit<SalaryDbRow, 'sal
 
   return {
     employeeid,
-    salary,
-    allowance,
-    tax,
+    basesalary,
+    netsalary,
+    overtimepay: computed.overtimepay,
+    performancebonus: computed.performancebonus,
+    contributions: computed.contributions,
+    allowance: computed.allowance,
+    tax: computed.tax,
+    others: computed.others,
     accountnumber,
     accountname,
     bankname,
@@ -115,6 +147,8 @@ export function salaryDbRowToDetail(
     bankAccountDetails?: string;
   } | null
 ): SalaryDetailRecord {
+  const uniqueKey =
+    row.uniquekey || buildSalaryUniqueKey(row.employeeid, row.period);
   return {
     employeeId: row.employeeid,
     fullName: employee?.fullName || '',
@@ -125,10 +159,15 @@ export function salaryDbRowToDetail(
     employeeType: employee?.employeeType || '',
     role: employee?.role || '',
     emsStatus: employee?.emsStatus || '',
-    baseSalary: employee?.baseSalary || '',
-    salary: moneyToString(row.salary),
+    baseSalary: employee?.baseSalary || moneyToString(row.basesalary),
+    salary: moneyToString(row.basesalary),
+    netSalary: moneyToString(row.netsalary),
+    overtimePay: moneyToString(row.overtimepay),
+    performanceBonus: moneyToString(row.performancebonus),
+    contributions: moneyToString(row.contributions),
     allowance: moneyToString(row.allowance),
     tax: moneyToString(row.tax),
+    others: moneyToString(row.others),
     totalEarning: moneyToString(row.totalearning),
     totalDeduction: moneyToString(row.totaldeduction),
     accountNumber: row.accountnumber,
@@ -136,20 +175,27 @@ export function salaryDbRowToDetail(
     bankName: row.bankname,
     bankAccountDetails: employee?.bankAccountDetails || '',
     period: row.period,
+    uniqueKey,
     status: row.status,
     salaryId: String(row.salaryid),
     raw: {
       SalaryID: row.salaryid,
       EmployeeID: row.employeeid,
-      Salary: row.salary,
+      BaseSalary: row.basesalary,
+      NetSalary: row.netsalary,
+      OvertimePay: row.overtimepay,
+      PerformanceBonus: row.performancebonus,
+      Contributions: row.contributions,
       Allowance: row.allowance,
       Tax: row.tax,
+      Others: row.others,
       AccountNumber: row.accountnumber,
       AccountName: row.accountname,
       BankName: row.bankname,
       TotalDeduction: row.totaldeduction,
       TotalEarning: row.totalearning,
       Period: row.period,
+      UniqueKey: uniqueKey,
       Status: row.status,
     },
   };
@@ -158,17 +204,39 @@ export function salaryDbRowToDetail(
 export async function listSalaryDbRows(options?: {
   employeeIds?: string[];
   period?: string;
+  uniqueKeys?: string[];
 }): Promise<SalaryDbRow[]> {
   let query = getSupabaseAdmin().from(TABLE).select('*');
 
-  if (options?.period?.trim()) {
-    query = query.eq('period', options.period.trim());
-  }
-  if (options?.employeeIds && options.employeeIds.length > 0) {
-    query = query.in(
-      'employeeid',
-      options.employeeIds.map((id) => id.trim()).filter(Boolean)
-    );
+  const uniqueKeys = (options?.uniqueKeys || [])
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  const derivedKeys =
+    uniqueKeys.length === 0 &&
+    options?.period?.trim() &&
+    options?.employeeIds &&
+    options.employeeIds.length > 0
+      ? options.employeeIds
+          .map((id) => buildSalaryUniqueKey(id, options.period!))
+          .filter(Boolean)
+      : [];
+
+  const keys = uniqueKeys.length > 0 ? uniqueKeys : derivedKeys;
+
+  if (keys.length > 0) {
+    // Prefer UniqueKey lookup (EmployeeID-Period) when available.
+    query = query.in('uniquekey', keys);
+  } else {
+    if (options?.period?.trim()) {
+      query = query.eq('period', monthInputToPeriod(options.period.trim()));
+    }
+    if (options?.employeeIds && options.employeeIds.length > 0) {
+      query = query.in(
+        'employeeid',
+        options.employeeIds.map((id) => id.trim()).filter(Boolean)
+      );
+    }
   }
 
   const { data, error } = await query
@@ -182,14 +250,37 @@ export async function listSalaryDbRows(options?: {
   return (data as SalaryDbRow[]) || [];
 }
 
+export async function getSalaryDbRowByUniqueKey(
+  uniqueKey: string
+): Promise<SalaryDbRow | null> {
+  const key = uniqueKey.trim();
+  if (!key) return null;
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(TABLE)
+    .select('*')
+    .eq('uniquekey', key)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Supabase salaries read by UniqueKey failed: ${error.message}`);
+  }
+
+  return (data as SalaryDbRow | null) ?? null;
+}
+
 export async function getSalaryDbRow(
   employeeId: string,
   period: string
 ): Promise<SalaryDbRow | null> {
   const id = employeeId.trim();
-  const periodKey = period.trim();
+  const periodKey = monthInputToPeriod(period.trim());
   if (!id || !periodKey) return null;
 
+  const byKey = await getSalaryDbRowByUniqueKey(buildSalaryUniqueKey(id, periodKey));
+  if (byKey) return byKey;
+
+  // Fallback if UniqueKey column is missing/unavailable.
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)
     .select('*')
@@ -221,7 +312,7 @@ export async function upsertSalaryDbRow(input: SalaryDbWriteInput): Promise<Sala
 
 export async function deleteSalaryDbRow(employeeId: string, period: string): Promise<void> {
   const id = employeeId.trim();
-  const periodKey = period.trim();
+  const periodKey = monthInputToPeriod(period.trim());
   if (!id || !periodKey) return;
 
   const { error } = await getSupabaseAdmin()

@@ -46,47 +46,39 @@ export interface GenerateSalarySlipsInput {
   /** Empty / omitted = all active employees with a base salary. */
   employeeIds?: string[];
   /**
-   * When true, continue generating even if allowance/tax/bank fields are incomplete.
-   * When false/omitted and fields are missing, the API returns needsConfirmation.
+   * When true, continue generating after salary details were reviewed/saved.
+   * When false/omitted, the API returns needsConfirmation with all run employees.
    */
   confirmIncomplete?: boolean;
   /**
-   * When true, proceed to create the run after earnings/deductions extras are collected.
-   * When false/omitted and base salary details are complete, the API returns needsExtras.
-   */
-  confirmExtras?: boolean;
-  /**
-   * User-provided / just-updated salary rows. Merged over get-salary-detail results
+   * User-provided / just-updated salary rows. Merged over fetched salary details
    * so generate can use fresh values without waiting for sheet sync.
    */
   salaryDetails?: SalaryDetailInput[];
-  /** Per-employee overtime/bonus/contribution/others entered before generate. */
-  salaryExtras?: SalaryRunExtraInput[];
 }
 
 /** Fields the user can enter / send to update-salary-detail (+ Supabase salaries). */
 export interface SalaryDetailInput {
   employeeId: string;
+  /** Maps to BaseSalary. */
   salary: string;
   allowance: string;
   tax: string;
   accountNumber: string;
   accountName: string;
   bankName: string;
-  /** Period key, e.g. `2026-08`. Defaults to current month when omitted. */
+  overtimePay?: string;
+  performanceBonus?: string;
+  contributions?: string;
+  others?: string;
+  netSalary?: string;
+  /** Period key, e.g. `August-2026`. Defaults to current month when omitted. */
   period?: string;
+  /** `EmployeeID-Period`, e.g. `EMP-001-August-2026`. */
+  uniqueKey?: string;
   status?: string;
   totalEarning?: string;
   totalDeduction?: string;
-}
-
-/** Run-specific earnings / deductions collected before generate. */
-export interface SalaryRunExtraInput {
-  employeeId: string;
-  overtimePay: string;
-  performanceBonus: string;
-  contribution: string;
-  others: string;
 }
 
 /** Salary row enriched with employee profile fields for UI / payroll. */
@@ -102,8 +94,13 @@ export interface SalaryDetailRecord {
   emsStatus: string;
   baseSalary: string;
   salary: string;
+  netSalary: string;
+  overtimePay: string;
+  performanceBonus: string;
+  contributions: string;
   allowance: string;
   tax: string;
+  others: string;
   totalEarning: string;
   totalDeduction: string;
   accountNumber: string;
@@ -111,6 +108,8 @@ export interface SalaryDetailRecord {
   bankName: string;
   bankAccountDetails: string;
   period?: string;
+  /** `EmployeeID-Period`, e.g. `EMP-001-August-2026`. */
+  uniqueKey?: string;
   status?: string;
   salaryId?: string;
   raw: Record<string, unknown>;
@@ -124,3 +123,19 @@ export interface IncompleteSalaryDetail {
   designation?: string;
   missingFields: string[];
 }
+
+/** All editable money/bank fields shown in salary forms (empty ones are highlighted). */
+export const SALARY_DETAIL_FIELDS = [
+  { key: 'salary', label: 'Base Salary', missing: 'Base Salary' },
+  { key: 'allowance', label: 'Allowance', missing: 'Allowance' },
+  { key: 'overtimePay', label: 'Overtime Pay', missing: 'Overtime Pay' },
+  { key: 'performanceBonus', label: 'Performance Bonus', missing: 'Performance Bonus' },
+  { key: 'others', label: 'Others', missing: 'Others' },
+  { key: 'tax', label: 'Tax', missing: 'Tax' },
+  { key: 'contributions', label: 'Contributions', missing: 'Contributions' },
+  { key: 'accountNumber', label: 'Account Number', missing: 'Account Number' },
+  { key: 'accountName', label: 'Account Name', missing: 'Account Name' },
+  { key: 'bankName', label: 'Bank Name', missing: 'Bank Name' },
+] as const;
+
+export type SalaryDetailFieldKey = (typeof SALARY_DETAIL_FIELDS)[number]['key'];

@@ -25,8 +25,19 @@ import { supabase } from '@/lib/supabase';
 import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
+import {
+  currentSalaryPeriod,
+  monthInputToPeriod,
+  periodToMonthInput,
+  buildSalaryUniqueKey,
+} from '@/lib/payroll/period';
 import { toSheetUser, type SheetUser } from '@/types/employee';
-import type { SalaryDetailInput, SalaryDetailRecord } from '@/types/salary-slip';
+import {
+  SALARY_DETAIL_FIELDS,
+  type SalaryDetailFieldKey,
+  type SalaryDetailInput,
+  type SalaryDetailRecord,
+} from '@/types/salary-slip';
 
 type SortKey = 'fullName' | 'email' | 'designation' | 'department' | 'salary';
 type SortDir = 'asc' | 'desc';
@@ -40,22 +51,13 @@ const PAGE_SIZE_OPTIONS = [
   { label: '100 / page', value: '100' },
 ];
 
-const SALARY_FORM_FIELDS = [
-  { key: 'salary', label: 'Salary' },
-  { key: 'allowance', label: 'Allowance' },
-  { key: 'tax', label: 'Tax' },
-  { key: 'accountNumber', label: 'Account Number' },
-  { key: 'accountName', label: 'Account Name' },
-  { key: 'bankName', label: 'Bank Name' },
-] as const;
+const SALARY_FORM_FIELDS = SALARY_DETAIL_FIELDS;
 
 const SALARY_STATUS_OPTIONS = [
   { label: 'Pending', value: 'Pending' },
   { label: 'Processed', value: 'Processed' },
   { label: 'Paid', value: 'Paid' },
 ];
-
-type SalaryFormFieldKey = (typeof SALARY_FORM_FIELDS)[number]['key'];
 
 type EmployeeOption = SheetUser & {
   department: string;
@@ -65,20 +67,22 @@ type EmployeeOption = SheetUser & {
   bankAccountDetails: string;
 };
 
-function currentPeriod(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
   return {
     employeeId: detail.employeeId,
     salary: detail.salary,
     allowance: detail.allowance,
     tax: detail.tax,
+    overtimePay: detail.overtimePay,
+    performanceBonus: detail.performanceBonus,
+    contributions: detail.contributions,
+    others: detail.others,
+    netSalary: detail.netSalary,
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
     period: detail.period,
+    uniqueKey: detail.uniqueKey,
     status: detail.status,
     totalEarning: detail.totalEarning,
     totalDeduction: detail.totalDeduction,
@@ -88,11 +92,15 @@ function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
 function emptyCreateForm(employee: EmployeeOption, period: string): SalaryDetailInput {
   return {
     employeeId: employee.employeeId,
-    salary: employee.baseSalary || '',
+    salary: '',
     allowance: '',
     tax: '',
-    accountNumber: employee.bankAccountDetails || '',
-    accountName: employee.name || '',
+    overtimePay: '',
+    performanceBonus: '',
+    contributions: '',
+    others: '',
+    accountNumber: '',
+    accountName: '',
     bankName: '',
     period,
     status: 'Pending',
@@ -105,11 +113,12 @@ function findExactSalary(
   rows: SalaryDetailRecord[]
 ): SalaryDetailRecord | null {
   const key = employeeId.trim().toLowerCase();
+  const periodKey = monthInputToPeriod(period.trim());
   return (
     rows.find(
       (row) =>
         row.employeeId.trim().toLowerCase() === key &&
-        (row.period || '').trim() === period.trim()
+        monthInputToPeriod((row.period || '').trim()) === periodKey
     ) || null
   );
 }
@@ -166,9 +175,12 @@ function uniqueSortedOptions(
 }
 
 function isSalaryRowComplete(row: SalaryDetailRecord) {
-  return [row.salary, row.allowance, row.tax, row.accountNumber, row.accountName, row.bankName].every(
-    (value) => String(value || '').trim() !== ''
-  );
+  return [
+    row.salary,
+    row.accountNumber,
+    row.accountName,
+    row.bankName,
+  ].every((value) => String(value || '').trim() !== '');
 }
 
 export default function SalaryPage() {
@@ -461,7 +473,7 @@ export default function SalaryPage() {
     setEditForm(null);
   };
 
-  const updateEditField = (field: SalaryFormFieldKey, value: string) => {
+  const updateEditField = (field: SalaryDetailFieldKey, value: string) => {
     setEditForm((current) => (current ? { ...current, [field]: value } : current));
   };
 
@@ -522,35 +534,59 @@ export default function SalaryPage() {
     setCreateExisting(null);
   };
 
-  const selectEmployeeForCreate = (employee: EmployeeOption, period = currentPeriod()) => {
-    const exact = findExactSalary(employee.employeeId, period, rows);
-    const latest = exact || findLatestSalary(employee.employeeId, rows);
+  const selectEmployeeForCreate = async (
+    employee: EmployeeOption,
+    period = currentSalaryPeriod()
+  ) => {
+    const periodKey = monthInputToPeriod(period);
     setSelectedEmployee(employee);
-    setCreateExisting(exact);
-    setCreateForm(
-      exact
-        ? { ...toEditForm(exact), period: exact.period || period }
-        : latest
-          ? {
-              ...toEditForm(latest),
-              period,
-              status: latest.status || 'Pending',
-            }
-          : emptyCreateForm(employee, period)
-    );
     setCreateStep('form');
+    setCreateExisting(null);
+    setCreateForm(emptyCreateForm(employee, periodKey));
+
+    try {
+      const uniqueKey = buildSalaryUniqueKey(employee.employeeId, periodKey);
+      const response = await fetch(
+        `/api/salary-details?uniqueKeys=${encodeURIComponent(uniqueKey)}&period=${encodeURIComponent(periodKey)}&employeeIds=${encodeURIComponent(employee.employeeId)}`,
+        { headers: { Authorization: `Bearer ${token()}` } }
+      );
+      const result = await response.json();
+      if (response.ok && result.success) {
+        const list = Array.isArray(result.data) ? result.data : [];
+        const exact =
+          (list[0] as SalaryDetailRecord | undefined) ||
+          findExactSalary(employee.employeeId, periodKey, rows);
+        if (exact) {
+          setCreateExisting(exact);
+          setCreateForm({ ...toEditForm(exact), period: exact.period || periodKey });
+          return;
+        }
+      }
+    } catch {
+      /* fall through to local exact / empty */
+    }
+
+    const exact = findExactSalary(employee.employeeId, periodKey, rows);
+    if (exact) {
+      setCreateExisting(exact);
+      setCreateForm({ ...toEditForm(exact), period: exact.period || periodKey });
+    } else {
+      setCreateExisting(null);
+      setCreateForm(emptyCreateForm(employee, periodKey));
+    }
   };
 
   const updateCreateField = (field: keyof SalaryDetailInput, value: string) => {
     setCreateForm((current) => {
       if (!current || !selectedEmployee) return current;
       if (field === 'period') {
-        const exact = findExactSalary(selectedEmployee.employeeId, value, rows);
+        const period = monthInputToPeriod(value);
+        const exact = findExactSalary(selectedEmployee.employeeId, period, rows);
         setCreateExisting(exact);
         if (exact) {
-          return { ...toEditForm(exact), period: value };
+          return { ...toEditForm(exact), period };
         }
-        return { ...current, period: value };
+        return emptyCreateForm(selectedEmployee, period);
       }
       return { ...current, [field]: value };
     });
@@ -560,7 +596,10 @@ export default function SalaryPage() {
     if (!editForm) return;
 
     for (const field of SALARY_FORM_FIELDS) {
-      if (!String(editForm[field.key] || '').trim()) {
+      if (
+        ['salary', 'accountNumber', 'accountName', 'bankName'].includes(field.key) &&
+        !String(editForm[field.key] || '').trim()
+      ) {
         toast.error(`Enter ${field.label}.`);
         return;
       }
@@ -574,7 +613,20 @@ export default function SalaryPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({ details: [editForm] }),
+        body: JSON.stringify({
+          details: [
+            {
+              ...editForm,
+              period: monthInputToPeriod(editForm.period || currentSalaryPeriod()),
+              uniqueKey:
+                editForm.uniqueKey ||
+                buildSalaryUniqueKey(
+                  editForm.employeeId,
+                  editForm.period || currentSalaryPeriod()
+                ),
+            },
+          ],
+        }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
@@ -595,12 +647,15 @@ export default function SalaryPage() {
     if (!createForm || !selectedEmployee) return;
 
     if (!String(createForm.period || '').trim()) {
-      toast.error('Enter a period (YYYY-MM).');
+      toast.error('Enter a period (Month-Year).');
       return;
     }
 
     for (const field of SALARY_FORM_FIELDS) {
-      if (!String(createForm[field.key] || '').trim()) {
+      if (
+        ['salary', 'accountNumber', 'accountName', 'bankName'].includes(field.key) &&
+        !String(createForm[field.key] || '').trim()
+      ) {
         toast.error(`Enter ${field.label}.`);
         return;
       }
@@ -614,7 +669,20 @@ export default function SalaryPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({ details: [createForm] }),
+        body: JSON.stringify({
+          details: [
+            {
+              ...createForm,
+              period: monthInputToPeriod(createForm.period || currentSalaryPeriod()),
+              uniqueKey:
+                createForm.uniqueKey ||
+                buildSalaryUniqueKey(
+                  createForm.employeeId,
+                  createForm.period || currentSalaryPeriod()
+                ),
+            },
+          ],
+        }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
@@ -810,18 +878,30 @@ export default function SalaryPage() {
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {SALARY_FORM_FIELDS.map((field) => (
-                    <label key={field.key} className="block text-xs">
-                      <span className="mb-1 block font-medium text-muted">{field.label}</span>
-                      <input
-                        type="text"
-                        value={editForm[field.key]}
-                        onChange={(e) => updateEditField(field.key, e.target.value)}
-                        className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                        placeholder={`Enter ${field.label}`}
-                      />
-                    </label>
-                  ))}
+                  {SALARY_FORM_FIELDS.map((field) => {
+                    const empty = !String(editForm[field.key] || '').trim();
+                    return (
+                      <label key={field.key} className="block text-xs">
+                        <span
+                          className={`mb-1 block font-medium ${empty ? 'text-danger' : 'text-muted'}`}
+                        >
+                          {field.label}
+                          {empty ? ' (empty)' : ''}
+                        </span>
+                        <input
+                          type="text"
+                          value={editForm[field.key] || ''}
+                          onChange={(e) => updateEditField(field.key, e.target.value)}
+                          className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                            empty
+                              ? 'border-danger-border ring-1 ring-danger/30'
+                              : 'border-border'
+                          }`}
+                          placeholder={`Enter ${field.label}`}
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1026,7 +1106,7 @@ export default function SalaryPage() {
                                     <td className="px-4 py-3 text-right">
                                       <button
                                         type="button"
-                                        onClick={() => selectEmployeeForCreate(employee)}
+                                        onClick={() => void selectEmployeeForCreate(employee)}
                                         className="inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-canvas"
                                       >
                                         Select
@@ -1046,14 +1126,21 @@ export default function SalaryPage() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="block text-xs">
                         <span className="mb-1 block font-medium text-muted">
-                          Period (YYYY-MM)
+                          Period (Month-Year)
                         </span>
                         <input
                           type="month"
-                          value={createForm.period || ''}
-                          onChange={(e) => updateCreateField('period', e.target.value)}
+                          value={periodToMonthInput(createForm.period || '')}
+                          onChange={(e) =>
+                            updateCreateField('period', monthInputToPeriod(e.target.value))
+                          }
                           className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
                         />
+                        {createForm.period ? (
+                          <span className="mt-1 block text-[11px] text-muted">
+                            Stored as {createForm.period}
+                          </span>
+                        ) : null}
                       </label>
                       <div className="block text-xs">
                         <span className="mb-1 block font-medium text-muted">Status</span>
@@ -1067,18 +1154,32 @@ export default function SalaryPage() {
                           placeholder="Status"
                         />
                       </div>
-                      {SALARY_FORM_FIELDS.map((field) => (
-                        <label key={field.key} className="block text-xs">
-                          <span className="mb-1 block font-medium text-muted">{field.label}</span>
-                          <input
-                            type="text"
-                            value={createForm[field.key] || ''}
-                            onChange={(e) => updateCreateField(field.key, e.target.value)}
-                            className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                            placeholder={`Enter ${field.label}`}
-                          />
-                        </label>
-                      ))}
+                      {SALARY_FORM_FIELDS.map((field) => {
+                        const empty = !String(createForm[field.key] || '').trim();
+                        return (
+                          <label key={field.key} className="block text-xs">
+                            <span
+                              className={`mb-1 block font-medium ${
+                                empty ? 'text-danger' : 'text-muted'
+                              }`}
+                            >
+                              {field.label}
+                              {empty ? ' (empty)' : ''}
+                            </span>
+                            <input
+                              type="text"
+                              value={createForm[field.key] || ''}
+                              onChange={(e) => updateCreateField(field.key, e.target.value)}
+                              className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                                empty
+                                  ? 'border-danger-border ring-1 ring-danger/30'
+                                  : 'border-border'
+                              }`}
+                              placeholder={`Enter ${field.label}`}
+                            />
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

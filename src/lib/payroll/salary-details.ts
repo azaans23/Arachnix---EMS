@@ -1,8 +1,11 @@
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
+  buildSalaryUniqueKey,
+  computeSalaryTotals,
   currentSalaryPeriod,
   getSalaryDbRow,
   listSalaryDbRows,
+  monthInputToPeriod,
   rollbackSalaryDbWrites,
   salaryDbRowToDetail,
   upsertSalaryDbRow,
@@ -14,15 +17,17 @@ import type {
   SalaryDetailInput,
   SalaryDetailRecord,
 } from '@/types/salary-slip';
+import { SALARY_DETAIL_FIELDS } from '@/types/salary-slip';
 
+/** Fields required before a salary slip can be generated (NOT NULL / critical). */
 const REQUIRED_FIELDS = [
-  'Salary',
-  'Allowance',
-  'Tax',
+  'Base Salary',
   'Account Number',
   'Account Name',
   'Bank Name',
 ] as const;
+
+const ALL_FORM_MISSING_LABELS = SALARY_DETAIL_FIELDS.map((field) => field.missing);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -81,6 +86,9 @@ function unwrapRow(item: unknown): Record<string, unknown> {
 
 export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
   const raw = unwrapRow(rawInput);
+  const salary =
+    pick(raw, 'BaseSalary', 'baseSalary', 'Salary', 'salary') ||
+    pick(raw, 'Base Salary');
   return {
     employeeId: pick(raw, 'EmployeeID', 'employeeId', 'EmployeeId'),
     fullName:
@@ -93,17 +101,29 @@ export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
     employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
     role: pick(raw, 'Role', 'role'),
     emsStatus: pick(raw, 'EMSStatus', 'emsStatus'),
-    baseSalary: pick(raw, 'BaseSalary', 'baseSalary'),
-    // Prefer payroll Salary column; fall back to BaseSalary only if Salary is blank.
-    salary: pick(raw, 'Salary', 'salary') || pick(raw, 'BaseSalary', 'baseSalary'),
+    baseSalary: pick(raw, 'BaseSalary', 'baseSalary') || salary,
+    salary,
+    netSalary: pick(raw, 'NetSalary', 'netSalary', 'Net Salary'),
+    overtimePay: pick(raw, 'OvertimePay', 'overtimePay', 'Overtime Pay'),
+    performanceBonus: pick(
+      raw,
+      'PerformanceBonus',
+      'performanceBonus',
+      'Performance Bonus'
+    ),
+    contributions: pick(raw, 'Contributions', 'contributions', 'Contribution', 'contribution'),
     allowance: pick(raw, 'Allowance', 'allowance'),
     tax: pick(raw, 'Tax', 'tax'),
+    others: pick(raw, 'Others', 'others'),
     totalEarning: pick(raw, 'Total Earning', 'TotalEarning', 'totalEarning'),
     totalDeduction: pick(raw, 'Total Deduction', 'TotalDeduction', 'totalDeduction'),
     accountNumber: pick(raw, 'Account Number', 'AccountNumber', 'accountNumber'),
     accountName: pick(raw, 'Account Name', 'AccountName', 'accountName'),
     bankName: pick(raw, 'Bank Name', 'BankName', 'bankName'),
     bankAccountDetails: pick(raw, 'BankAccountDetails', 'bankAccountDetails'),
+    period: pick(raw, 'Period', 'period'),
+    uniqueKey: pick(raw, 'UniqueKey', 'uniqueKey'),
+    status: pick(raw, 'Status', 'status'),
     raw,
   };
 }
@@ -151,47 +171,78 @@ function normalizeSalaryDetailsPayload(data: unknown): unknown[] {
 }
 
 function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
-  const period =
-    ('period' in detail ? detail.period : '') ||
-    currentSalaryPeriod();
+  const period = monthInputToPeriod(
+    (('period' in detail ? detail.period : '') || currentSalaryPeriod()).trim()
+  );
+  const totals = computeSalaryTotals({
+    salary: detail.salary,
+    allowance: detail.allowance,
+    overtimePay: 'overtimePay' in detail ? detail.overtimePay : '',
+    performanceBonus: 'performanceBonus' in detail ? detail.performanceBonus : '',
+    others: 'others' in detail ? detail.others : '',
+    tax: detail.tax,
+    contributions: 'contributions' in detail ? detail.contributions : '',
+  });
+  const overtimePay =
+    ('overtimePay' in detail && detail.overtimePay) || String(totals.overtimepay);
+  const performanceBonus =
+    ('performanceBonus' in detail && detail.performanceBonus) ||
+    String(totals.performancebonus);
+  const contributions =
+    ('contributions' in detail && detail.contributions) || String(totals.contributions);
+  const others = ('others' in detail && detail.others) || String(totals.others);
+  const netSalary =
+    ('netSalary' in detail && detail.netSalary) || String(totals.netsalary);
+  const totalEarning =
+    ('totalEarning' in detail && detail.totalEarning) || String(totals.totalearning);
+  const totalDeduction =
+    ('totalDeduction' in detail && detail.totalDeduction) || String(totals.totaldeduction);
+
   return {
     EmployeeID: detail.employeeId,
-    Salary: detail.salary,
+    UniqueKey:
+      ('uniqueKey' in detail && detail.uniqueKey?.trim()) ||
+      buildSalaryUniqueKey(detail.employeeId, period),
+    BaseSalary: detail.salary,
+    NetSalary: netSalary,
+    OvertimePay: overtimePay,
+    PerformanceBonus: performanceBonus,
+    Contributions: contributions,
     Allowance: detail.allowance,
     Tax: detail.tax,
-    'Account Number': detail.accountNumber,
-    'Account Name': detail.accountName,
-    'Bank Name': detail.bankName,
+    Others: others,
     AccountNumber: detail.accountNumber,
     AccountName: detail.accountName,
     BankName: detail.bankName,
+    TotalEarning: totalEarning,
+    TotalDeduction: totalDeduction,
     Period: period,
     Status: ('status' in detail && detail.status) || 'Pending',
-    TotalEarning:
-      ('totalEarning' in detail && detail.totalEarning) ||
-      String(Number(detail.salary || 0) + Number(detail.allowance || 0) || ''),
-    TotalDeduction:
-      ('totalDeduction' in detail && detail.totalDeduction) || detail.tax || '0',
-    'Total Earning':
-      ('totalEarning' in detail && detail.totalEarning) ||
-      String(Number(detail.salary || 0) + Number(detail.allowance || 0) || ''),
-    'Total Deduction':
-      ('totalDeduction' in detail && detail.totalDeduction) || detail.tax || '0',
   };
 }
 
 /**
  * Read salary rows from Supabase `salaries`, enriched with employee profile fields.
- * Optional filters: employeeIds and/or period (e.g. `2026-08`).
+ * Prefer UniqueKey (`EmployeeID-Period`) when employeeIds + period (or uniqueKeys) are provided.
  */
 export async function fetchSalaryDetails(
   employeeIds?: string[],
-  period?: string
+  period?: string,
+  uniqueKeys?: string[]
 ): Promise<SalaryDetailRecord[]> {
+  const periodKey = period?.trim() ? monthInputToPeriod(period.trim()) : undefined;
+  const keys =
+    uniqueKeys && uniqueKeys.length > 0
+      ? uniqueKeys.map((key) => key.trim()).filter(Boolean)
+      : periodKey && employeeIds && employeeIds.length > 0
+        ? employeeIds.map((id) => buildSalaryUniqueKey(id, periodKey)).filter(Boolean)
+        : undefined;
+
   const [salaryRows, employeeRows] = await Promise.all([
     listSalaryDbRows({
       employeeIds,
-      period: period?.trim() || undefined,
+      period: periodKey,
+      uniqueKeys: keys,
     }),
     listEmployeeDbRows(),
   ]);
@@ -208,9 +259,26 @@ export async function fetchSalaryDetails(
     return salaryDbRowToDetail(row, employee);
   });
 
-  if (employeeIds && employeeIds.length > 0) {
-    const wanted = new Set(employeeIds.map((id) => id.trim().toLowerCase()));
-    rows = rows.filter((row) => wanted.has(row.employeeId.trim().toLowerCase()));
+  if (keys && keys.length > 0) {
+    const wantedKeys = new Set(keys.map((key) => key.trim().toLowerCase()));
+    rows = rows.filter((row) => {
+      const key = (
+        row.uniqueKey || buildSalaryUniqueKey(row.employeeId, row.period || '')
+      )
+        .trim()
+        .toLowerCase();
+      return wantedKeys.has(key);
+    });
+  } else {
+    if (periodKey) {
+      rows = rows.filter(
+        (row) => monthInputToPeriod((row.period || '').trim()) === periodKey
+      );
+    }
+    if (employeeIds && employeeIds.length > 0) {
+      const wanted = new Set(employeeIds.map((id) => id.trim().toLowerCase()));
+      rows = rows.filter((row) => wanted.has(row.employeeId.trim().toLowerCase()));
+    }
   }
 
   return rows;
@@ -233,11 +301,25 @@ export async function updateSalaryDetails(
     }
   }
 
-  const writes = details.map((detail) => ({
-    ...detail,
-    period: (detail.period || currentSalaryPeriod()).trim(),
-    status: detail.status || 'Pending',
-  }));
+  const writes = details.map((detail) => {
+    const period = monthInputToPeriod((detail.period || currentSalaryPeriod()).trim());
+    const totals = computeSalaryTotals(detail);
+    const uniqueKey =
+      detail.uniqueKey?.trim() || buildSalaryUniqueKey(detail.employeeId, period);
+    return {
+      ...detail,
+      period,
+      uniqueKey,
+      status: detail.status || 'Pending',
+      totalEarning: detail.totalEarning || String(totals.totalearning),
+      totalDeduction: detail.totalDeduction || String(totals.totaldeduction),
+      netSalary: detail.netSalary || String(totals.netsalary),
+      overtimePay: detail.overtimePay ?? String(totals.overtimepay),
+      performanceBonus: detail.performanceBonus ?? String(totals.performancebonus),
+      contributions: detail.contributions ?? String(totals.contributions),
+      others: detail.others ?? String(totals.others),
+    };
+  });
 
   const snapshots: Array<{
     previous: SalaryDbRow | null;
@@ -330,6 +412,20 @@ export function mergeSalaryDetails(
     const salary = override.salary?.trim() || current?.salary || '';
     const allowance = override.allowance?.trim() || current?.allowance || '';
     const tax = override.tax?.trim() || current?.tax || '';
+    const overtimePay = override.overtimePay?.trim() || current?.overtimePay || '';
+    const performanceBonus =
+      override.performanceBonus?.trim() || current?.performanceBonus || '';
+    const contributions = override.contributions?.trim() || current?.contributions || '';
+    const others = override.others?.trim() || current?.others || '';
+    const totals = computeSalaryTotals({
+      salary,
+      allowance,
+      overtimePay,
+      performanceBonus,
+      others,
+      tax,
+      contributions,
+    });
     byId.set(key, {
       employeeId: override.employeeId.trim(),
       fullName: current?.fullName || '',
@@ -340,20 +436,37 @@ export function mergeSalaryDetails(
       employeeType: current?.employeeType || '',
       role: current?.role || '',
       emsStatus: current?.emsStatus || '',
-      baseSalary: current?.baseSalary || '',
+      baseSalary: current?.baseSalary || salary,
       salary,
+      netSalary: override.netSalary?.trim() || current?.netSalary || String(totals.netsalary),
+      overtimePay,
+      performanceBonus,
+      contributions,
       allowance,
       tax,
+      others,
       totalEarning:
         override.totalEarning?.trim() ||
         current?.totalEarning ||
-        String(Number(salary || 0) + Number(allowance || 0) || ''),
-      totalDeduction: override.totalDeduction?.trim() || current?.totalDeduction || tax,
+        String(totals.totalearning),
+      totalDeduction:
+        override.totalDeduction?.trim() ||
+        current?.totalDeduction ||
+        String(totals.totaldeduction),
       accountNumber: override.accountNumber?.trim() || current?.accountNumber || '',
       accountName: override.accountName?.trim() || current?.accountName || '',
       bankName: override.bankName?.trim() || current?.bankName || '',
       bankAccountDetails: current?.bankAccountDetails || '',
-      period: override.period?.trim() || current?.period || '',
+      period: monthInputToPeriod(
+        (override.period?.trim() || current?.period || currentSalaryPeriod()).trim()
+      ),
+      uniqueKey:
+        override.uniqueKey?.trim() ||
+        current?.uniqueKey ||
+        buildSalaryUniqueKey(
+          override.employeeId.trim(),
+          override.period?.trim() || current?.period || currentSalaryPeriod()
+        ),
       status: override.status?.trim() || current?.status || '',
       salaryId: current?.salaryId || '',
       raw: current?.raw || {},
@@ -365,23 +478,32 @@ export function mergeSalaryDetails(
 
 function detailFieldValue(
   detail: SalaryDetailRecord,
-  field: (typeof REQUIRED_FIELDS)[number]
+  field: (typeof ALL_FORM_MISSING_LABELS)[number] | (typeof REQUIRED_FIELDS)[number]
 ): string {
-  const mapped: Record<(typeof REQUIRED_FIELDS)[number], string> = {
+  const mapped: Record<string, string> = {
+    'Base Salary': detail.salary,
     Salary: detail.salary,
     Allowance: detail.allowance,
+    'Overtime Pay': detail.overtimePay,
+    'Performance Bonus': detail.performanceBonus,
+    Others: detail.others,
     Tax: detail.tax,
+    Contributions: detail.contributions,
     'Account Number': detail.accountNumber,
     'Account Name': detail.accountName,
     'Bank Name': detail.bankName,
   };
   if (hasValue(mapped[field])) return String(mapped[field]).trim();
 
-  // Fallback to raw sheet keys if mapping missed a variant column name
-  const rawKeys: Record<(typeof REQUIRED_FIELDS)[number], string[]> = {
-    Salary: ['Salary', 'salary', 'BaseSalary', 'baseSalary'],
+  const rawKeys: Record<string, string[]> = {
+    'Base Salary': ['BaseSalary', 'baseSalary', 'Salary', 'salary'],
+    Salary: ['BaseSalary', 'baseSalary', 'Salary', 'salary'],
     Allowance: ['Allowance', 'allowance'],
+    'Overtime Pay': ['OvertimePay', 'overtimePay', 'Overtime Pay'],
+    'Performance Bonus': ['PerformanceBonus', 'performanceBonus', 'Performance Bonus'],
+    Others: ['Others', 'others'],
     Tax: ['Tax', 'tax'],
+    Contributions: ['Contributions', 'contributions', 'Contribution', 'contribution'],
     'Account Number': [
       'Account Number',
       'AccountNumber',
@@ -391,7 +513,13 @@ function detailFieldValue(
     'Account Name': ['Account Name', 'AccountName', 'accountName'],
     'Bank Name': ['Bank Name', 'BankName', 'bankName'],
   };
-  return pick(detail.raw, ...rawKeys[field]);
+  return pick(detail.raw, ...(rawKeys[field] || []));
+}
+
+/** Empty form-field labels for highlight UI (includes optional money fields). */
+export function listEmptySalaryFields(detail: SalaryDetailRecord | null | undefined): string[] {
+  if (!detail) return [...ALL_FORM_MISSING_LABELS];
+  return ALL_FORM_MISSING_LABELS.filter((field) => !hasValue(detailFieldValue(detail, field)));
 }
 
 export function findIncompleteSalaryDetails(
@@ -406,32 +534,26 @@ export function findIncompleteSalaryDetails(
 
   for (const employeeId of employeeIds) {
     const detail = byId.get(employeeId.trim().toLowerCase());
-    const missingFields: string[] = [];
+    const missingFields = listEmptySalaryFields(detail || null);
 
     if (!detail) {
       incomplete.push({
         employeeId,
-        missingFields: [...REQUIRED_FIELDS],
+        missingFields: [...ALL_FORM_MISSING_LABELS],
       });
       continue;
     }
 
-    for (const field of REQUIRED_FIELDS) {
-      if (!hasValue(detailFieldValue(detail, field))) {
-        missingFields.push(field);
-      }
-    }
-
-    if (missingFields.length > 0) {
-      incomplete.push({
-        employeeId,
-        fullName: detail.fullName,
-        email: detail.email,
-        department: detail.department,
-        designation: detail.designation,
-        missingFields,
-      });
-    }
+    // Always include the employee when collecting the single review modal;
+    // required-field gaps drive whether generate can proceed after save.
+    incomplete.push({
+      employeeId,
+      fullName: detail.fullName,
+      email: detail.email,
+      department: detail.department,
+      designation: detail.designation,
+      missingFields,
+    });
   }
 
   return incomplete;
@@ -442,18 +564,30 @@ export function isSalaryDetailComplete(detail: SalaryDetailRecord): boolean {
   return REQUIRED_FIELDS.every((field) => hasValue(detailFieldValue(detail, field)));
 }
 
-/** Shape sent into the generate-salary-slip webhook employees[]. */
+/** Shape sent into the generate-salary-slip webhook (matches Salaries columns). */
 export function toSalaryDetailWebhookFields(detail: SalaryDetailRecord | undefined) {
+  const period = detail?.period || '';
   return {
-    Salary: detail?.salary || '',
+    UniqueKey:
+      detail?.uniqueKey ||
+      (detail?.employeeId && period
+        ? buildSalaryUniqueKey(detail.employeeId, period)
+        : ''),
+    BaseSalary: detail?.salary || '',
+    NetSalary: detail?.netSalary || '',
+    OvertimePay: detail?.overtimePay || '',
+    PerformanceBonus: detail?.performanceBonus || '',
+    Contributions: detail?.contributions || '',
     Allowance: detail?.allowance || '',
     Tax: detail?.tax || '',
+    Others: detail?.others || '',
     AccountNumber: detail?.accountNumber || '',
     AccountName: detail?.accountName || '',
     BankName: detail?.bankName || '',
-    'Account Number': detail?.accountNumber || '',
-    'Account Name': detail?.accountName || '',
-    'Bank Name': detail?.bankName || '',
+    TotalEarning: detail?.totalEarning || '',
+    TotalDeduction: detail?.totalDeduction || '',
+    Period: period,
+    Status: detail?.status || '',
   };
 }
 
@@ -466,7 +600,13 @@ export function toSalaryDetailInput(detail: SalaryDetailRecord): SalaryDetailInp
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
+    overtimePay: detail.overtimePay,
+    performanceBonus: detail.performanceBonus,
+    contributions: detail.contributions,
+    others: detail.others,
+    netSalary: detail.netSalary,
     period: detail.period,
+    uniqueKey: detail.uniqueKey,
     status: detail.status,
     totalEarning: detail.totalEarning,
     totalDeduction: detail.totalDeduction,

@@ -10,6 +10,6 @@ export const SHEETS_WEBHOOKS = {
   getAuditLog: `${N8N_BASE_URL}/webhook/get-audit-log`,
   createAudit: `${N8N_BASE_URL}/webhook/create-audit`,
   generateSalarySlip: `${N8N_BASE_URL}/webhook/generate-salary-slip`,
-  getSalaryDetail: `${N8N_BASE_URL}/webhook/get-salary-detail`,
-  updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
+  getSalaryDetail: `${N8N_BASE_URL}/webhook-test/get-salary-detail`,
+  updateSalaryDetail: `${N8N_BASE_URL}/webhook-test/update-salary-detail`,
 } as const;
