@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Salary Slip</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #f7f7f8;
+      font-family: Georgia, 'Times New Roman', Times, serif;
+      color: #0a0a0a;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    "
+  >
+    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">
+      Your salary slip for {{period}} is ready — PDF attached.
+    </div>
+
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      style="background: #f7f7f8; padding: 40px 16px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+              max-width: 560px;
+              background: #ffffff;
+              border: 1px solid #e6e6e9;
+              border-radius: 12px;
+              overflow: hidden;
+            "
+          >
+            <!-- Brand header: dark so black logo artwork blends -->
+            <tr>
+              <td
+                align="center"
+                style="
+                  background: #0a0a0a;
+                  padding: 36px 32px 32px 32px;
+                  text-align: center;
+                "
+              >
+                <img
+                  src="{{logoUrl}}"
+                  alt="{{companyName}}"
+                  width="180"
+                  style="
+                    display: block;
+                    margin: 0 auto;
+                    width: 180px;
+                    max-width: 72%;
+                    height: auto;
+                    border: 0;
+                    outline: none;
+                    text-decoration: none;
+                  "
+                />
+                <p
+                  style="
+                    margin: 18px 0 0 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.28em;
+                    text-transform: uppercase;
+                    color: #a0a0a5;
+                  "
+                >
+                  Employee Management
+                </p>
+              </td>
+            </tr>
+
+            <!-- Accent rule -->
+            <tr>
+              <td style="background: #0a0a0a; padding: 0 32px 0 32px">
+                <div style="height: 1px; line-height: 1px; background: #2a2a2a; font-size: 0">
+                  &nbsp;
+                </div>
+              </td>
+            </tr>
+
+            <!-- Eyebrow -->
+            <tr>
+              <td style="padding: 28px 36px 0 36px">
+                <p
+                  style="
+                    margin: 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 0.2em;
+                    text-transform: uppercase;
+                    color: #6b6b70;
+                  "
+                >
+                  Payroll notice
+                </p>
+              </td>
+            </tr>
+
+            <!-- Body copy -->
+            <tr>
+              <td style="padding: 12px 36px 8px 36px">
+                <h1
+                  style="
+                    margin: 0 0 16px 0;
+                    font-family: Georgia, 'Times New Roman', Times, serif;
+                    font-size: 26px;
+                    font-weight: 400;
+                    line-height: 1.25;
+                    color: #0a0a0a;
+                  "
+                >
+                  Hi {{employeeName}},
+                </h1>
+                <p
+                  style="
+                    margin: 0 0 14px 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px;
+                    line-height: 1.65;
+                    color: #3f3f46;
+                  "
+                >
+                  Your salary slip for
+                  <strong style="color: #0a0a0a">{{period}}</strong>
+                  is ready. The PDF is attached to this email for your records.
+                </p>
+                <p
+                  style="
+                    margin: 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    color: #6b6b70;
+                  "
+                >
+                  If any figure looks incorrect, reply to this message or contact HR.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Summary panel -->
+            <tr>
+              <td style="padding: 24px 36px 8px 36px">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  style="
+                    background: #f7f7f8;
+                    border: 1px solid #e6e6e9;
+                    border-radius: 8px;
+                  "
+                >
+                  <tr>
+                    <td
+                      style="
+                        padding: 18px 20px 10px 20px;
+                        font-family: Arial, Helvetica, sans-serif;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.16em;
+                        text-transform: uppercase;
+                        color: #6b6b70;
+                      "
+                    >
+                      Period
+                    </td>
+                    <td
+                      style="
+                        padding: 18px 20px 10px 20px;
+                        font-family: Arial, Helvetica, sans-serif;
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: #0a0a0a;
+                        text-align: right;
+                      "
+                    >
+                      {{period}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding: 0 20px">
+                      <div
+                        style="
+                          height: 1px;
+                          line-height: 1px;
+                          background: #e6e6e9;
+                          font-size: 0;
+                        "
+                      >
+                        &nbsp;
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      style="
+                        padding: 12px 20px 18px 20px;
+                        font-family: Arial, Helvetica, sans-serif;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.16em;
+                        text-transform: uppercase;
+                        color: #6b6b70;
+                      "
+                    >
+                      Attachment
+                    </td>
+                    <td
+                      style="
+                        padding: 12px 20px 18px 20px;
+                        font-family: Arial, Helvetica, sans-serif;
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: #0a0a0a;
+                        text-align: right;
+                      "
+                    >
+                      Salary Slip (PDF)
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Status chip -->
+            <tr>
+              <td style="padding: 16px 36px 28px 36px" align="left">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td
+                      style="
+                        background: #0a0a0a;
+                        border-radius: 4px;
+                        padding: 8px 14px;
+                        font-family: Arial, Helvetica, sans-serif;
+                        font-size: 12px;
+                        font-weight: 700;
+                        letter-spacing: 0.06em;
+                        text-transform: uppercase;
+                        color: #ffffff;
+                      "
+                    >
+                      PDF attached
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td
+                style="
+                  padding: 22px 36px 28px 36px;
+                  border-top: 1px solid #e6e6e9;
+                  background: #fafafa;
+                  text-align: center;
+                "
+              >
+                <p
+                  style="
+                    margin: 0 0 6px 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #0a0a0a;
+                  "
+                >
+                  {{companyName}}
+                </p>
+                <p
+                  style="
+                    margin: 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    font-size: 12px;
+                    line-height: 1.6;
+                    color: #6b6b70;
+                  "
+                >
+                  Automated message from EMS.<br />
+                  Questions?
+                  <a
+                    href="mailto:{{supportEmail}}"
+                    style="color: #0a0a0a; text-decoration: underline"
+                    >{{supportEmail}}</a
+                  >
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p
+            style="
+              margin: 20px 0 0 0;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 11px;
+              line-height: 1.5;
+              color: #a0a0a5;
+              text-align: center;
+            "
+          >
+            Please do not share this email — it may contain confidential payroll information.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

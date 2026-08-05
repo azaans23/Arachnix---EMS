@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Calculator, LayoutDashboard, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  Banknote,
+  Calculator,
+  LayoutDashboard,
+  Users,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   AppRole,
@@ -197,6 +203,7 @@ function descriptionForResource(resource: string): string {
 function iconForHref(href: string) {
   if (href.includes('employees')) return <Users className="h-4 w-4" />;
   if (href.includes('accounting')) return <Calculator className="h-4 w-4" />;
+  if (href.includes('salary-slip')) return <Banknote className="h-4 w-4" />;
   return <LayoutDashboard className="h-4 w-4" />;
 }
 

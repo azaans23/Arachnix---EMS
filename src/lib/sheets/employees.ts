@@ -2,6 +2,14 @@ import type { EmployeeRecord, EmployeeWriteInput, SheetUser } from '@/types/empl
 import { toSheetUser } from '@/types/employee';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
+  dbRowToEmployeeRecord,
+  findEmployeeDbRowByIdOrEmail,
+  getEmployeeDbRow,
+  listEmployeeDbRows,
+  rollbackEmployeeDbWrite,
+  upsertEmployeeDbRow,
+} from '@/lib/db/employees';
+import {
   buildEmployeeUniquenessContext,
   employeeValidationSchema,
 } from '@/utils/validation';
@@ -245,35 +253,36 @@ async function parseWebhookError(response: Response, fallback: string): Promise<
   try {
     const jsonErr = JSON.parse(errText);
     if (jsonErr.message) {
-      return jsonErr.message + (jsonErr.hint ? ` ${jsonErr.hint}` : '');
+      const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
+      const message = String(jsonErr.message) + hint;
+      if (response.status === 404) {
+        return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
+      }
+      return message;
     }
   } catch {
     /* keep text */
   }
 
-  return errText || fallback;
-}
-
-/** Typed read of the Employees sheet via n8n. */
-export async function fetchEmployees(): Promise<EmployeeRecord[]> {
-  const response = await fetch(SHEETS_WEBHOOKS.getUsers, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw new SheetsError(
-      await parseWebhookError(
-        response,
-        `n8n webhook returned status ${response.status}. Make sure the webhook is active.`
-      ),
-      response.status
+  if (response.status === 404) {
+    return (
+      errText ||
+      'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
     );
   }
 
-  const data = await response.json();
-  return normalizeEmployeesPayload(data);
+  return errText || fallback;
+}
+
+/** Typed read of employees from Supabase (sheet remains write source-of-truth via dual-write). */
+export async function fetchEmployees(): Promise<EmployeeRecord[]> {
+  try {
+    const rows = await listEmployeeDbRows();
+    return rows.map((row) => dbRowToEmployeeRecord(row) as EmployeeRecord);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to load employees from Supabase.';
+    throw new SheetsError(message, 500);
+  }
 }
 
 export async function fetchSheetUsers(): Promise<SheetUser[]> {
@@ -299,17 +308,13 @@ export async function getEmployeeById(id: string): Promise<EmployeeRecord | null
 
   if (candidates.size === 0) return null;
 
-  const employees = await fetchEmployees();
-  return (
-    employees.find((employee) => {
-      const employeeId = employee.employeeId.trim().toLowerCase();
-      const email = employee.email.trim().toLowerCase();
-      return (
-        (employeeId && candidates.has(employeeId)) ||
-        (email && candidates.has(email))
-      );
-    }) || null
-  );
+  try {
+    const row = await findEmployeeDbRowByIdOrEmail(candidates);
+    return row ? (dbRowToEmployeeRecord(row) as EmployeeRecord) : null;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to load employee from Supabase.';
+    throw new SheetsError(message, 500);
+  }
 }
 
 export type ValidateEmployeeResult =
@@ -366,7 +371,10 @@ export async function validateEmployeeWrite(
   }
 }
 
-/** Typed write to the Employees sheet via n8n (create or update). */
+/**
+ * Dual-write employee to Supabase + Google Sheet (n8n).
+ * Order: DB first, then sheet. If the sheet fails, the DB write is rolled back.
+ */
 export async function upsertEmployee(
   input: EmployeeWriteInput,
   previous?: EmployeeRecord | null
@@ -374,20 +382,38 @@ export async function upsertEmployee(
   const merged = mergeEmployeeWriteInput(input, previous);
   const payload = toSheetWritePayload(merged);
 
-  const response = await fetch(SHEETS_WEBHOOKS.updateUser, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const lookupId =
+    (previous?.employeeId || merged.originalEmployeeId || merged.employeeId).trim();
+  const previousDbRow = await getEmployeeDbRow(lookupId);
 
-  if (!response.ok) {
-    throw new SheetsError(
-      await parseWebhookError(
-        response,
-        `n8n update-user webhook returned status ${response.status}.`
-      ),
-      response.status
-    );
+  await upsertEmployeeDbRow(merged);
+
+  try {
+    const response = await fetch(SHEETS_WEBHOOKS.updateUser, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new SheetsError(
+        await parseWebhookError(
+          response,
+          `n8n update-user webhook returned status ${response.status}.`
+        ),
+        response.status
+      );
+    }
+  } catch (sheetError) {
+    try {
+      await rollbackEmployeeDbWrite({
+        previous: previousDbRow,
+        writtenEmployeeId: merged.employeeId,
+      });
+    } catch (rollbackError) {
+      console.error('Failed to roll back Supabase employee after sheet write failure:', rollbackError);
+    }
+    throw sheetError;
   }
 
   return merged;
