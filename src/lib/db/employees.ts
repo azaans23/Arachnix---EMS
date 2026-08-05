@@ -114,6 +114,32 @@ export async function listEmployeeDbRows(): Promise<EmployeeDbRow[]> {
   return (data as EmployeeDbRow[]) || [];
 }
 
+/**
+ * Case-insensitive exact match on a single column. Lookup values are
+ * user-supplied, so pattern metacharacters are escaped (and `*`, which
+ * PostgREST rewrites to `%`, is rejected) to stop a wildcard from matching an
+ * arbitrary row instead of returning "not found".
+ */
+async function findEmployeeDbRowByColumn(
+  column: 'employeeid' | 'email',
+  value: string
+): Promise<EmployeeDbRow | null> {
+  if (value.includes('*')) return null;
+  const pattern = value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(TABLE)
+    .select('*')
+    .ilike(column, pattern)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Supabase employees read failed: ${error.message}`);
+  }
+
+  return (data as EmployeeDbRow | null) ?? null;
+}
+
 export async function findEmployeeDbRowByIdOrEmail(
   candidates: Set<string>
 ): Promise<EmployeeDbRow | null> {
@@ -124,29 +150,15 @@ export async function findEmployeeDbRowByIdOrEmail(
   // Prefer exact employee ID matches first.
   for (const value of values) {
     if (!value) continue;
-    const { data, error } = await getSupabaseAdmin()
-      .from(TABLE)
-      .select('*')
-      .ilike('employeeid', value)
-      .maybeSingle();
-    if (error) {
-      throw new Error(`Supabase employees read failed: ${error.message}`);
-    }
-    if (data) return data as EmployeeDbRow;
+    const row = await findEmployeeDbRowByColumn('employeeid', value);
+    if (row) return row;
   }
 
   // Then email matches.
   for (const value of values) {
     if (!value.includes('@')) continue;
-    const { data, error } = await getSupabaseAdmin()
-      .from(TABLE)
-      .select('*')
-      .ilike('email', value)
-      .maybeSingle();
-    if (error) {
-      throw new Error(`Supabase employees read failed: ${error.message}`);
-    }
-    if (data) return data as EmployeeDbRow;
+    const row = await findEmployeeDbRowByColumn('email', value);
+    if (row) return row;
   }
 
   return null;

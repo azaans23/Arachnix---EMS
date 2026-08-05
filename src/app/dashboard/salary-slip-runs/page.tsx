@@ -304,20 +304,12 @@ export default function SalarySlipRunsPage() {
       let role = getTrustedRole(session.user);
       try {
         const synced = await syncSessionCookies(session.access_token);
-        if (synced.role) role = synced.role;
+        role = synced.role;
       } catch {
-        /* gate cookie optional for page boot */
+        /* keep JWT fallback */
       }
-      if (!role) {
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        role = (data?.role as string) || null;
-      }
-      const canView = canAccess(role || '', 'salary_slip_runs');
-      setCanGenerate(canWrite(role || '', 'salary_slip_runs'));
+      const canView = canAccess(role, 'salary_slip_runs');
+      setCanGenerate(canWrite(role, 'salary_slip_runs'));
       setAllowed(canView);
       if (canView) await load();
       else setLoading(false);

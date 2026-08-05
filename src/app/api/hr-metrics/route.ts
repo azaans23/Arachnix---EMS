@@ -5,10 +5,14 @@ import { fetchEmployees } from '@/lib/sheets/employees';
 
 export const dynamic = 'force-dynamic';
 
-/** Compact HR dashboard metrics for payroll overview. */
+/**
+ * Compact HR dashboard metrics for payroll overview.
+ * Gated on salary_slip_runs (Super Admin / HR Manager) because the response
+ * exposes payroll run counts and headcount, not generic dashboard data.
+ */
 export async function GET(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'dashboard', 'read');
+    const { errorResponse } = await verifyResourceAccess(request, 'salary_slip_runs', 'read');
     if (errorResponse) return errorResponse;
 
     const [employees, runs, processingCount] = await Promise.all([

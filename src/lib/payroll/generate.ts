@@ -277,11 +277,11 @@ export async function startSalarySlipRun(
         EmployeeID: employee.employeeId,
         FullName: detail?.fullName || employee.fullName,
         Email: detail?.email || employee.email,
-        BaseSalary: detail?.salary || employee.baseSalary,
         Department: detail?.department || employee.department,
         Designation: detail?.designation || employee.designation,
         BankAccountDetails: employee.bankAccountDetails,
         ...toSalaryDetailWebhookFields(detail),
+        BaseSalary: detail?.salary || employee.baseSalary,
       };
     }),
   };

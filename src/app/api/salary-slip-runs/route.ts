@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       salaryDetails,
     });
 
-    if ('needsConfirmation' in result && result.needsConfirmation) {
+    if ('needsConfirmation' in result) {
       return NextResponse.json(
         {
           success: false,
