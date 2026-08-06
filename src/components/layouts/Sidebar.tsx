@@ -15,6 +15,7 @@ import {
   Banknote,
   DollarSign,
   FolderOpen,
+  FileText,
   CalendarDays,
   CalendarRange,
   TreePalm,
@@ -42,6 +43,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard/holiday-calendar': CalendarDays,
   '/dashboard/salary': DollarSign,
   '/dashboard/salary-slip-runs': Banknote,
+  '/dashboard/offer-letters': FileText,
   '/dashboard/generated-documents': FolderOpen,
   '/dashboard/accounting-records': Calculator,
   '/dashboard/audit-log': ScrollText,
@@ -131,7 +133,11 @@ export default function Sidebar() {
         className="absolute -right-3 top-6 z-40 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
         aria-label="Toggle sidebar"
       >
-        {isOpen ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        {isOpen ? (
+          <ChevronLeft className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5" />
+        )}
       </button>
 
       <div
@@ -212,9 +218,7 @@ export default function Sidebar() {
           }}
           onBlur={hideTip}
           className={`group flex shrink-0 items-center text-sm font-medium transition-colors duration-200 text-muted hover:bg-canvas hover:text-ink disabled:opacity-50 ${
-            isOpen
-              ? 'w-full gap-3 rounded-md px-3 py-2.5'
-              : 'h-10 w-10 justify-center rounded-full'
+            isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
           }`}
         >
           <Power className="h-4 w-4 shrink-0" />
@@ -267,9 +271,7 @@ function NavItem({
       }}
       onBlur={onHideTip}
       className={`flex shrink-0 items-center text-sm font-medium transition-colors duration-200 ${
-        isOpen
-          ? 'w-full gap-3 rounded-md px-3 py-2.5'
-          : 'h-10 w-10 justify-center rounded-full'
+        isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
       } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`}
     >
       {icon}
