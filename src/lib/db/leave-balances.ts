@@ -5,6 +5,7 @@ import {
   buildLeaveId,
   type LeaveBalanceInput,
   type LeaveBalanceRecord,
+  validateLeaveBalanceRules,
 } from '@/types/leave-balance';
 
 type LeaveBalanceDbRow = {
@@ -181,15 +182,8 @@ export async function getLeaveBalance(
 }
 
 function assertQuotaRules(input: LeaveBalanceInput) {
-  if (input.annualUsed > input.annualQuota) {
-    throw new Error('Annual Used cannot exceed Annual Quota.');
-  }
-  if (input.sickUsed > input.sickQuota) {
-    throw new Error('Sick Used cannot exceed Sick Quota.');
-  }
-  if (input.casualUsed > input.casualQuota) {
-    throw new Error('Casual Used cannot exceed Casual Quota.');
-  }
+  const error = validateLeaveBalanceRules(input);
+  if (error) throw new Error(error);
 }
 
 /** Sheet / webhook column names for Leave Balance. */

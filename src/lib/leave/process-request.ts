@@ -10,7 +10,7 @@ import {
   getLeaveBalance,
   upsertLeaveBalance,
 } from '@/lib/db/leave-balances';
-import { buildLeaveId, type LeaveBalanceInput } from '@/types/leave-balance';
+import { buildLeaveId, remainingLeaveDays, type LeaveBalanceInput } from '@/types/leave-balance';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import type {
   LeaveRequest,
@@ -71,36 +71,15 @@ function balanceFieldForLeaveType(leaveType: string): 'annualUsed' | 'sickUsed' 
 
 function remainingForType(
   leaveType: string,
-  balance: Awaited<ReturnType<typeof getLeaveBalance>>
+  balance: LeaveBalanceInput | null
 ) {
   if (!balance) return null;
-  switch (leaveType.trim().toLowerCase()) {
-    case 'annual':
-      return {
-        quota: balance.annualQuota,
-        used: balance.annualUsed,
-        remaining: Math.max(0, balance.annualQuota - balance.annualUsed),
-      };
-    case 'sick':
-      return {
-        quota: balance.sickQuota,
-        used: balance.sickUsed,
-        remaining: Math.max(0, balance.sickQuota - balance.sickUsed),
-      };
-    case 'casual':
-      return {
-        quota: balance.casualQuota,
-        used: balance.casualUsed,
-        remaining: Math.max(0, balance.casualQuota - balance.casualUsed),
-      };
-    default:
-      return null;
-  }
+  return remainingLeaveDays(leaveType, balance);
 }
 
 /**
- * Consumes quota in Supabase only. The Sheet copy is updated by the single
- * create-leave-request workflow, which receives the new balance in its payload.
+ * Consumes quota in Supabase only. Annual = total pool.
+ * Sick / Casual also increment AnnualUsed. Sheet sync goes via create-leave-request.
  */
 async function applyApprovedLeaveToBalance(request: LeaveRequest): Promise<{
   balance: LeaveBalanceInput | null;
@@ -129,13 +108,24 @@ async function applyApprovedLeaveToBalance(request: LeaveRequest): Promise<{
     leaveId: existing.leaveId || buildLeaveId(request.employeeId, year),
   };
   const next = { ...previous };
-  next[field] = Number(next[field] || 0) + Number(request.daysRequested);
+  const days = Number(request.daysRequested);
 
-  const quotaKey =
-    field === 'annualUsed' ? 'annualQuota' : field === 'sickUsed' ? 'sickQuota' : 'casualQuota';
-  if (next[field] > next[quotaKey]) {
+  next[field] = Number(next[field] || 0) + days;
+  // Sick and Casual sit under the annual total, so they consume total used too.
+  if (field === 'sickUsed' || field === 'casualUsed') {
+    next.annualUsed = Number(next.annualUsed || 0) + days;
+  }
+
+  const typeRemaining = remainingLeaveDays(request.leaveType, previous);
+  if (!typeRemaining || typeRemaining.remaining < days) {
+    const label =
+      field === 'annualUsed'
+        ? 'total (annual)'
+        : field === 'sickUsed'
+          ? 'sick'
+          : 'casual';
     throw new Error(
-      `Insufficient ${request.leaveType} leave balance. Remaining: ${Math.max(0, next[quotaKey] - (next[field] - request.daysRequested))} day(s).`
+      `Insufficient ${label} leave balance. Remaining: ${typeRemaining?.remaining ?? 0} day(s).`
     );
   }
 

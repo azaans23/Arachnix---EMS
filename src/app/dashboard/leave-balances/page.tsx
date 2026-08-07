@@ -25,6 +25,8 @@ import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   LEAVE_BALANCE_FIELDS,
   buildLeaveId,
+  remainingLeaveDays,
+  validateLeaveBalanceRules,
   type LeaveBalanceFieldKey,
   type LeaveBalanceInput,
   type LeaveBalanceRecord,
@@ -105,10 +107,6 @@ function toForm(row: LeaveBalanceInput): FormState {
     casualUsed: String(row.casualUsed),
     carryForwardDays: String(row.carryForwardDays),
   };
-}
-
-function remaining(quota: number, used: number) {
-  return Math.max(0, Number(quota) - Number(used));
 }
 
 function formatDays(value: number) {
@@ -369,25 +367,20 @@ export default function LeaveBalancesPage() {
       numbers[field.key] = value;
     }
 
-    if (numbers.annualUsed > numbers.annualQuota) {
-      toast.error('Annual Used cannot exceed Annual Quota.');
-      return null;
-    }
-    if (numbers.sickUsed > numbers.sickQuota) {
-      toast.error('Sick Used cannot exceed Sick Quota.');
-      return null;
-    }
-    if (numbers.casualUsed > numbers.casualQuota) {
-      toast.error('Casual Used cannot exceed Casual Quota.');
-      return null;
-    }
-
-    return {
+    const payload: LeaveBalanceInput = {
       leaveId: form.leaveId.trim() || buildLeaveId(form.employeeId, year),
       employeeId: form.employeeId.trim(),
       year,
       ...numbers,
     };
+
+    const ruleError = validateLeaveBalanceRules(payload);
+    if (ruleError) {
+      toast.error(ruleError);
+      return null;
+    }
+
+    return payload;
   };
 
   const saveBalance = async (
@@ -474,6 +467,12 @@ export default function LeaveBalancesPage() {
           )}
         </label>
       </div>
+
+      <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
+        Total Leaves (Annual) is the overall pool. Sick and Casual quotas must fit inside it
+        (Sick Quota + Casual Quota ≤ Total Leaves). Approving sick or casual leave also
+        consumes from the total.
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         {LEAVE_BALANCE_FIELDS.map((field) => (
@@ -871,7 +870,7 @@ export default function LeaveBalancesPage() {
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                         <th className="px-5 py-3.5">Employee</th>
                         <th className="px-5 py-3.5">Year</th>
-                        <th className="px-5 py-3.5">Annual</th>
+                        <th className="px-5 py-3.5">Total (Annual)</th>
                         <th className="px-5 py-3.5">Sick</th>
                         <th className="px-5 py-3.5">Casual</th>
                         <th className="px-5 py-3.5">Carry Forward</th>
@@ -897,7 +896,7 @@ export default function LeaveBalancesPage() {
                               {formatDays(row.annualUsed)} / {formatDays(row.annualQuota)} used
                             </div>
                             <div className="text-xs">
-                              {formatDays(remaining(row.annualQuota, row.annualUsed))} left
+                              {formatDays(remainingLeaveDays('annual', row)?.remaining ?? 0)} left
                             </div>
                           </td>
                           <td className="px-5 py-3.5 text-muted">
@@ -905,7 +904,7 @@ export default function LeaveBalancesPage() {
                               {formatDays(row.sickUsed)} / {formatDays(row.sickQuota)} used
                             </div>
                             <div className="text-xs">
-                              {formatDays(remaining(row.sickQuota, row.sickUsed))} left
+                              {formatDays(remainingLeaveDays('sick', row)?.remaining ?? 0)} left
                             </div>
                           </td>
                           <td className="px-5 py-3.5 text-muted">
@@ -913,7 +912,7 @@ export default function LeaveBalancesPage() {
                               {formatDays(row.casualUsed)} / {formatDays(row.casualQuota)} used
                             </div>
                             <div className="text-xs">
-                              {formatDays(remaining(row.casualQuota, row.casualUsed))} left
+                              {formatDays(remainingLeaveDays('casual', row)?.remaining ?? 0)} left
                             </div>
                           </td>
                           <td className="px-5 py-3.5">{formatDays(row.carryForwardDays)}</td>
