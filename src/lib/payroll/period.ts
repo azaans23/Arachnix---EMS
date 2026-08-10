@@ -13,6 +13,22 @@ const MONTH_NAMES = [
   'December',
 ] as const;
 
+export function formatMonthName(month: number): string {
+  return MONTH_NAMES[month - 1] || String(month);
+}
+
+/** Accepts `8`, `"8"` or `"August"` and returns the 1-based month number (0 when unknown). */
+export function parseMonthValue(value: string | number | null | undefined): number {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+
+  const numeric = Number(raw);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) return numeric;
+
+  const index = MONTH_NAMES.findIndex((name) => name.toLowerCase() === raw.toLowerCase());
+  return index >= 0 ? index + 1 : 0;
+}
+
 /** Canonical period key used with UNIQUE (EmployeeID, Period), e.g. `August-2026`. */
 export function formatSalaryPeriod(month: number, year: number): string {
   const name = MONTH_NAMES[month - 1];
@@ -27,9 +43,7 @@ export function currentSalaryPeriod(date = new Date()): string {
 }
 
 /** Parse `August-2026` or legacy `2026-08` into month/year. */
-export function parseSalaryPeriod(
-  period: string
-): { month: number; year: number } | null {
+export function parseSalaryPeriod(period: string): { month: number; year: number } | null {
   const value = period.trim();
   if (!value) return null;
 

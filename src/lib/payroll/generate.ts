@@ -260,16 +260,6 @@ export async function startSalarySlipRun(
     period,
     triggeredBy: actorEmail,
     employeeIds,
-    salaryDetails: salaryDetails.map((detail) => ({
-      EmployeeID: detail.employeeId,
-      FullName: detail.fullName,
-      Email: detail.email,
-      Department: detail.department,
-      Designation: detail.designation,
-      Phone: detail.phone,
-      EmployeeType: detail.employeeType,
-      ...toSalaryDetailWebhookFields(detail),
-    })),
     employees: employees.map((employee) => {
       const detail = detailsById.get(employee.employeeId.trim().toLowerCase());
       return {

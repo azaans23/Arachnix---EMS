@@ -110,11 +110,7 @@ export function hasTrustedAppRole(
 
 export function isKnownRoleValue(raw: string | null | undefined): boolean {
   if (!raw) return false;
-  const key = String(raw)
-    .toLowerCase()
-    .trim()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ');
+  const key = String(raw).toLowerCase().trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
   const compact = key.replace(/\s/g, '_');
   return Boolean(ROLE_ALIASES[key] || ROLE_ALIASES[compact]);
 }
@@ -131,12 +127,7 @@ const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
     ROLES.DIRECTOR,
     ROLES.EMPLOYEE,
   ],
-  [ROLES.HR_MANAGER]: [
-    ROLES.HR_MANAGER,
-    ROLES.FINANCE_MANAGER,
-    ROLES.DIRECTOR,
-    ROLES.EMPLOYEE,
-  ],
+  [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
   [ROLES.FINANCE_MANAGER]: [],
   [ROLES.DIRECTOR]: [],
   [ROLES.EMPLOYEE]: [],
@@ -245,6 +236,8 @@ export const ROUTE_RESOURCES: { prefix: string; resource: ResourceKey }[] = [
   { prefix: '/dashboard/salary-slip-runs', resource: 'salary_slip_runs' },
   { prefix: '/dashboard/salary-slip-run-details', resource: 'salary_slip_run_details' },
   { prefix: '/dashboard/payroll', resource: 'salary_slip_runs' },
+  { prefix: '/dashboard/offer-letters', resource: 'generated_documents' },
+  { prefix: '/dashboard/offer-letter-run-details', resource: 'generated_documents' },
   { prefix: '/dashboard/generated-documents', resource: 'generated_documents' },
   { prefix: '/dashboard/leave-requests', resource: 'leave_requests' },
   { prefix: '/dashboard/leave-balances', resource: 'leave_balances' },
@@ -308,6 +301,12 @@ export const NAV_ITEMS: NavItemConfig[] = [
     href: '/dashboard/salary-slip-runs',
     label: 'Salary Slip Runs',
     resource: 'salary_slip_runs',
+    section: 'hr',
+  },
+  {
+    href: '/dashboard/offer-letters',
+    label: 'Offer Letter',
+    resource: 'generated_documents',
     section: 'hr',
   },
   {
