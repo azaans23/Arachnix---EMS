@@ -28,6 +28,8 @@ export type ResourceKey =
   | 'leave_balances'
   | 'holiday_calendar'
   | 'accounting_records'
+  | 'search'
+  | 'reports'
   | 'settings';
 
 export type AccessLevel = 'none' | 'read' | 'write';
@@ -206,6 +208,18 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
     [ROLES.FINANCE_MANAGER]: 'write',
     [ROLES.DIRECTOR]: 'read',
   },
+  search: {
+    [ROLES.SUPER_ADMIN]: 'read',
+    [ROLES.HR_MANAGER]: 'read',
+    [ROLES.FINANCE_MANAGER]: 'read',
+    [ROLES.DIRECTOR]: 'read',
+  },
+  reports: {
+    [ROLES.SUPER_ADMIN]: 'read',
+    [ROLES.HR_MANAGER]: 'read',
+    [ROLES.FINANCE_MANAGER]: 'read',
+    [ROLES.DIRECTOR]: 'read',
+  },
   settings: {
     [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
@@ -243,6 +257,8 @@ export const ROUTE_RESOURCES: { prefix: string; resource: ResourceKey }[] = [
   { prefix: '/dashboard/leave-balances', resource: 'leave_balances' },
   { prefix: '/dashboard/holiday-calendar', resource: 'holiday_calendar' },
   { prefix: '/dashboard/accounting-records', resource: 'accounting_records' },
+  { prefix: '/dashboard/search', resource: 'search' },
+  { prefix: '/dashboard/reports', resource: 'reports' },
   { prefix: '/dashboard/settings', resource: 'settings' },
   { prefix: '/dashboard', resource: 'dashboard' },
 ];
@@ -272,6 +288,7 @@ export type NavItemConfig = {
 
 export const NAV_ITEMS: NavItemConfig[] = [
   { href: '/dashboard', label: 'Dashboard', resource: 'dashboard', section: 'overview' },
+  { href: '/dashboard/search', label: 'Search', resource: 'search', section: 'overview' },
   { href: '/dashboard/employees', label: 'Employees', resource: 'employees', section: 'hr' },
   {
     href: '/dashboard/leave-requests',
@@ -321,6 +338,7 @@ export const NAV_ITEMS: NavItemConfig[] = [
     resource: 'accounting_records',
     section: 'finance',
   },
+  { href: '/dashboard/reports', label: 'Reports', resource: 'reports', section: 'finance' },
   { href: '/dashboard/audit-log', label: 'Audit Log', resource: 'audit_log', section: 'system' },
   { href: '/dashboard/settings', label: 'Settings', resource: 'settings', section: 'workspace' },
 ];

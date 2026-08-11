@@ -20,6 +20,8 @@ import {
   CalendarRange,
   TreePalm,
   Calculator,
+  Search,
+  FileBarChart2,
   type LucideIcon,
 } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
@@ -37,6 +39,7 @@ import { syncSessionCookies } from '@/lib/session-cookies';
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
+  '/dashboard/search': Search,
   '/dashboard/employees': Users,
   '/dashboard/leave-requests': TreePalm,
   '/dashboard/leave-balances': CalendarRange,
@@ -46,6 +49,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard/offer-letters': FileText,
   '/dashboard/generated-documents': FolderOpen,
   '/dashboard/accounting-records': Calculator,
+  '/dashboard/reports': FileBarChart2,
   '/dashboard/audit-log': ScrollText,
   '/dashboard/settings': Settings,
 };
