@@ -83,9 +83,29 @@ function usePrefersReducedMotion() {
 
 type TooltipRow = { label: string; value: string; color?: string; opacity?: number };
 
+/**
+ * Shared across all three charts:
+ * - allowEscapeViewBox stops Recharts from clamping the card inside small plots
+ *   (the donut is only ~168px wide, which pushed the tooltip over its centre).
+ * - offset keeps the card clear of the cursor instead of sitting under it.
+ */
+const TOOLTIP_PROPS = {
+  offset: 14,
+  allowEscapeViewBox: { x: true, y: true },
+  wrapperStyle: { zIndex: 40, pointerEvents: 'none' as const, outline: 'none' },
+} as const;
+
 function TooltipCard({ title, rows }: { title: string; rows: TooltipRow[] }) {
   return (
-    <div className="pointer-events-none min-w-[10rem] rounded-lg border border-border bg-surface-raised px-3 py-2 shadow-panel">
+    <div
+      className="pointer-events-none min-w-[10rem] rounded-lg border px-3 py-2"
+      // Inline so the card is always opaque, whatever the chart paints behind it.
+      style={{
+        backgroundColor: 'var(--surface-raised)',
+        borderColor: 'var(--border)',
+        boxShadow: 'var(--elevation-panel)',
+      }}
+    >
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">{title}</p>
       <ul className="mt-1.5 space-y-1">
         {rows.map((row) => (
@@ -196,6 +216,7 @@ export function CashflowTrendChart({
             tickFormatter={compactNumber}
           />
           <Tooltip
+            {...TOOLTIP_PROPS}
             content={renderTooltip}
             cursor={{ fill: 'var(--ink)', fillOpacity: 0.04 }}
             animationDuration={reduced ? 0 : 120}
@@ -302,7 +323,11 @@ export function AccountShareChart({
                 />
               ))}
             </Pie>
-            <Tooltip content={renderTooltip} animationDuration={reduced ? 0 : 120} />
+            <Tooltip
+              {...TOOLTIP_PROPS}
+              content={renderTooltip}
+              animationDuration={reduced ? 0 : 120}
+            />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -384,6 +409,7 @@ export function CategoryBreakdownChart({
             width={92}
           />
           <Tooltip
+            {...TOOLTIP_PROPS}
             content={renderTooltip}
             cursor={{ fill: 'var(--ink)', fillOpacity: 0.04 }}
             animationDuration={reduced ? 0 : 120}

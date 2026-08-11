@@ -92,14 +92,15 @@ export type AccountingDirectorAccount = {
   email: string;
 };
 
+/**
+ * Every Director in the employee table, regardless of EMS status — a director's
+ * accounting sub-account exists for as long as their folder does, and login access
+ * has no bearing on whether finance can file documents against them.
+ */
 export async function listAccountingDirectorAccounts(): Promise<AccountingDirectorAccount[]> {
   const employees = await listEmployeeDbRows();
-  return employees
+  const directors = employees
     .filter((employee) => normalizeRole(employee.role) === ROLES.DIRECTOR)
-    .filter((employee) => {
-      const status = String(employee.emsstatus || '').trim().toLowerCase();
-      return !status || status === 'active';
-    })
     .map((employee) => ({
       employeeId: employee.employeeid,
       name: String(employee.fullname || '').trim(),
@@ -107,6 +108,15 @@ export async function listAccountingDirectorAccounts(): Promise<AccountingDirect
     }))
     .filter((employee) => Boolean(employee.name))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Account values are names, so two directors sharing one would collide.
+  const seen = new Set<string>();
+  return directors.filter((director) => {
+    const key = director.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Fixed bank + live director names for account pickers. */
