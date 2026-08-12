@@ -3,7 +3,7 @@ export type ModalName =
 
 export interface ModalState {
   name: ModalName;
-  data?: any;
+  data?: unknown;
 }
 
 type Listener = (state: ModalState) => void;
@@ -14,7 +14,7 @@ const listeners = new Set<Listener>();
 export const modalStore = {
   get: (): ModalState => currentModal,
 
-  open: (name: ModalName, data?: any) => {
+  open: (name: ModalName, data?: unknown) => {
     currentModal = { name, data };
     listeners.forEach((listener) => listener(currentModal));
   },

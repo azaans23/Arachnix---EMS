@@ -180,6 +180,52 @@ function isSalaryRowComplete(row: SalaryDetailRecord) {
   );
 }
 
+interface SortIconProps {
+  column: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+}
+
+const SortIcon = ({ column, sortKey, sortDir }: SortIconProps) => {
+  if (sortKey !== column) {
+    return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
+  }
+  return sortDir === 'asc' ? (
+    <ChevronUp className="h-3.5 w-3.5 text-ink" />
+  ) : (
+    <ChevronDown className="h-3.5 w-3.5 text-ink" />
+  );
+};
+
+interface SortableHeaderProps {
+  column: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (column: SortKey) => void;
+}
+
+const SortableHeader = ({
+  column,
+  label,
+  sortKey,
+  sortDir,
+  onSort,
+}: SortableHeaderProps) => (
+  <th className="px-5 py-3.5 font-semibold">
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className={`inline-flex cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:text-ink ${
+        sortKey === column ? 'text-ink' : 'text-muted'
+      }`}
+    >
+      {label}
+      <SortIcon column={column} sortKey={sortKey} sortDir={sortDir} />
+    </button>
+  </th>
+);
+
 export default function SalaryPage() {
   const [rows, setRows] = useState<SalaryDetailRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -213,6 +259,7 @@ export default function SalaryPage() {
   const [savingCreate, setSavingCreate] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -264,6 +311,26 @@ export default function SalaryPage() {
     { label: 'Complete', value: 'complete' },
     { label: 'Incomplete', value: 'incomplete' },
   ];
+
+  // Drop stale filter values if refreshed data no longer includes them.
+  if (
+    departmentFilter !== 'all' &&
+    !departmentOptions.some((option) => option.value === departmentFilter)
+  ) {
+    setDepartmentFilter('all');
+  }
+  if (
+    designationFilter !== 'all' &&
+    !designationOptions.some((option) => option.value === designationFilter)
+  ) {
+    setDesignationFilter('all');
+  }
+  if (statusFilter !== 'all' && !statusOptions.some((option) => option.value === statusFilter)) {
+    setStatusFilter('all');
+  }
+  if (periodFilter !== 'all' && !periodOptions.some((option) => option.value === periodFilter)) {
+    setPeriodFilter('all');
+  }
 
   const hasActiveFilters =
     search.trim() !== '' ||
@@ -383,52 +450,7 @@ export default function SalaryPage() {
     return filteredRows.slice(start, start + pageSizeNum);
   }, [filteredRows, currentPage, pageSizeNum]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    search,
-    departmentFilter,
-    designationFilter,
-    statusFilter,
-    periodFilter,
-    completenessFilter,
-    pageSize,
-  ]);
 
-  useEffect(() => {
-    // Drop stale filter values if refreshed data no longer includes them.
-    if (
-      departmentFilter !== 'all' &&
-      !departmentOptions.some((option) => option.value === departmentFilter)
-    ) {
-      setDepartmentFilter('all');
-    }
-    if (
-      designationFilter !== 'all' &&
-      !designationOptions.some((option) => option.value === designationFilter)
-    ) {
-      setDesignationFilter('all');
-    }
-    if (statusFilter !== 'all' && !statusOptions.some((option) => option.value === statusFilter)) {
-      setStatusFilter('all');
-    }
-    if (periodFilter !== 'all' && !periodOptions.some((option) => option.value === periodFilter)) {
-      setPeriodFilter('all');
-    }
-  }, [
-    departmentFilter,
-    designationFilter,
-    statusFilter,
-    periodFilter,
-    departmentOptions,
-    designationOptions,
-    statusOptions,
-    periodOptions,
-  ]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -742,31 +764,7 @@ export default function SalaryPage() {
     return list;
   }, [employees, employeeSearch, employeeDeptFilter, employeeStatusFilter]);
 
-  const SortIcon = ({ column }: { column: SortKey }) => {
-    if (sortKey !== column) {
-      return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
-    }
-    return sortDir === 'asc' ? (
-      <ChevronUp className="h-3.5 w-3.5 text-ink" />
-    ) : (
-      <ChevronDown className="h-3.5 w-3.5 text-ink" />
-    );
-  };
 
-  const SortableHeader = ({ column, label }: { column: SortKey; label: string }) => (
-    <th className="px-5 py-3.5 font-semibold">
-      <button
-        type="button"
-        onClick={() => handleSort(column)}
-        className={`inline-flex cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:text-ink ${
-          sortKey === column ? 'text-ink' : 'text-muted'
-        }`}
-      >
-        {label}
-        <SortIcon column={column} />
-      </button>
-    </th>
-  );
 
   if (allowed === null) {
     return (
@@ -1270,7 +1268,10 @@ export default function SalaryPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search name, email, ID, designation, department…"
                 className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               />
@@ -1282,7 +1283,10 @@ export default function SalaryPage() {
                   name="departmentFilter"
                   options={departmentOptions}
                   value={departmentFilter}
-                  onChange={setDepartmentFilter}
+                  onChange={(val) => {
+                    setDepartmentFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All departments"
                 />
@@ -1293,7 +1297,10 @@ export default function SalaryPage() {
                   name="designationFilter"
                   options={designationOptions}
                   value={designationFilter}
-                  onChange={setDesignationFilter}
+                  onChange={(val) => {
+                    setDesignationFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All designations"
                 />
@@ -1304,7 +1311,10 @@ export default function SalaryPage() {
                   name="statusFilter"
                   options={statusOptions}
                   value={statusFilter}
-                  onChange={setStatusFilter}
+                  onChange={(val) => {
+                    setStatusFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All statuses"
                 />
@@ -1315,7 +1325,10 @@ export default function SalaryPage() {
                   name="periodFilter"
                   options={periodOptions}
                   value={periodFilter}
-                  onChange={setPeriodFilter}
+                  onChange={(val) => {
+                    setPeriodFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All periods"
                 />
@@ -1326,7 +1339,10 @@ export default function SalaryPage() {
                   name="completenessFilter"
                   options={completenessOptions}
                   value={completenessFilter}
-                  onChange={setCompletenessFilter}
+                  onChange={(val) => {
+                    setCompletenessFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All completeness"
                 />
@@ -1360,11 +1376,11 @@ export default function SalaryPage() {
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                        <SortableHeader column="fullName" label="Name" />
-                        <SortableHeader column="email" label="Email" />
-                        <SortableHeader column="designation" label="Designation" />
-                        <SortableHeader column="department" label="Department" />
-                        <SortableHeader column="salary" label="Salary" />
+                        <SortableHeader column="fullName" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader column="email" label="Email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader column="designation" label="Designation" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader column="department" label="Department" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader column="salary" label="Salary" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                         <th className="px-5 py-3.5 font-semibold text-muted">Allowance</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Tax</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Bank</th>
@@ -1460,13 +1476,16 @@ export default function SalaryPage() {
                       name="pageSize"
                       options={PAGE_SIZE_OPTIONS}
                       value={pageSize}
-                      onChange={setPageSize}
+                      onChange={(val) => {
+                        setPageSize(val);
+                        setPage(1);
+                      }}
                       onBlur={() => {}}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage <= 1}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -1478,7 +1497,7 @@ export default function SalaryPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage >= totalPages}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >

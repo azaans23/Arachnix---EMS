@@ -14,7 +14,7 @@ export const useModal = () => {
     isOpen: state.name !== null,
     activeModal: state.name,
     modalData: state.data,
-    openModal: (name: ModalName, data?: any) => modalStore.open(name, data),
+    openModal: (name: ModalName, data?: unknown) => modalStore.open(name, data),
     closeModal: () => modalStore.close(),
   };
 };

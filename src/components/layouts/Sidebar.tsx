@@ -89,10 +89,6 @@ export default function Sidebar() {
     checkRole();
   }, []);
 
-  useEffect(() => {
-    if (isOpen) setTip(null);
-  }, [isOpen]);
-
   const showTip = (label: string, el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     setTip({
@@ -133,7 +129,15 @@ export default function Sidebar() {
       }`}
     >
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          setIsOpen((current) => {
+            const next = !current;
+            if (next) {
+              setTip(null);
+            }
+            return next;
+          });
+        }}
         className="absolute -right-3 top-6 z-40 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
         aria-label="Toggle sidebar"
       >

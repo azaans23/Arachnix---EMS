@@ -117,43 +117,6 @@ export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
   };
 }
 
-function normalizeSalaryDetailsPayload(data: unknown): unknown[] {
-  if (data == null) return [];
-
-  if (typeof data === 'string') {
-    try {
-      return normalizeSalaryDetailsPayload(JSON.parse(data));
-    } catch {
-      return [];
-    }
-  }
-
-  if (Array.isArray(data)) {
-    if (data.length === 1 && Array.isArray(data[0])) {
-      return normalizeSalaryDetailsPayload(data[0]);
-    }
-    // Single n8n wrapper object that holds the rows
-    if (data.length === 1 && data[0] && typeof data[0] === 'object' && !Array.isArray(data[0])) {
-      const only = asRecord(data[0]);
-      if (Array.isArray(only.data)) return normalizeSalaryDetailsPayload(only.data);
-      if (Array.isArray(only.body)) return normalizeSalaryDetailsPayload(only.body);
-      if (Array.isArray(only.results)) return normalizeSalaryDetailsPayload(only.results);
-      if (Array.isArray(only.rows)) return normalizeSalaryDetailsPayload(only.rows);
-      if (Array.isArray(only.json)) return normalizeSalaryDetailsPayload(only.json);
-    }
-    return data;
-  }
-
-  const root = asRecord(data);
-  if (Array.isArray(root.data)) return normalizeSalaryDetailsPayload(root.data);
-  if (Array.isArray(root.body)) return normalizeSalaryDetailsPayload(root.body);
-  if (Array.isArray(root.results)) return normalizeSalaryDetailsPayload(root.results);
-  if (Array.isArray(root.rows)) return normalizeSalaryDetailsPayload(root.rows);
-  if (Array.isArray(root.json)) return normalizeSalaryDetailsPayload(root.json);
-  if (pick(root, 'EmployeeID', 'employeeId')) return [root];
-  return [];
-}
-
 function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
   const period = monthInputToPeriod(
     (('period' in detail ? detail.period : '') || currentSalaryPeriod()).trim()

@@ -21,25 +21,27 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === 'undefined') {
+      return 'light';
+    }
+
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return stored === 'dark' || stored === 'light' ? stored : 'light';
+  });
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
-    const initial = stored === 'dark' || stored === 'light' ? stored : 'light';
-    setThemeState(initial);
-    applyTheme(initial);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
-    applyTheme(next);
     window.localStorage.setItem(STORAGE_KEY, next);
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((current) => {
       const next = current === 'light' ? 'dark' : 'light';
-      applyTheme(next);
       window.localStorage.setItem(STORAGE_KEY, next);
       return next;
     });

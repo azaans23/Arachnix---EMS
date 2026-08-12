@@ -185,14 +185,6 @@ export default function AuditLogPage() {
   const rangeStart = filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRecords.length);
 
-  useEffect(() => {
-    setPage(1);
-  }, [search, actionFilter, typeFilter, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
   const clearFilters = () => {
     setSearch('');
     setActionFilter('all');
@@ -450,13 +442,16 @@ export default function AuditLogPage() {
                     name="pageSize"
                     options={PAGE_SIZE_OPTIONS}
                     value={pageSize}
-                    onChange={setPageSize}
+                    onChange={(val) => {
+                      setPageSize(val);
+                      setPage(1);
+                    }}
                     onBlur={() => {}}
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage <= 1}
                   className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -468,7 +463,7 @@ export default function AuditLogPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage >= totalPages}
                   className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >

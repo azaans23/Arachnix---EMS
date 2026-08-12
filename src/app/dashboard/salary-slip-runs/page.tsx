@@ -235,6 +235,7 @@ export default function SalarySlipRunsPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -360,14 +361,6 @@ export default function SalarySlipRunsPage() {
   }, [filteredRuns, currentPage, pageSizeNum]);
   const rangeStart = filteredRuns.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRuns.length);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const clearFilters = () => {
     setSearch('');
@@ -929,7 +922,10 @@ export default function SalarySlipRunsPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search month, year, run ID, email…"
                 className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               />
@@ -940,7 +936,10 @@ export default function SalarySlipRunsPage() {
                 name="statusFilter"
                 options={STATUS_FILTER_OPTIONS}
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setPage(1);
+                }}
                 onBlur={() => {}}
                 placeholder="All statuses"
               />
@@ -1055,13 +1054,16 @@ export default function SalarySlipRunsPage() {
                       name="pageSize"
                       options={PAGE_SIZE_OPTIONS}
                       value={pageSize}
-                      onChange={setPageSize}
+                      onChange={(val) => {
+                        setPageSize(val);
+                        setPage(1);
+                      }}
                       onBlur={() => {}}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage <= 1}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -1073,7 +1075,7 @@ export default function SalarySlipRunsPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage >= totalPages}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
