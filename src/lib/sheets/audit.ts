@@ -222,7 +222,10 @@ export async function createAuditLog(
     try {
       await deleteAuditLogDbRow(dbRow.logid);
     } catch (rollbackError) {
-      console.error('Failed to roll back Supabase auditlog after sheet write failure:', rollbackError);
+      console.error(
+        'Failed to roll back Supabase auditlog after sheet write failure:',
+        rollbackError
+      );
     }
     throw sheetError;
   }

@@ -5,10 +5,7 @@ import {
   listAccountingDirectorAccounts,
   listAccountingRecords,
 } from '@/lib/db/accounting';
-import {
-  dispatchAccountingUploadWebhook,
-  startAccountingUpload,
-} from '@/lib/accounting/upload';
+import { dispatchAccountingUploadWebhook, startAccountingUpload } from '@/lib/accounting/upload';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -65,10 +62,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     if (!(file instanceof File)) {
-      return NextResponse.json(
-        { success: false, error: 'A file is required.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'A file is required.' }, { status: 400 });
     }
 
     const fields: Record<string, unknown> = {};

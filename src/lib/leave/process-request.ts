@@ -6,17 +6,10 @@ import {
   toWebhookLeaveRequestRow,
   updateLeaveRequestRow,
 } from '@/lib/db/leave-requests';
-import {
-  getLeaveBalance,
-  upsertLeaveBalance,
-} from '@/lib/db/leave-balances';
+import { getLeaveBalance, upsertLeaveBalance } from '@/lib/db/leave-balances';
 import { buildLeaveId, remainingLeaveDays, type LeaveBalanceInput } from '@/types/leave-balance';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
-import type {
-  LeaveRequest,
-  LeaveRequestAction,
-  LeaveRequestInput,
-} from '@/types/leave-request';
+import type { LeaveRequest, LeaveRequestAction, LeaveRequestInput } from '@/types/leave-request';
 
 async function postLeaveRequestWebhook(
   url: string,
@@ -56,7 +49,9 @@ async function postLeaveRequestWebhook(
   return message;
 }
 
-function balanceFieldForLeaveType(leaveType: string): 'annualUsed' | 'sickUsed' | 'casualUsed' | null {
+function balanceFieldForLeaveType(
+  leaveType: string
+): 'annualUsed' | 'sickUsed' | 'casualUsed' | null {
   switch (leaveType.trim().toLowerCase()) {
     case 'annual':
       return 'annualUsed';
@@ -69,10 +64,7 @@ function balanceFieldForLeaveType(leaveType: string): 'annualUsed' | 'sickUsed' 
   }
 }
 
-function remainingForType(
-  leaveType: string,
-  balance: LeaveBalanceInput | null
-) {
+function remainingForType(leaveType: string, balance: LeaveBalanceInput | null) {
   if (!balance) return null;
   return remainingLeaveDays(leaveType, balance);
 }
@@ -119,11 +111,7 @@ async function applyApprovedLeaveToBalance(request: LeaveRequest): Promise<{
   const typeRemaining = remainingLeaveDays(request.leaveType, previous);
   if (!typeRemaining || typeRemaining.remaining < days) {
     const label =
-      field === 'annualUsed'
-        ? 'total (annual)'
-        : field === 'sickUsed'
-          ? 'sick'
-          : 'casual';
+      field === 'annualUsed' ? 'total (annual)' : field === 'sickUsed' ? 'sick' : 'casual';
     throw new Error(
       `Insufficient ${label} leave balance. Remaining: ${typeRemaining?.remaining ?? 0} day(s).`
     );
@@ -206,7 +194,9 @@ export async function processLeaveRequestAction(
     throw new Error(`Leave request is already ${existing.status}.`);
   }
 
-  const actorLabel = String(actor.employeeId || actor.email || 'HR').trim().slice(0, 50);
+  const actorLabel = String(actor.employeeId || actor.email || 'HR')
+    .trim()
+    .slice(0, 50);
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   if (action === 'approve') {

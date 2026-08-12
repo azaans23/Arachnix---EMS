@@ -20,10 +20,7 @@ export interface LeaveBalanceRecord extends LeaveBalanceInput {
   emsStatus: string;
 }
 
-export type LeaveBalanceFieldKey = keyof Omit<
-  LeaveBalanceInput,
-  'leaveId' | 'employeeId' | 'year'
->;
+export type LeaveBalanceFieldKey = keyof Omit<LeaveBalanceInput, 'leaveId' | 'employeeId' | 'year'>;
 
 export const LEAVE_BALANCE_FIELDS: Array<{
   key: LeaveBalanceFieldKey;
@@ -87,19 +84,13 @@ export function remainingLeaveDays(
       return {
         quota: balance.sickQuota,
         used: balance.sickUsed,
-        remaining: Math.min(
-          Math.max(0, balance.sickQuota - balance.sickUsed),
-          totalRemaining
-        ),
+        remaining: Math.min(Math.max(0, balance.sickQuota - balance.sickUsed), totalRemaining),
       };
     case 'casual':
       return {
         quota: balance.casualQuota,
         used: balance.casualUsed,
-        remaining: Math.min(
-          Math.max(0, balance.casualQuota - balance.casualUsed),
-          totalRemaining
-        ),
+        remaining: Math.min(Math.max(0, balance.casualQuota - balance.casualUsed), totalRemaining),
       };
     default:
       return null;

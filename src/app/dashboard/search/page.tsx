@@ -22,10 +22,7 @@ import { canAccess, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import type { SearchHit, SearchSource } from '@/types/search-reports';
 
-const SOURCE_META: Record<
-  SearchSource,
-  { label: string; icon: React.ReactNode; tone: string }
-> = {
+const SOURCE_META: Record<SearchSource, { label: string; icon: React.ReactNode; tone: string }> = {
   employee: {
     label: 'Employee',
     icon: <Users className="h-3.5 w-3.5" />,

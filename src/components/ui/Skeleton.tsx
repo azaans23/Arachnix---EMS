@@ -80,7 +80,11 @@ export function TableSkeleton({ columns = 4, rows = 8, actions = true }: TableSk
 /** Compact form field grid skeleton for profile / create flows. */
 export function FormSkeleton({ fields = 10 }: { fields?: number }) {
   return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2" role="status" aria-label="Loading form">
+    <div
+      className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2"
+      role="status"
+      aria-label="Loading form"
+    >
       {Array.from({ length: fields }).map((_, index) => (
         <div
           key={`f-${index}`}

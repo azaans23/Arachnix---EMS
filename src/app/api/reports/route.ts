@@ -34,10 +34,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: true,
         reports: reportsForRole(role!),
-        accounts: [
-          ACCOUNTING_BANK_ACCOUNT,
-          ...directors.map((director) => director.name),
-        ],
+        accounts: [ACCOUNTING_BANK_ACCOUNT, ...directors.map((director) => director.name)],
       });
     }
 

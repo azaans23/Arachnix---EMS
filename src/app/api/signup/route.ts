@@ -11,10 +11,7 @@ import {
   toSheetWritePayload,
   upsertEmployee,
 } from '@/lib/sheets/employees';
-import {
-  createAuditLog,
-  diffAuditValues,
-} from '@/lib/sheets/audit';
+import { createAuditLog, diffAuditValues } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeWriteInput } from '@/types/employee';
 
@@ -50,10 +47,7 @@ export async function POST(request: Request) {
 
     const assignment = assertCanAssignRole(actorRole || '', String(role || ''));
     if (!assignment.ok) {
-      return NextResponse.json(
-        { success: false, error: assignment.error },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: assignment.error }, { status: 403 });
     }
     const assignedRoleLabel = roleDisplayName(assignment.role);
 
@@ -62,8 +56,7 @@ export async function POST(request: Request) {
     const previousEmployee =
       employees.find(
         (employee) =>
-          (employeeId &&
-            employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
+          (employeeId && employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
           employee.email.toLowerCase() === String(email || '').toLowerCase()
       ) || null;
     const resolvedEmployeeId =
@@ -123,9 +116,7 @@ export async function POST(request: Request) {
       // Dual-write: Supabase employees table + Google Sheet (rolls back DB if sheet fails)
       await upsertEmployee(writeInput, previousEmployee);
 
-      const oldValue = previousEmployee
-        ? employeeRecordToAuditValue(previousEmployee)
-        : {};
+      const oldValue = previousEmployee ? employeeRecordToAuditValue(previousEmployee) : {};
       const newValue = {
         ...oldValue,
         ...Object.fromEntries(

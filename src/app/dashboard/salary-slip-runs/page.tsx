@@ -77,12 +77,7 @@ const PAGE_SIZE_OPTIONS = [
   { label: '100 / page', value: '100' },
 ];
 
-const REQUIRED_MISSING = new Set([
-  'Base Salary',
-  'Account Number',
-  'Account Name',
-  'Bank Name',
-]);
+const REQUIRED_MISSING = new Set(['Base Salary', 'Account Number', 'Account Name', 'Bank Name']);
 
 function currentYearOptions() {
   const year = new Date().getFullYear();
@@ -190,9 +185,7 @@ function enrichIncompleteRows(
   details: SalaryDetailRecord[],
   employees: PayrollEmployee[]
 ): IncompleteSalaryDetail[] {
-  const byId = new Map(
-    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
-  );
+  const byId = new Map(details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail]));
   const employeeById = new Map(
     employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
   );
@@ -482,9 +475,7 @@ export default function SalarySlipRunsPage() {
     value: string
   ) => {
     setSalaryForms((current) =>
-      current.map((row) =>
-        row.employeeId === employeeId ? { ...row, [field]: value } : row
-      )
+      current.map((row) => (row.employeeId === employeeId ? { ...row, [field]: value } : row))
     );
   };
 

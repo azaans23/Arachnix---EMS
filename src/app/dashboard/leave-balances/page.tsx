@@ -189,13 +189,16 @@ export default function LeaveBalancesPage() {
     const years = Array.from(new Set(rows.map((row) => String(row.year)))).sort(
       (a, b) => Number(b) - Number(a)
     );
-    return [{ label: 'All years', value: 'all' }, ...years.map((year) => ({ label: year, value: year }))];
+    return [
+      { label: 'All years', value: 'all' },
+      ...years.map((year) => ({ label: year, value: year })),
+    ];
   }, [rows]);
 
   const departmentOptions = useMemo(() => {
-    const departments = Array.from(
-      new Set(rows.map((row) => row.department).filter(Boolean))
-    ).sort((a, b) => a.localeCompare(b));
+    const departments = Array.from(new Set(rows.map((row) => row.department).filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b)
+    );
     return [
       { label: 'All departments', value: 'all' },
       ...departments.map((department) => ({ label: department, value: department })),
@@ -243,11 +246,7 @@ export default function LeaveBalancesPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load employees.');
       }
-      const raw = Array.isArray(result.data)
-        ? result.data
-        : result.data
-          ? [result.data]
-          : [];
+      const raw = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
       setEmployees(
         raw.map((row: unknown) => {
           const record = mapRawToEmployee(row);
@@ -292,9 +291,7 @@ export default function LeaveBalancesPage() {
         row.employeeId.trim().toLowerCase() === employee.employeeId.trim().toLowerCase() &&
         row.year === year
     );
-    setCreateForm(
-      existing ? toForm(existing) : emptyForm(employee.employeeId, String(year))
-    );
+    setCreateForm(existing ? toForm(existing) : emptyForm(employee.employeeId, String(year)));
   };
 
   const updateCreateField = (field: keyof FormState, value: string) => {
@@ -307,9 +304,7 @@ export default function LeaveBalancesPage() {
             row.employeeId.trim().toLowerCase() ===
               selectedEmployee.employeeId.trim().toLowerCase() && row.year === year
         );
-        return existing
-          ? toForm(existing)
-          : emptyForm(selectedEmployee.employeeId, value);
+        return existing ? toForm(existing) : emptyForm(selectedEmployee.employeeId, value);
       }
 
       const next = { ...current, [field]: value };
@@ -419,7 +414,13 @@ export default function LeaveBalancesPage() {
     const q = employeeSearch.trim().toLowerCase();
     if (!q) return employees;
     return employees.filter((employee) =>
-      [employee.name, employee.email, employee.employeeId, employee.department, employee.designation]
+      [
+        employee.name,
+        employee.email,
+        employee.employeeId,
+        employee.department,
+        employee.designation,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q))
     );
@@ -452,7 +453,11 @@ export default function LeaveBalancesPage() {
         <label className="text-xs font-medium text-muted sm:col-span-2">
           Year <span className="text-danger">*</span>
           {options?.lockYear ? (
-            <input value={form.year} readOnly className={`${inputClassName} bg-canvas text-muted`} />
+            <input
+              value={form.year}
+              readOnly
+              className={`${inputClassName} bg-canvas text-muted`}
+            />
           ) : (
             <div className="mt-1.5">
               <CustomDropdown
@@ -469,9 +474,9 @@ export default function LeaveBalancesPage() {
       </div>
 
       <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
-        Total Leaves (Annual) is the overall pool. Sick and Casual quotas must fit inside it
-        (Sick Quota + Casual Quota ≤ Total Leaves). Approving sick or casual leave also
-        consumes from the total.
+        Total Leaves (Annual) is the overall pool. Sick and Casual quotas must fit inside it (Sick
+        Quota + Casual Quota ≤ Total Leaves). Approving sick or casual leave also consumes from the
+        total.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -520,141 +525,140 @@ export default function LeaveBalancesPage() {
     );
   }
 
-  const createModal =
-    createOpen
-      ? createPortal(
+  const createModal = createOpen
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={closeCreate}
+        >
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-            onClick={closeCreate}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-leave-balance-title"
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
           >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="create-leave-balance-title"
-              onClick={(event) => event.stopPropagation()}
-              className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
-                <div>
-                  <h2
-                    id="create-leave-balance-title"
-                    className="text-lg font-semibold tracking-tight text-ink"
-                  >
-                    {createStep === 'pick' ? 'Select employee' : 'Create leave balance'}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {createStep === 'pick'
-                      ? 'Choose an employee, then set quotas for the year.'
-                      : selectedEmployee
-                        ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
-                        : 'Enter leave quotas and usage.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeCreate}
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
-                  aria-label="Close"
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2
+                  id="create-leave-balance-title"
+                  className="text-lg font-semibold tracking-tight text-ink"
                 >
-                  <X className="h-4 w-4" />
-                </button>
+                  {createStep === 'pick' ? 'Select employee' : 'Create leave balance'}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {createStep === 'pick'
+                    ? 'Choose an employee, then set quotas for the year.'
+                    : selectedEmployee
+                      ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
+                      : 'Enter leave quotas and usage.'}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                {createStep === 'pick' ? (
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                      <input
-                        type="search"
-                        value={employeeSearch}
-                        onChange={(event) => setEmployeeSearch(event.target.value)}
-                        placeholder="Search employees…"
-                        className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                      />
-                    </div>
-                    {employeesLoading ? (
-                      <div className="flex items-center justify-center py-10 text-sm text-muted">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading employees…
-                      </div>
-                    ) : filteredEmployees.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted">No employees found.</p>
-                    ) : (
-                      <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                        {filteredEmployees.map((employee) => (
-                          <li key={employee.employeeId || employee.email}>
-                            <button
-                              type="button"
-                              onClick={() => selectEmployeeForCreate(employee)}
-                              className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-ink">
-                                  {employee.name || employee.employeeId}
-                                </span>
-                                <span className="block truncate text-xs text-muted">
-                                  {employee.employeeId}
-                                  {employee.email ? ` · ${employee.email}` : ''}
-                                  {employee.department ? ` · ${employee.department}` : ''}
-                                </span>
-                              </span>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {createStep === 'pick' ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                    <input
+                      type="search"
+                      value={employeeSearch}
+                      onChange={(event) => setEmployeeSearch(event.target.value)}
+                      placeholder="Search employees…"
+                      className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                    />
                   </div>
-                ) : createForm ? (
-                  renderBalanceFields(createForm, updateCreateField, { lockEmployee: true })
-                ) : null}
-              </div>
+                  {employeesLoading ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-muted">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading employees…
+                    </div>
+                  ) : filteredEmployees.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted">No employees found.</p>
+                  ) : (
+                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                      {filteredEmployees.map((employee) => (
+                        <li key={employee.employeeId || employee.email}>
+                          <button
+                            type="button"
+                            onClick={() => selectEmployeeForCreate(employee)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-ink">
+                                {employee.name || employee.employeeId}
+                              </span>
+                              <span className="block truncate text-xs text-muted">
+                                {employee.employeeId}
+                                {employee.email ? ` · ${employee.email}` : ''}
+                                {employee.department ? ` · ${employee.department}` : ''}
+                              </span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : createForm ? (
+                renderBalanceFields(createForm, updateCreateField, { lockEmployee: true })
+              ) : null}
+            </div>
 
-              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
-                {createStep === 'form' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateStep('pick');
-                      setSelectedEmployee(null);
-                      setCreateForm(null);
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                  >
-                    Back
-                  </button>
-                )}
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+              {createStep === 'form' && (
                 <button
                   type="button"
-                  onClick={closeCreate}
+                  onClick={() => {
+                    setCreateStep('pick');
+                    setSelectedEmployee(null);
+                    setCreateForm(null);
+                  }}
                   className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
                 >
-                  Cancel
+                  Back
                 </button>
-                {createStep === 'form' && createForm && (
-                  <button
-                    type="button"
-                    disabled={savingCreate}
-                    onClick={() => void saveBalance(createForm, setSavingCreate, closeCreate)}
-                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-                  >
-                    {savingCreate ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Saving…
-                      </>
-                    ) : (
-                      'Save leave balance'
-                    )}
-                  </button>
-                )}
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+              >
+                Cancel
+              </button>
+              {createStep === 'form' && createForm && (
+                <button
+                  type="button"
+                  disabled={savingCreate}
+                  onClick={() => void saveBalance(createForm, setSavingCreate, closeCreate)}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+                >
+                  {savingCreate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save leave balance'
+                  )}
+                </button>
+              )}
             </div>
-          </div>,
-          document.body
-        )
-      : null;
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
 
   const editModal =
     editing && editForm

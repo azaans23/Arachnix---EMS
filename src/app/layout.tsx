@@ -28,7 +28,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${geistSans.variable} font-sans antialiased min-h-screen flex flex-col bg-canvas text-ink`}>
+      <body
+        className={`${geistSans.variable} font-sans antialiased min-h-screen flex flex-col bg-canvas text-ink`}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

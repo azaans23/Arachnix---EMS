@@ -167,8 +167,7 @@ export default function AccountingRecordsPage() {
   const reportRolledBackUploads = useCallback((nextRows: AccountingRecord[], key: string) => {
     const previous = archivingRef.current;
     const present = new Set(nextRows.map((row) => row.recordId));
-    const rolledBack =
-      previous.key === key ? previous.ids.filter((id) => !present.has(id)) : [];
+    const rolledBack = previous.key === key ? previous.ids.filter((id) => !present.has(id)) : [];
 
     archivingRef.current = {
       key,
@@ -288,9 +287,13 @@ export default function AccountingRecordsPage() {
   const pagedRows = filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const amountNumber = Number(form.amount);
-  const amountValid = form.amount.trim() !== '' && Number.isFinite(amountNumber) && amountNumber >= 0;
+  const amountValid =
+    form.amount.trim() !== '' && Number.isFinite(amountNumber) && amountNumber >= 0;
   const fileValid = Boolean(
-    file && isAllowedAccountingFileName(file.name) && file.size > 0 && file.size <= MAX_FILE_MB * 1024 * 1024
+    file &&
+    isAllowedAccountingFileName(file.name) &&
+    file.size > 0 &&
+    file.size <= MAX_FILE_MB * 1024 * 1024
   );
   const canSubmit = amountValid && fileValid && !saving;
 
@@ -315,8 +318,10 @@ export default function AccountingRecordsPage() {
   /** Bank account first, then every Director employee by name. */
   const uploadAccountOptions = useMemo(
     () =>
-      [ACCOUNTING_BANK_ACCOUNT, ...directorNames.filter((name) => name !== ACCOUNTING_BANK_ACCOUNT)]
-        .map((account) => ({ label: account, value: account })),
+      [
+        ACCOUNTING_BANK_ACCOUNT,
+        ...directorNames.filter((name) => name !== ACCOUNTING_BANK_ACCOUNT),
+      ].map((account) => ({ label: account, value: account })),
     [directorNames]
   );
 
@@ -543,7 +548,9 @@ export default function AccountingRecordsPage() {
           {loading && rows.length === 0 ? (
             <Skeleton className="h-[13.5rem] w-full" />
           ) : byAccount.length === 0 ? (
-            <ChartEmpty message={`Nothing filed against an account in ${monthLabel(monthFilter)}.`} />
+            <ChartEmpty
+              message={`Nothing filed against an account in ${monthLabel(monthFilter)}.`}
+            />
           ) : (
             <AccountShareChart data={byAccount} currency={dominantCurrency} />
           )}
@@ -679,7 +686,9 @@ export default function AccountingRecordsPage() {
                         <td className="px-5 py-3.5 text-muted">
                           <div className="max-w-[12rem] truncate">{row.clientVendor || '—'}</div>
                           {row.reference ? (
-                            <div className="max-w-[12rem] truncate text-xs">Ref {row.reference}</div>
+                            <div className="max-w-[12rem] truncate text-xs">
+                              Ref {row.reference}
+                            </div>
                           ) : null}
                         </td>
                         <td className="px-5 py-3.5">
@@ -710,7 +719,9 @@ export default function AccountingRecordsPage() {
                         </td>
                         <td className="px-5 py-3.5 text-muted">
                           <div>{displayDate(row.uploadDate)}</div>
-                          <div className="max-w-[12rem] truncate text-xs">{row.uploadedBy || '—'}</div>
+                          <div className="max-w-[12rem] truncate text-xs">
+                            {row.uploadedBy || '—'}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -782,7 +793,10 @@ export default function AccountingRecordsPage() {
             >
               <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
                 <div>
-                  <h2 id="accounting-upload-title" className="text-lg font-semibold tracking-tight text-ink">
+                  <h2
+                    id="accounting-upload-title"
+                    className="text-lg font-semibold tracking-tight text-ink"
+                  >
                     Upload transaction
                   </h2>
                   <p className="mt-1 text-sm text-muted">
@@ -871,7 +885,9 @@ export default function AccountingRecordsPage() {
                       step="0.01"
                       inputMode="decimal"
                       value={form.amount}
-                      onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, amount: event.target.value }))
+                      }
                       placeholder="0.00"
                       aria-invalid={form.amount.trim() !== '' && !amountValid}
                       className={`${inputClassName} tabular-nums ${
@@ -928,7 +944,9 @@ export default function AccountingRecordsPage() {
                     Source
                     <input
                       value={form.source}
-                      onChange={(event) => setForm((prev) => ({ ...prev, source: event.target.value }))}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, source: event.target.value }))
+                      }
                       placeholder="HBL ••4821"
                       className={inputClassName}
                     />
@@ -997,7 +1015,9 @@ export default function AccountingRecordsPage() {
                     <textarea
                       rows={3}
                       value={form.notes}
-                      onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, notes: event.target.value }))
+                      }
                       placeholder="Anything the finance team should know about this document"
                       className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
                     />

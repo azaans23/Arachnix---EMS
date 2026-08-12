@@ -57,8 +57,7 @@ export async function POST(request: Request) {
 
     const previousRole = previous?.role || '';
     const nextRole = validation.value.role || '';
-    const roleChanging =
-      !previous || normalizeRole(previousRole) !== normalizeRole(nextRole);
+    const roleChanging = !previous || normalizeRole(previousRole) !== normalizeRole(nextRole);
 
     if (roleChanging) {
       const assignment = assertCanAssignRole(actorRole || '', nextRole);
@@ -95,7 +94,9 @@ export async function POST(request: Request) {
       success: true,
       employeeId: saved.employeeId,
       auditLogged,
-      warning: auditLogged ? undefined : 'Employee saved, but the audit entry could not be delivered.',
+      warning: auditLogged
+        ? undefined
+        : 'Employee saved, but the audit entry could not be delivered.',
     });
   } catch (error: unknown) {
     if (error instanceof SheetsError) {

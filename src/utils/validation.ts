@@ -43,7 +43,10 @@ export const employeeValidationSchema = Yup.object({
         (id) => id.trim().toLowerCase() === needle && id.trim().toLowerCase() !== exclude
       );
     }),
-  name: Yup.string().trim().required('Full name is required').min(2, 'Name must be at least 2 characters'),
+  name: Yup.string()
+    .trim()
+    .required('Full name is required')
+    .min(2, 'Name must be at least 2 characters'),
   email: Yup.string()
     .trim()
     .required('Email is required')

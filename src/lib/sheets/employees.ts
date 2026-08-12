@@ -9,10 +9,7 @@ import {
   rollbackEmployeeDbWrite,
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
-import {
-  buildEmployeeUniquenessContext,
-  employeeValidationSchema,
-} from '@/utils/validation';
+import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 
 function pick(raw: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -90,9 +87,7 @@ const EMPLOYEE_ID_PATTERN = /^EMP-(\d+)$/i;
  * Returns the next ID after the highest valid EMP-nnn value.
  * Blank/malformed legacy IDs are ignored; an empty roster starts at EMP-001.
  */
-export function getNextEmployeeId(
-  employees: Pick<EmployeeRecord, 'employeeId'>[]
-): string {
+export function getNextEmployeeId(employees: Pick<EmployeeRecord, 'employeeId'>[]): string {
   const highest = employees.reduce((max, employee) => {
     const match = employee.employeeId.trim().match(EMPLOYEE_ID_PATTERN);
     if (!match) return max;
@@ -163,9 +158,7 @@ export function mergeEmployeeWriteInput(
   };
 }
 
-export function employeeRecordToAuditValue(
-  employee: EmployeeRecord
-): Record<string, string> {
+export function employeeRecordToAuditValue(employee: EmployeeRecord): Record<string, string> {
   return {
     EmployeeID: employee.employeeId,
     FullName: employee.fullName,
@@ -185,18 +178,13 @@ export function employeeRecordToAuditValue(
   };
 }
 
-export function employeeInputToAuditValue(
-  input: EmployeeWriteInput
-): Record<string, string> {
+export function employeeInputToAuditValue(input: EmployeeWriteInput): Record<string, string> {
   const payload = toSheetWritePayload(input);
-  return Object.fromEntries(
-    Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key))
-  );
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key)));
 }
 
 export type UniquenessConflict =
-  | { field: 'employeeId'; message: string }
-  | { field: 'email'; message: string };
+  { field: 'employeeId'; message: string } | { field: 'email'; message: string };
 
 export function findUniquenessConflict(
   employees: EmployeeRecord[],
@@ -280,7 +268,8 @@ export async function fetchEmployees(): Promise<EmployeeRecord[]> {
     const rows = await listEmployeeDbRows();
     return rows.map((row) => dbRowToEmployeeRecord(row) as EmployeeRecord);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to load employees from Supabase.';
+    const message =
+      error instanceof Error ? error.message : 'Failed to load employees from Supabase.';
     throw new SheetsError(message, 500);
   }
 }
@@ -312,7 +301,8 @@ export async function getEmployeeById(id: string): Promise<EmployeeRecord | null
     const row = await findEmployeeDbRowByIdOrEmail(candidates);
     return row ? (dbRowToEmployeeRecord(row) as EmployeeRecord) : null;
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to load employee from Supabase.';
+    const message =
+      error instanceof Error ? error.message : 'Failed to load employee from Supabase.';
     throw new SheetsError(message, 500);
   }
 }
@@ -327,8 +317,7 @@ export async function validateEmployeeWrite(
   options?: { existing?: EmployeeRecord[] }
 ): Promise<ValidateEmployeeResult> {
   const existing = options?.existing ?? (await fetchEmployees());
-  const bodyRecord =
-    body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const bodyRecord = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
 
   try {
     const value = (await employeeValidationSchema.validate(body, {
@@ -382,8 +371,7 @@ export async function upsertEmployee(
   const merged = mergeEmployeeWriteInput(input, previous);
   const payload = toSheetWritePayload(merged);
 
-  const lookupId =
-    (previous?.employeeId || merged.originalEmployeeId || merged.employeeId).trim();
+  const lookupId = (previous?.employeeId || merged.originalEmployeeId || merged.employeeId).trim();
   const previousDbRow = await getEmployeeDbRow(lookupId);
 
   await upsertEmployeeDbRow(merged);
@@ -411,7 +399,10 @@ export async function upsertEmployee(
         writtenEmployeeId: merged.employeeId,
       });
     } catch (rollbackError) {
-      console.error('Failed to roll back Supabase employee after sheet write failure:', rollbackError);
+      console.error(
+        'Failed to roll back Supabase employee after sheet write failure:',
+        rollbackError
+      );
     }
     throw sheetError;
   }

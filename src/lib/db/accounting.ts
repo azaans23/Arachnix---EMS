@@ -40,7 +40,11 @@ function requiredText(value: unknown, label: string) {
 }
 
 function toAmount(value: unknown): number {
-  const n = Number(String(value ?? '').replace(/,/g, '').trim());
+  const n = Number(
+    String(value ?? '')
+      .replace(/,/g, '')
+      .trim()
+  );
   if (!Number.isFinite(n) || n < 0) {
     throw new Error('Amount must be zero or greater.');
   }
@@ -174,10 +178,11 @@ export function normalizeAccountingUploadInput(
     category: requiredText(raw.category ?? raw.Category, 'Category'),
     transactionType,
     amount: toAmount(raw.amount ?? raw.Amount),
-    currency: String(raw.currency ?? raw.Currency ?? 'PKR')
-      .trim()
-      .toUpperCase()
-      .slice(0, 3) || 'PKR',
+    currency:
+      String(raw.currency ?? raw.Currency ?? 'PKR')
+        .trim()
+        .toUpperCase()
+        .slice(0, 3) || 'PKR',
     clientVendor: String(raw.clientVendor ?? raw.ClientVendor ?? '').trim(),
     source: String(raw.source ?? raw.Source ?? '').trim(),
     destination: String(raw.destination ?? raw.Destination ?? '').trim(),
@@ -246,11 +251,7 @@ export async function createAccountingRecord(input: {
     status: 'Active',
   };
 
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .insert(payload)
-    .select('*')
-    .single();
+  const { data, error } = await getSupabaseAdmin().from(TABLE).insert(payload).select('*').single();
 
   if (error) throw new Error(`Failed to create accounting record: ${error.message}`);
   return mapAccountingRow(data as AccountingDbRow);

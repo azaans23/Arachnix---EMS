@@ -64,9 +64,7 @@ export function payrollEligibilityReason(employee: EmployeeRecord): string | nul
   return null;
 }
 
-export async function resolvePayrollEmployees(
-  employeeIds?: string[]
-): Promise<EmployeeRecord[]> {
+export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<EmployeeRecord[]> {
   const all = await fetchEmployees();
   const eligible = all.filter(hasPayrollSalary);
 
@@ -208,14 +206,12 @@ export async function startSalarySlipRun(
     };
   }
 
-  const stillIncomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails).filter(
-    (row) => {
-      const detail = salaryDetails.find(
-        (item) => item.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
-      );
-      return !detail || !isSalaryDetailComplete(detail);
-    }
-  );
+  const stillIncomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails).filter((row) => {
+    const detail = salaryDetails.find(
+      (item) => item.employeeId.trim().toLowerCase() === row.employeeId.trim().toLowerCase()
+    );
+    return !detail || !isSalaryDetailComplete(detail);
+  });
 
   if (stillIncomplete.length > 0) {
     return {
@@ -356,8 +352,7 @@ export async function startSalarySlipRun(
       });
     }
 
-    const status =
-      failCount === 0 ? 'Completed' : successCount === 0 ? 'Failed' : 'Partial';
+    const status = failCount === 0 ? 'Completed' : successCount === 0 ? 'Failed' : 'Partial';
     const updated = await updateSalarySlipRun(run.runId, {
       status,
       successCount,

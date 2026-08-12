@@ -171,11 +171,7 @@ export async function createLeaveRequest(input: LeaveRequestInput): Promise<Leav
     status: 'Pending',
   };
 
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .insert(payload)
-    .select('*')
-    .single();
+  const { data, error } = await getSupabaseAdmin().from(TABLE).insert(payload).select('*').single();
 
   if (error) throw new Error(`Failed to create leave request: ${error.message}`);
   return mapLeaveRequestRow(data as LeaveRequestDbRow);

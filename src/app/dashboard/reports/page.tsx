@@ -1,14 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Download,
-  FileSpreadsheet,
-  FileText,
-  Loader2,
-  RefreshCw,
-  ShieldAlert,
-} from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import CustomDropdown from '@/components/ui/Dropdown';
 import EmptyState from '@/components/ui/EmptyState';
@@ -323,9 +316,7 @@ export default function ReportsPage() {
         )}
       </section>
 
-      {selected && (
-        <p className="mb-4 text-sm text-muted">{selected.description}</p>
-      )}
+      {selected && <p className="mb-4 text-sm text-muted">{selected.description}</p>}
 
       <div className="mb-4 flex flex-wrap gap-2">
         <ExportButton

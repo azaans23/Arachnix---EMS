@@ -147,8 +147,7 @@ export function salaryDbRowToDetail(
     bankAccountDetails?: string;
   } | null
 ): SalaryDetailRecord {
-  const uniqueKey =
-    row.uniquekey || buildSalaryUniqueKey(row.employeeid, row.period);
+  const uniqueKey = row.uniquekey || buildSalaryUniqueKey(row.employeeid, row.period);
   return {
     employeeId: row.employeeid,
     fullName: employee?.fullName || '',
@@ -208,18 +207,14 @@ export async function listSalaryDbRows(options?: {
 }): Promise<SalaryDbRow[]> {
   let query = getSupabaseAdmin().from(TABLE).select('*');
 
-  const uniqueKeys = (options?.uniqueKeys || [])
-    .map((key) => key.trim())
-    .filter(Boolean);
+  const uniqueKeys = (options?.uniqueKeys || []).map((key) => key.trim()).filter(Boolean);
 
   const derivedKeys =
     uniqueKeys.length === 0 &&
     options?.period?.trim() &&
     options?.employeeIds &&
     options.employeeIds.length > 0
-      ? options.employeeIds
-          .map((id) => buildSalaryUniqueKey(id, options.period!))
-          .filter(Boolean)
+      ? options.employeeIds.map((id) => buildSalaryUniqueKey(id, options.period!)).filter(Boolean)
       : [];
 
   const keys = uniqueKeys.length > 0 ? uniqueKeys : derivedKeys;
@@ -232,10 +227,7 @@ export async function listSalaryDbRows(options?: {
       query = query.eq('period', monthInputToPeriod(options.period.trim()));
     }
     if (options?.employeeIds && options.employeeIds.length > 0) {
-      query = query.in(
-        'employeeid',
-        options.employeeIds.map((id) => id.trim()).filter(Boolean)
-      );
+      query = query.in('employeeid', options.employeeIds.map((id) => id.trim()).filter(Boolean));
     }
   }
 
@@ -250,9 +242,7 @@ export async function listSalaryDbRows(options?: {
   return (data as SalaryDbRow[]) || [];
 }
 
-export async function getSalaryDbRowByUniqueKey(
-  uniqueKey: string
-): Promise<SalaryDbRow | null> {
+export async function getSalaryDbRowByUniqueKey(uniqueKey: string): Promise<SalaryDbRow | null> {
   const key = uniqueKey.trim();
   if (!key) return null;
 

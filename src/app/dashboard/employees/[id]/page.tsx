@@ -3,14 +3,7 @@
 import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import {
-  ArrowLeft,
-  User,
-  ShieldAlert,
-  CheckCircle,
-  UserCheck,
-  RefreshCw,
-} from 'lucide-react';
+import { ArrowLeft, User, ShieldAlert, CheckCircle, UserCheck, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { canAccess, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
@@ -201,9 +194,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </div>
         <span
           className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold ${
-            isActive
-              ? 'border-border bg-canvas text-ink'
-              : 'border-border bg-surface text-muted'
+            isActive ? 'border-border bg-canvas text-ink' : 'border-border bg-surface text-muted'
           }`}
         >
           {isActive ? (

@@ -181,8 +181,7 @@ export default function SalarySlipRunDetailsPage() {
     const start = (currentPage - 1) * pageSizeNum;
     return filteredDetails.slice(start, start + pageSizeNum);
   }, [filteredDetails, currentPage, pageSizeNum]);
-  const rangeStart =
-    filteredDetails.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredDetails.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredDetails.length);
 
   useEffect(() => {

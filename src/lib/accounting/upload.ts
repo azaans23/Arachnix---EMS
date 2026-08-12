@@ -178,10 +178,7 @@ export async function dispatchAccountingUploadWebhook(
   form.append('file', blob, prepared.targetFileName);
   form.append('targetFileName', prepared.targetFileName);
   form.append('originalFileName', prepared.originalFileName);
-  form.append(
-    'record',
-    JSON.stringify(toWebhookAccountingRow(prepared.record, prepared.period))
-  );
+  form.append('record', JSON.stringify(toWebhookAccountingRow(prepared.record, prepared.period)));
   form.append('action', 'upload');
 
   let responseText: string;

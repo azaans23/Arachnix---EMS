@@ -43,9 +43,7 @@ export const ACCOUNTING_ALLOWED_EXTENSIONS = [
 
 export type AccountingAccount = (typeof ACCOUNTING_ACCOUNTS)[number] | string;
 export type AccountingCategory = (typeof ACCOUNTING_CATEGORIES)[number] | string;
-export type AccountingTransactionType =
-  | (typeof ACCOUNTING_TRANSACTION_TYPES)[number]
-  | string;
+export type AccountingTransactionType = (typeof ACCOUNTING_TRANSACTION_TYPES)[number] | string;
 
 export interface AccountingRecord {
   recordId: string;
@@ -137,7 +135,9 @@ export function buildAccountingDriveFileName(input: {
   return `${parts.join('_')}${ext}`.slice(0, 240);
 }
 
-export function parsePeriodMonth(period: string): { year: number; month: number; label: string } | null {
+export function parsePeriodMonth(
+  period: string
+): { year: number; month: number; label: string } | null {
   const match = /^(\d{4})-(\d{2})$/.exec(String(period || '').trim());
   if (!match) return null;
   const year = Number(match[1]);

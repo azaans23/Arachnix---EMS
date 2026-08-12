@@ -20,12 +20,7 @@ import type {
 import { SALARY_DETAIL_FIELDS } from '@/types/salary-slip';
 
 /** Fields required before a salary slip can be generated (NOT NULL / critical). */
-const REQUIRED_FIELDS = [
-  'Base Salary',
-  'Account Number',
-  'Account Name',
-  'Bank Name',
-] as const;
+const REQUIRED_FIELDS = ['Base Salary', 'Account Number', 'Account Name', 'Bank Name'] as const;
 
 const ALL_FORM_MISSING_LABELS = SALARY_DETAIL_FIELDS.map((field) => field.missing);
 
@@ -87,8 +82,7 @@ function unwrapRow(item: unknown): Record<string, unknown> {
 export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
   const raw = unwrapRow(rawInput);
   const salary =
-    pick(raw, 'BaseSalary', 'baseSalary', 'Salary', 'salary') ||
-    pick(raw, 'Base Salary');
+    pick(raw, 'BaseSalary', 'baseSalary', 'Salary', 'salary') || pick(raw, 'Base Salary');
   return {
     employeeId: pick(raw, 'EmployeeID', 'employeeId', 'EmployeeId'),
     fullName:
@@ -105,12 +99,7 @@ export function mapRawToSalaryDetail(rawInput: unknown): SalaryDetailRecord {
     salary,
     netSalary: pick(raw, 'NetSalary', 'netSalary', 'Net Salary'),
     overtimePay: pick(raw, 'OvertimePay', 'overtimePay', 'Overtime Pay'),
-    performanceBonus: pick(
-      raw,
-      'PerformanceBonus',
-      'performanceBonus',
-      'Performance Bonus'
-    ),
+    performanceBonus: pick(raw, 'PerformanceBonus', 'performanceBonus', 'Performance Bonus'),
     contributions: pick(raw, 'Contributions', 'contributions', 'Contribution', 'contribution'),
     allowance: pick(raw, 'Allowance', 'allowance'),
     tax: pick(raw, 'Tax', 'tax'),
@@ -144,12 +133,7 @@ function normalizeSalaryDetailsPayload(data: unknown): unknown[] {
       return normalizeSalaryDetailsPayload(data[0]);
     }
     // Single n8n wrapper object that holds the rows
-    if (
-      data.length === 1 &&
-      data[0] &&
-      typeof data[0] === 'object' &&
-      !Array.isArray(data[0])
-    ) {
+    if (data.length === 1 && data[0] && typeof data[0] === 'object' && !Array.isArray(data[0])) {
       const only = asRecord(data[0]);
       if (Array.isArray(only.data)) return normalizeSalaryDetailsPayload(only.data);
       if (Array.isArray(only.body)) return normalizeSalaryDetailsPayload(only.body);
@@ -183,16 +167,13 @@ function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
     tax: detail.tax,
     contributions: 'contributions' in detail ? detail.contributions : '',
   });
-  const overtimePay =
-    ('overtimePay' in detail && detail.overtimePay) || String(totals.overtimepay);
+  const overtimePay = ('overtimePay' in detail && detail.overtimePay) || String(totals.overtimepay);
   const performanceBonus =
-    ('performanceBonus' in detail && detail.performanceBonus) ||
-    String(totals.performancebonus);
+    ('performanceBonus' in detail && detail.performanceBonus) || String(totals.performancebonus);
   const contributions =
     ('contributions' in detail && detail.contributions) || String(totals.contributions);
   const others = ('others' in detail && detail.others) || String(totals.others);
-  const netSalary =
-    ('netSalary' in detail && detail.netSalary) || String(totals.netsalary);
+  const netSalary = ('netSalary' in detail && detail.netSalary) || String(totals.netsalary);
   const totalEarning =
     ('totalEarning' in detail && detail.totalEarning) || String(totals.totalearning);
   const totalDeduction =
@@ -262,18 +243,14 @@ export async function fetchSalaryDetails(
   if (keys && keys.length > 0) {
     const wantedKeys = new Set(keys.map((key) => key.trim().toLowerCase()));
     rows = rows.filter((row) => {
-      const key = (
-        row.uniqueKey || buildSalaryUniqueKey(row.employeeId, row.period || '')
-      )
+      const key = (row.uniqueKey || buildSalaryUniqueKey(row.employeeId, row.period || ''))
         .trim()
         .toLowerCase();
       return wantedKeys.has(key);
     });
   } else {
     if (periodKey) {
-      rows = rows.filter(
-        (row) => monthInputToPeriod((row.period || '').trim()) === periodKey
-      );
+      rows = rows.filter((row) => monthInputToPeriod((row.period || '').trim()) === periodKey);
     }
     if (employeeIds && employeeIds.length > 0) {
       const wanted = new Set(employeeIds.map((id) => id.trim().toLowerCase()));
@@ -304,8 +281,7 @@ export async function updateSalaryDetails(
   const writes = details.map((detail) => {
     const period = monthInputToPeriod((detail.period || currentSalaryPeriod()).trim());
     const totals = computeSalaryTotals(detail);
-    const uniqueKey =
-      detail.uniqueKey?.trim() || buildSalaryUniqueKey(detail.employeeId, period);
+    const uniqueKey = detail.uniqueKey?.trim() || buildSalaryUniqueKey(detail.employeeId, period);
     return {
       ...detail,
       period,
@@ -413,8 +389,7 @@ export function mergeSalaryDetails(
     const allowance = override.allowance?.trim() || current?.allowance || '';
     const tax = override.tax?.trim() || current?.tax || '';
     const overtimePay = override.overtimePay?.trim() || current?.overtimePay || '';
-    const performanceBonus =
-      override.performanceBonus?.trim() || current?.performanceBonus || '';
+    const performanceBonus = override.performanceBonus?.trim() || current?.performanceBonus || '';
     const contributions = override.contributions?.trim() || current?.contributions || '';
     const others = override.others?.trim() || current?.others || '';
     const totals = computeSalaryTotals({
@@ -446,13 +421,9 @@ export function mergeSalaryDetails(
       tax,
       others,
       totalEarning:
-        override.totalEarning?.trim() ||
-        current?.totalEarning ||
-        String(totals.totalearning),
+        override.totalEarning?.trim() || current?.totalEarning || String(totals.totalearning),
       totalDeduction:
-        override.totalDeduction?.trim() ||
-        current?.totalDeduction ||
-        String(totals.totaldeduction),
+        override.totalDeduction?.trim() || current?.totalDeduction || String(totals.totaldeduction),
       accountNumber: override.accountNumber?.trim() || current?.accountNumber || '',
       accountName: override.accountName?.trim() || current?.accountName || '',
       bankName: override.bankName?.trim() || current?.bankName || '',
@@ -504,12 +475,7 @@ function detailFieldValue(
     Others: ['Others', 'others'],
     Tax: ['Tax', 'tax'],
     Contributions: ['Contributions', 'contributions', 'Contribution', 'contribution'],
-    'Account Number': [
-      'Account Number',
-      'AccountNumber',
-      'accountNumber',
-      'BankAccountDetails',
-    ],
+    'Account Number': ['Account Number', 'AccountNumber', 'accountNumber', 'BankAccountDetails'],
     'Account Name': ['Account Name', 'AccountName', 'accountName'],
     'Bank Name': ['Bank Name', 'BankName', 'bankName'],
   };
@@ -526,9 +492,7 @@ export function findIncompleteSalaryDetails(
   employeeIds: string[],
   details: SalaryDetailRecord[]
 ): IncompleteSalaryDetail[] {
-  const byId = new Map(
-    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
-  );
+  const byId = new Map(details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail]));
 
   const incomplete: IncompleteSalaryDetail[] = [];
 
@@ -570,9 +534,7 @@ export function toSalaryDetailWebhookFields(detail: SalaryDetailRecord | undefin
   return {
     UniqueKey:
       detail?.uniqueKey ||
-      (detail?.employeeId && period
-        ? buildSalaryUniqueKey(detail.employeeId, period)
-        : ''),
+      (detail?.employeeId && period ? buildSalaryUniqueKey(detail.employeeId, period) : ''),
     BaseSalary: detail?.salary || '',
     NetSalary: detail?.netSalary || '',
     OvertimePay: detail?.overtimePay || '',

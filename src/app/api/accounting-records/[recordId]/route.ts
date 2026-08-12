@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
-import {
-  getAccountingRecord,
-  updateAccountingRecordDriveLink,
-} from '@/lib/db/accounting';
+import { getAccountingRecord, updateAccountingRecordDriveLink } from '@/lib/db/accounting';
 
 export const dynamic = 'force-dynamic';
 

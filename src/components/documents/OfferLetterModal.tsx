@@ -76,9 +76,7 @@ export default function OfferLetterModal({
 
   const updateField = (index: number, field: keyof OfferLetterForm, value: string) => {
     setForms((current) =>
-      current.map((form, formIndex) =>
-        formIndex === index ? { ...form, [field]: value } : form
-      )
+      current.map((form, formIndex) => (formIndex === index ? { ...form, [field]: value } : form))
     );
   };
 
@@ -168,8 +166,7 @@ export default function OfferLetterModal({
       }
 
       toast.success(
-        result.message ||
-          `Started ${offers.length} offer letter${offers.length === 1 ? '' : 's'}.`
+        result.message || `Started ${offers.length} offer letter${offers.length === 1 ? '' : 's'}.`
       );
       onSuccess?.(result.data?.runId ? String(result.data.runId) : undefined);
       onClose();
@@ -222,10 +219,7 @@ export default function OfferLetterModal({
         <form onSubmit={handleSubmit}>
           <div className="space-y-8 px-6 py-6 sm:px-7">
             {forms.map((form, index) => (
-              <div
-                key={index}
-                className={index > 0 ? 'border-t border-border pt-8' : undefined}
-              >
+              <div key={index} className={index > 0 ? 'border-t border-border pt-8' : undefined}>
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-ink">Candidate {index + 1}</h3>
                   {formCount > 1 && (

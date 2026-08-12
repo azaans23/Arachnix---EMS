@@ -20,10 +20,7 @@ import {
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
-import {
-  buildEmployeeUniquenessContext,
-  employeeValidationSchema,
-} from '@/utils/validation';
+import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 import { assignableRoleOptions, getTrustedRole, ROLE_OPTIONS } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { supabase } from '@/lib/supabase';
@@ -123,11 +120,10 @@ export default function EmployeeForm({
         if (Array.isArray(result.data)) rawUsers = result.data;
         else if (result.data && typeof result.data === 'object') rawUsers = [result.data];
 
-        const loadedRoster =
-          rawUsers.map((row) => {
-            const employee = mapRawToEmployee(row);
-            return { employeeId: employee.employeeId, email: employee.email };
-          });
+        const loadedRoster = rawUsers.map((row) => {
+          const employee = mapRawToEmployee(row);
+          return { employeeId: employee.employeeId, email: employee.email };
+        });
         setRoster(loadedRoster);
       } catch {
         /* uniqueness still enforced server-side */
@@ -210,7 +206,9 @@ export default function EmployeeForm({
         }
 
         toast.success(
-          isEditMode ? 'Employee profile updated successfully' : 'Employee profile created successfully'
+          isEditMode
+            ? 'Employee profile updated successfully'
+            : 'Employee profile created successfully'
         );
         onSuccess?.();
       } catch (err: unknown) {
@@ -227,9 +225,7 @@ export default function EmployeeForm({
 
   const fieldClass = (name: keyof EmployeeWriteInput) =>
     `pl-10 pr-4 py-2 w-full bg-surface border rounded-lg text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] transition-all duration-200 ${
-      showError(name)
-        ? 'border-danger focus:border-danger'
-        : 'border-border focus:border-ink/40'
+      showError(name) ? 'border-danger focus:border-danger' : 'border-border focus:border-ink/40'
     }`;
 
   if (rosterLoading) {
@@ -418,10 +414,7 @@ export default function EmployeeForm({
         </Field>
 
         <div className="flex flex-col gap-1">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide text-ink"
-            htmlFor="role"
-          >
+          <label className="text-xs font-semibold uppercase tracking-wide text-ink" htmlFor="role">
             System Assigned Role
           </label>
           <CustomDropdown

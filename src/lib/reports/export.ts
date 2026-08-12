@@ -5,11 +5,13 @@ import type { ReportExportFormat, ReportPayload } from '@/types/search-reports';
 import { serializeReportValue } from '@/lib/reports/build-report';
 
 function fileStem(title: string) {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60) || 'report';
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60) || 'report'
+  );
 }
 
 function headers(report: ReportPayload) {
@@ -57,10 +59,7 @@ export function exportReportToXlsx(report: ReportPayload): {
   contentType: string;
   fileName: string;
 } {
-  const sheetRows = [
-    headers(report),
-    ...matrix(report),
-  ];
+  const sheetRows = [headers(report), ...matrix(report)];
 
   if (report.summary?.length) {
     sheetRows.push([]);

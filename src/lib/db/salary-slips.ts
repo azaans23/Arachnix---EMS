@@ -1,9 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import type {
-  SalarySlipRun,
-  SalarySlipRunDetail,
-  SalarySlipRunStatus,
-} from '@/types/salary-slip';
+import type { SalarySlipRun, SalarySlipRunDetail, SalarySlipRunStatus } from '@/types/salary-slip';
 
 type RunRow = {
   runid: number;
@@ -127,10 +123,7 @@ async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]
     };
 
     // Heal stale aggregates so future reads and Sheets stay aligned.
-    if (
-      run.successCount !== tallies.successCount ||
-      run.failCount !== tallies.failCount
-    ) {
+    if (run.successCount !== tallies.successCount || run.failCount !== tallies.failCount) {
       void updateSalarySlipRun(run.runId, {
         successCount: tallies.successCount,
         failCount: tallies.failCount,
@@ -260,18 +253,20 @@ export async function upsertSalarySlipRunDetail(input: {
   emailStatus?: string;
   errorReason?: string;
 }): Promise<void> {
-  const { error } = await getSupabaseAdmin().from(DETAILS_TABLE).upsert(
-    {
-      rundetailid: buildRunDetailId(input.runId, input.employeeId),
-      runid: Number(input.runId),
-      employeeid: input.employeeId,
-      status: input.status,
-      pdflink: input.pdfLink || null,
-      emailstatus: input.emailStatus || 'Pending',
-      errorreason: input.errorReason || null,
-    },
-    { onConflict: 'runid,employeeid' }
-  );
+  const { error } = await getSupabaseAdmin()
+    .from(DETAILS_TABLE)
+    .upsert(
+      {
+        rundetailid: buildRunDetailId(input.runId, input.employeeId),
+        runid: Number(input.runId),
+        employeeid: input.employeeId,
+        status: input.status,
+        pdflink: input.pdfLink || null,
+        emailstatus: input.emailStatus || 'Pending',
+        errorreason: input.errorReason || null,
+      },
+      { onConflict: 'runid,employeeid' }
+    );
 
   if (error) throw new Error(`Failed to upsert salary slip detail: ${error.message}`);
 }

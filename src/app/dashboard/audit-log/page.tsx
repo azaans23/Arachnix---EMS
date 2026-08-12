@@ -154,7 +154,11 @@ export default function AuditLogPage() {
           record.action,
           record.recordType,
           record.recordId,
-        ].some((value) => String(value || '').toLowerCase().includes(query));
+        ].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(query)
+        );
       })
       .sort((a, b) => {
         const left =
@@ -178,8 +182,7 @@ export default function AuditLogPage() {
     currentPage * pageSizeNum
   );
   const hasFilters = Boolean(search.trim() || actionFilter !== 'all' || typeFilter !== 'all');
-  const rangeStart =
-    filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRecords.length);
 
   useEffect(() => {
@@ -397,9 +400,7 @@ export default function AuditLogPage() {
                               {String(record.action || '').replaceAll('_', ' ')}
                             </span>
                           </td>
-                          <td className="truncate px-4 py-3.5">
-                            {record.recordType || 'N/A'}
-                          </td>
+                          <td className="truncate px-4 py-3.5">{record.recordType || 'N/A'}</td>
                           <td
                             className="truncate px-4 py-3.5 font-mono text-xs text-muted"
                             title={record.recordId || 'N/A'}

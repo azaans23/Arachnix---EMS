@@ -47,11 +47,7 @@ export async function POST(request: Request) {
             row.performanceBonus ?? row.PerformanceBonus ?? row['Performance Bonus'] ?? ''
           ).trim(),
           contributions: String(
-            row.contributions ??
-              row.Contributions ??
-              row.contribution ??
-              row.Contribution ??
-              ''
+            row.contributions ?? row.Contributions ?? row.contribution ?? row.Contribution ?? ''
           ).trim(),
           others: String(row.others ?? row.Others ?? '').trim(),
           netSalary: String(row.netSalary ?? row.NetSalary ?? '').trim() || undefined,
@@ -65,12 +61,13 @@ export async function POST(request: Request) {
           period: String(row.period ?? row.Period ?? '').trim() || undefined,
           uniqueKey: String(row.uniqueKey ?? row.UniqueKey ?? '').trim() || undefined,
           status: String(row.status ?? row.Status ?? '').trim() || undefined,
-          totalEarning: String(
-            row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? ''
-          ).trim() || undefined,
-          totalDeduction: String(
-            row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? ''
-          ).trim() || undefined,
+          totalEarning:
+            String(row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? '').trim() ||
+            undefined,
+          totalDeduction:
+            String(
+              row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? ''
+            ).trim() || undefined,
         }))
       : undefined;
 

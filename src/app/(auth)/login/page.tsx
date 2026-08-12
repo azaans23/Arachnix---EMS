@@ -92,9 +92,7 @@ export default function LoginPage() {
 
             <div className="mb-8">
               <h2 className="text-2xl font-semibold tracking-tight text-ink">Sign in</h2>
-              <p className="mt-2 text-sm text-muted">
-                Use your Arachnix work email to continue.
-              </p>
+              <p className="mt-2 text-sm text-muted">Use your Arachnix work email to continue.</p>
             </div>
 
             {isError && (

@@ -175,12 +175,9 @@ function uniqueSortedOptions(
 }
 
 function isSalaryRowComplete(row: SalaryDetailRecord) {
-  return [
-    row.salary,
-    row.accountNumber,
-    row.accountName,
-    row.bankName,
-  ].every((value) => String(value || '').trim() !== '');
+  return [row.salary, row.accountNumber, row.accountName, row.bankName].every(
+    (value) => String(value || '').trim() !== ''
+  );
 }
 
 export default function SalaryPage() {
@@ -255,12 +252,7 @@ export default function SalaryPage() {
     [rows]
   );
   const statusOptions = useMemo(
-    () =>
-      uniqueSortedOptions(
-        rows,
-        (row) => row.status || row.emsStatus,
-        'All statuses'
-      ),
+    () => uniqueSortedOptions(rows, (row) => row.status || row.emsStatus, 'All statuses'),
     [rows]
   );
   const periodOptions = useMemo(
@@ -393,7 +385,15 @@ export default function SalaryPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, departmentFilter, designationFilter, statusFilter, periodFilter, completenessFilter, pageSize]);
+  }, [
+    search,
+    departmentFilter,
+    designationFilter,
+    statusFilter,
+    periodFilter,
+    completenessFilter,
+    pageSize,
+  ]);
 
   useEffect(() => {
     // Drop stale filter values if refreshed data no longer includes them.
@@ -409,16 +409,10 @@ export default function SalaryPage() {
     ) {
       setDesignationFilter('all');
     }
-    if (
-      statusFilter !== 'all' &&
-      !statusOptions.some((option) => option.value === statusFilter)
-    ) {
+    if (statusFilter !== 'all' && !statusOptions.some((option) => option.value === statusFilter)) {
       setStatusFilter('all');
     }
-    if (
-      periodFilter !== 'all' &&
-      !periodOptions.some((option) => option.value === periodFilter)
-    ) {
+    if (periodFilter !== 'all' && !periodOptions.some((option) => option.value === periodFilter)) {
       setPeriodFilter('all');
     }
   }, [
@@ -487,11 +481,7 @@ export default function SalaryPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load employees.');
       }
-      const raw = Array.isArray(result.data)
-        ? result.data
-        : result.data
-          ? [result.data]
-          : [];
+      const raw = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
       setEmployees(
         raw.map((row: unknown) => {
           const record = mapRawToEmployee(row);
@@ -620,10 +610,7 @@ export default function SalaryPage() {
               period: monthInputToPeriod(editForm.period || currentSalaryPeriod()),
               uniqueKey:
                 editForm.uniqueKey ||
-                buildSalaryUniqueKey(
-                  editForm.employeeId,
-                  editForm.period || currentSalaryPeriod()
-                ),
+                buildSalaryUniqueKey(editForm.employeeId, editForm.period || currentSalaryPeriod()),
             },
           ],
         }),
@@ -743,14 +730,12 @@ export default function SalaryPage() {
     }
     if (employeeDeptFilter !== 'all') {
       list = list.filter(
-        (employee) =>
-          employee.department.trim().toLowerCase() === employeeDeptFilter.toLowerCase()
+        (employee) => employee.department.trim().toLowerCase() === employeeDeptFilter.toLowerCase()
       );
     }
     if (employeeStatusFilter !== 'all') {
       list = list.filter(
-        (employee) =>
-          employee.emsStatus.trim().toLowerCase() === employeeStatusFilter.toLowerCase()
+        (employee) => employee.emsStatus.trim().toLowerCase() === employeeStatusFilter.toLowerCase()
       );
     }
     list.sort((a, b) => a.name.localeCompare(b.name));
@@ -768,13 +753,7 @@ export default function SalaryPage() {
     );
   };
 
-  const SortableHeader = ({
-    column,
-    label,
-  }: {
-    column: SortKey;
-    label: string;
-  }) => (
+  const SortableHeader = ({ column, label }: { column: SortKey; label: string }) => (
     <th className="px-5 py-3.5 font-semibold">
       <button
         type="button"
@@ -823,8 +802,7 @@ export default function SalaryPage() {
         ? `${filteredRows.length} of ${rows.length} record${rows.length === 1 ? '' : 's'}`
         : `${rows.length} record${rows.length === 1 ? '' : 's'}`;
 
-  const rangeStart =
-    filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRows.length);
 
   const editModal =
@@ -856,9 +834,7 @@ export default function SalaryPage() {
                   ) : null}
                   {(editing.baseSalary || editing.totalEarning) && (
                     <p className="mt-1.5 text-xs text-muted">
-                      {editing.baseSalary
-                        ? `Base ${formatCurrency(editing.baseSalary)}`
-                        : ''}
+                      {editing.baseSalary ? `Base ${formatCurrency(editing.baseSalary)}` : ''}
                       {editing.baseSalary && editing.totalEarning ? ' · ' : ''}
                       {editing.totalEarning
                         ? `Earning ${formatCurrency(editing.totalEarning)}`
@@ -893,9 +869,7 @@ export default function SalaryPage() {
                           value={editForm[field.key] || ''}
                           onChange={(e) => updateEditField(field.key, e.target.value)}
                           className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
-                            empty
-                              ? 'border-danger-border ring-1 ring-danger/30'
-                              : 'border-border'
+                            empty ? 'border-danger-border ring-1 ring-danger/30' : 'border-border'
                           }`}
                           placeholder={`Enter ${field.label}`}
                         />
@@ -962,13 +936,9 @@ export default function SalaryPage() {
                       ? 'Search and filter employees, then choose one to create or update salary info.'
                       : selectedEmployee
                         ? `${selectedEmployee.name || selectedEmployee.employeeId}${
-                            selectedEmployee.designation
-                              ? ` · ${selectedEmployee.designation}`
-                              : ''
+                            selectedEmployee.designation ? ` · ${selectedEmployee.designation}` : ''
                           }${
-                            selectedEmployee.department
-                              ? ` · ${selectedEmployee.department}`
-                              : ''
+                            selectedEmployee.department ? ` · ${selectedEmployee.department}` : ''
                           }`
                         : 'Enter salary details for the selected employee.'}
                   </p>
@@ -1428,12 +1398,8 @@ export default function SalaryPage() {
                               </div>
                             </td>
                             <td className="px-5 py-3.5 text-muted">{row.email || '—'}</td>
-                            <td className="px-5 py-3.5 text-muted">
-                              {row.designation || '—'}
-                            </td>
-                            <td className="px-5 py-3.5 text-muted">
-                              {row.department || '—'}
-                            </td>
+                            <td className="px-5 py-3.5 text-muted">{row.designation || '—'}</td>
+                            <td className="px-5 py-3.5 text-muted">{row.department || '—'}</td>
                             <td className="px-5 py-3.5">
                               <div className="font-medium">{formatCurrency(row.salary)}</div>
                               {row.totalEarning ? (
@@ -1445,9 +1411,7 @@ export default function SalaryPage() {
                             <td className="px-5 py-3.5 text-muted">
                               {formatCurrency(row.allowance)}
                             </td>
-                            <td className="px-5 py-3.5 text-muted">
-                              {formatCurrency(row.tax)}
-                            </td>
+                            <td className="px-5 py-3.5 text-muted">{formatCurrency(row.tax)}</td>
                             <td className="px-5 py-3.5 text-muted">
                               <div>{row.bankName || '—'}</div>
                               {row.accountName ? (

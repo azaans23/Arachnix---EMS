@@ -26,10 +26,7 @@ export async function middleware(request: NextRequest) {
       })();
 
   // Drop legacy forgeable cookies if still present
-  if (
-    request.cookies.has(LEGACY_SESSION_COOKIE) ||
-    request.cookies.has(LEGACY_ROLE_COOKIE)
-  ) {
+  if (request.cookies.has(LEGACY_SESSION_COOKIE) || request.cookies.has(LEGACY_ROLE_COOKIE)) {
     response.cookies.set(LEGACY_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
     response.cookies.set(LEGACY_ROLE_COOKIE, '', { path: '/', maxAge: 0 });
   }

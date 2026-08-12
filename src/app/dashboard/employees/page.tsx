@@ -22,7 +22,13 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess, canAssignRole, getTrustedRole, normalizeRole, ROLE_OPTIONS as ALL_ROLES } from '@/lib/rbac';
+import {
+  canAccess,
+  canAssignRole,
+  getTrustedRole,
+  normalizeRole,
+  ROLE_OPTIONS as ALL_ROLES,
+} from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import type { SheetUser } from '@/types/employee';
@@ -51,7 +57,9 @@ const PAGE_SIZE_OPTIONS = [
 ];
 
 function getEmsStatus(user: SheetUser) {
-  return String(user.raw?.EMSStatus || user.raw?.emsStatus || '').toLowerCase().trim();
+  return String(user.raw?.EMSStatus || user.raw?.emsStatus || '')
+    .toLowerCase()
+    .trim();
 }
 
 export default function EmployeesPage() {
@@ -121,14 +129,17 @@ export default function EmployeesPage() {
     if (normalized === 'super_admin') {
       return 'border-ink/15 bg-ink text-accent-fg';
     }
-    if (normalized === 'hr_manager' || normalized === 'finance_manager' || normalized === 'director') {
+    if (
+      normalized === 'hr_manager' ||
+      normalized === 'finance_manager' ||
+      normalized === 'director'
+    ) {
       return 'border-border bg-canvas text-ink';
     }
     return 'border-border bg-surface text-muted';
   };
 
-  const hasActiveFilters =
-    search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
+  const hasActiveFilters = search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
 
   const clearFilters = () => {
     setSearch('');
@@ -244,13 +255,7 @@ export default function EmployeesPage() {
     );
   };
 
-  const SortableHeader = ({
-    column,
-    label,
-  }: {
-    column: SortKey;
-    label: string;
-  }) => (
+  const SortableHeader = ({ column, label }: { column: SortKey; label: string }) => (
     <th className="px-5 py-3.5 font-semibold">
       <button
         type="button"
@@ -299,8 +304,7 @@ export default function EmployeesPage() {
         ? `${filteredUsers.length} of ${users.length} record${users.length === 1 ? '' : 's'}`
         : `${users.length} record${users.length === 1 ? '' : 's'}`;
 
-  const rangeStart =
-    filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredUsers.length);
 
   return (

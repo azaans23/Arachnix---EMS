@@ -117,10 +117,7 @@ export async function verifyAuth(request: Request): Promise<AuthResult> {
 }
 
 /** Require one of the allowed roles (API-level RBAC). */
-export async function verifyRole(
-  request: Request,
-  allowedRoles: AppRole[]
-): Promise<AuthResult> {
+export async function verifyRole(request: Request, allowedRoles: AppRole[]): Promise<AuthResult> {
   const result = await getAuthenticatedUser(request);
   if (result.errorResponse) return result;
 
@@ -156,9 +153,7 @@ export async function verifyResourceAccess(
 
   const allowed =
     result.role &&
-    (access === 'write'
-      ? canWrite(result.role, resource)
-      : canAccess(result.role, resource));
+    (access === 'write' ? canWrite(result.role, resource) : canAccess(result.role, resource));
 
   if (!allowed) {
     return {

@@ -40,10 +40,7 @@ function text(value: unknown) {
   return value == null ? '' : String(value);
 }
 
-function isExpenseRow(row: {
-  transactionType: string;
-  category: string;
-}) {
+function isExpenseRow(row: { transactionType: string; category: string }) {
   return (
     row.transactionType === 'Expense' ||
     row.category === 'Expenses' ||
@@ -123,13 +120,9 @@ async function buildPayrollReport(params: {
 }): Promise<ReportPayload> {
   const employees = await listEmployeeDbRows();
   const nameById = new Map(employees.map((row) => [row.employeeid, row.fullname]));
-  const rows = await listSalaryDbRows(
-    params.period ? { period: params.period } : undefined
-  );
+  const rows = await listSalaryDbRows(params.period ? { period: params.period } : undefined);
 
-  const filtered = params.period
-    ? rows.filter((row) => row.period === params.period)
-    : rows;
+  const filtered = params.period ? rows.filter((row) => row.period === params.period) : rows;
 
   const columns: ReportColumn[] = [
     { key: 'employeeId', label: 'Employee ID' },
@@ -481,10 +474,7 @@ async function buildMonthlySummaryReport(params: {
 export async function buildDirectorDashboard(
   month = currentMonth()
 ): Promise<DirectorDashboardMetrics> {
-  const [records, employees] = await Promise.all([
-    listAccountingRecords(),
-    listEmployeeDbRows(),
-  ]);
+  const [records, employees] = await Promise.all([listAccountingRecords(), listEmployeeDbRows()]);
   const metrics = buildAccountingDashboardMetrics(records, month);
   const departments = new Set(
     employees.map((row) => String(row.department || '').trim()).filter(Boolean)

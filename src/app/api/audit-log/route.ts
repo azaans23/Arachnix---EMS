@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
-import {
-  AuditLogError,
-  createAuditLog,
-  fetchAuditLogs,
-} from '@/lib/sheets/audit';
+import { AuditLogError, createAuditLog, fetchAuditLogs } from '@/lib/sheets/audit';
 import type { CreateAuditEventInput } from '@/types/audit';
 
 export const dynamic = 'force-dynamic';
@@ -34,10 +30,7 @@ export async function POST(request: Request) {
     if (errorResponse) return errorResponse;
 
     const event = (await request.json()) as CreateAuditEventInput;
-    const record = await createAuditLog(
-      { email: user?.email || '' },
-      event
-    );
+    const record = await createAuditLog({ email: user?.email || '' }, event);
 
     return NextResponse.json({ success: true, data: record }, { status: 201 });
   } catch (error: unknown) {

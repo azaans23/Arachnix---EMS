@@ -45,8 +45,7 @@ export function normalizeLeaveBalanceInput(raw: Record<string, unknown>): LeaveB
   if (!employeeId) throw new Error('EmployeeID is required.');
 
   const year = toYear(raw.year ?? raw.Year);
-  const leaveId =
-    String(raw.leaveId ?? raw.LeaveID ?? '').trim() || buildLeaveId(employeeId, year);
+  const leaveId = String(raw.leaveId ?? raw.LeaveID ?? '').trim() || buildLeaveId(employeeId, year);
 
   return {
     leaveId,
@@ -58,10 +57,7 @@ export function normalizeLeaveBalanceInput(raw: Record<string, unknown>): LeaveB
     sickUsed: toDays(raw.sickUsed ?? raw.SickUsed, 'Sick Used'),
     casualQuota: toDays(raw.casualQuota ?? raw.CasualQuota, 'Casual Quota'),
     casualUsed: toDays(raw.casualUsed ?? raw.CasualUsed, 'Casual Used'),
-    carryForwardDays: toDays(
-      raw.carryForwardDays ?? raw.CarryForwardDays,
-      'Carry Forward Days'
-    ),
+    carryForwardDays: toDays(raw.carryForwardDays ?? raw.CarryForwardDays, 'Carry Forward Days'),
   };
 }
 
@@ -203,9 +199,7 @@ export function toWebhookLeaveRow(input: LeaveBalanceInput) {
   };
 }
 
-export async function upsertLeaveBalance(
-  input: LeaveBalanceInput
-): Promise<LeaveBalanceInput> {
+export async function upsertLeaveBalance(input: LeaveBalanceInput): Promise<LeaveBalanceInput> {
   assertQuotaRules(input);
   const payload = toDbWrite({
     ...input,
@@ -316,9 +310,7 @@ export async function updateLeaveBalances(
     }
 
     let message =
-      writes.length === 1
-        ? 'Leave balance saved.'
-        : `Saved ${writes.length} leave balances.`;
+      writes.length === 1 ? 'Leave balance saved.' : `Saved ${writes.length} leave balances.`;
     try {
       const parsed = text.trim() ? JSON.parse(text) : null;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {

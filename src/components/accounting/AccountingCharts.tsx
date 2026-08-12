@@ -158,13 +158,7 @@ export function ChartLegend({
 }
 
 /** Six-month income vs expenses, with net cashflow tracked as a line. */
-export function CashflowTrendChart({
-  data,
-  currency,
-}: {
-  data: TrendPoint[];
-  currency: string;
-}) {
+export function CashflowTrendChart({ data, currency }: { data: TrendPoint[]; currency: string }) {
   const reduced = usePrefersReducedMotion();
   const points = useMemo(
     () =>
@@ -256,13 +250,7 @@ export function CashflowTrendChart({
 }
 
 /** Share of the month's volume per account, as a donut plus a readable legend. */
-export function AccountShareChart({
-  data,
-  currency,
-}: {
-  data: AccountSlice[];
-  currency: string;
-}) {
+export function AccountShareChart({ data, currency }: { data: AccountSlice[]; currency: string }) {
   const reduced = usePrefersReducedMotion();
 
   const slices = useMemo(() => {
@@ -316,11 +304,7 @@ export function AccountShareChart({
               animationDuration={reduced ? 0 : 240}
             >
               {slices.map((slice, index) => (
-                <Cell
-                  key={slice.account}
-                  fill="var(--ink)"
-                  fillOpacity={INK_RAMP[index] ?? 0.1}
-                />
+                <Cell key={slice.account} fill="var(--ink)" fillOpacity={INK_RAMP[index] ?? 0.1} />
               ))}
             </Pie>
             <Tooltip

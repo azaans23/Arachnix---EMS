@@ -1,9 +1,5 @@
 export type ModalName =
-  | 'registerEmployee'
-  | 'employeeDetails'
-  | 'createEmployee'
-  | 'editEmployee'
-  | null;
+  'registerEmployee' | 'employeeDetails' | 'createEmployee' | 'editEmployee' | null;
 
 export interface ModalState {
   name: ModalName;

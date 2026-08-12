@@ -221,8 +221,7 @@ export default function LeaveRequestsPage() {
   }, [filteredRows, currentPage, pageSizeNum]);
   const rangeStart = filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRows.length);
-  const hasActiveFilters =
-    search.trim() !== '' || statusFilter !== 'all' || typeFilter !== 'all';
+  const hasActiveFilters = search.trim() !== '' || statusFilter !== 'all' || typeFilter !== 'all';
 
   const loadEmployees = async () => {
     setEmployeesLoading(true);
@@ -234,11 +233,7 @@ export default function LeaveRequestsPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load employees.');
       }
-      const raw = Array.isArray(result.data)
-        ? result.data
-        : result.data
-          ? [result.data]
-          : [];
+      const raw = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
       setEmployees(
         raw.map((row: unknown) => {
           const record = mapRawToEmployee(row);
@@ -344,11 +339,7 @@ export default function LeaveRequestsPage() {
     }
   };
 
-  const runAction = async (
-    request: LeaveRequest,
-    action: LeaveRequestAction,
-    reason?: string
-  ) => {
+  const runAction = async (request: LeaveRequest, action: LeaveRequestAction, reason?: string) => {
     setActingId(request.requestId);
     try {
       const response = await fetch(`/api/leave-requests/${encodeURIComponent(request.requestId)}`, {
@@ -412,276 +403,274 @@ export default function LeaveRequestsPage() {
     );
   }
 
-  const createModal =
-    createOpen
-      ? createPortal(
+  const createModal = createOpen
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={closeCreate}
+        >
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-            onClick={closeCreate}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-leave-request-title"
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
           >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="create-leave-request-title"
-              onClick={(event) => event.stopPropagation()}
-              className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
-                <div>
-                  <h2
-                    id="create-leave-request-title"
-                    className="text-lg font-semibold tracking-tight text-ink"
-                  >
-                    {createStep === 'pick' ? 'Select employee' : 'Create leave request'}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {createStep === 'pick'
-                      ? 'HR enters leave on behalf of the employee.'
-                      : selectedEmployee
-                        ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
-                        : 'Enter leave details.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeCreate}
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink"
-                  aria-label="Close"
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2
+                  id="create-leave-request-title"
+                  className="text-lg font-semibold tracking-tight text-ink"
                 >
-                  <X className="h-4 w-4" />
-                </button>
+                  {createStep === 'pick' ? 'Select employee' : 'Create leave request'}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {createStep === 'pick'
+                    ? 'HR enters leave on behalf of the employee.'
+                    : selectedEmployee
+                      ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
+                      : 'Enter leave details.'}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                {createStep === 'pick' ? (
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                      <input
-                        type="search"
-                        value={employeeSearch}
-                        onChange={(event) => setEmployeeSearch(event.target.value)}
-                        placeholder="Search employees…"
-                        className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {createStep === 'pick' ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                    <input
+                      type="search"
+                      value={employeeSearch}
+                      onChange={(event) => setEmployeeSearch(event.target.value)}
+                      placeholder="Search employees…"
+                      className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                    />
+                  </div>
+                  {employeesLoading ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-muted">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading employees…
+                    </div>
+                  ) : filteredEmployees.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted">No employees found.</p>
+                  ) : (
+                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                      {filteredEmployees.map((employee) => (
+                        <li key={employee.employeeId || employee.email}>
+                          <button
+                            type="button"
+                            onClick={() => selectEmployee(employee)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-ink">
+                                {employee.name || employee.employeeId}
+                              </span>
+                              <span className="block truncate text-xs text-muted">
+                                {employee.employeeId}
+                                {employee.email ? ` · ${employee.email}` : ''}
+                              </span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <label className="block text-xs font-medium text-muted">
+                    Leave type <span className="text-danger">*</span>
+                    <div className="mt-1.5">
+                      <CustomDropdown
+                        id="leave-type"
+                        name="leaveType"
+                        options={LEAVE_TYPE_OPTIONS}
+                        value={createForm.leaveType}
+                        onChange={(value) =>
+                          setCreateForm((current) => ({ ...current, leaveType: value }))
+                        }
+                        onBlur={() => {}}
                       />
                     </div>
-                    {employeesLoading ? (
-                      <div className="flex items-center justify-center py-10 text-sm text-muted">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading employees…
-                      </div>
-                    ) : filteredEmployees.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted">No employees found.</p>
-                    ) : (
-                      <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                        {filteredEmployees.map((employee) => (
-                          <li key={employee.employeeId || employee.email}>
-                            <button
-                              type="button"
-                              onClick={() => selectEmployee(employee)}
-                              className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-ink">
-                                  {employee.name || employee.employeeId}
-                                </span>
-                                <span className="block truncate text-xs text-muted">
-                                  {employee.employeeId}
-                                  {employee.email ? ` · ${employee.email}` : ''}
-                                </span>
-                              </span>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <label className="block text-xs font-medium text-muted">
-                      Leave type <span className="text-danger">*</span>
-                      <div className="mt-1.5">
-                        <CustomDropdown
-                          id="leave-type"
-                          name="leaveType"
-                          options={LEAVE_TYPE_OPTIONS}
-                          value={createForm.leaveType}
-                          onChange={(value) =>
-                            setCreateForm((current) => ({ ...current, leaveType: value }))
-                          }
-                          onBlur={() => {}}
-                        />
-                      </div>
-                    </label>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="text-xs font-medium text-muted">
-                        Start date <span className="text-danger">*</span>
-                        <input
-                          type="date"
-                          required
-                          value={createForm.startDate}
-                          onChange={(event) => updateCreateDates('startDate', event.target.value)}
-                          className={inputClassName}
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-muted">
-                        End date <span className="text-danger">*</span>
-                        <input
-                          type="date"
-                          required
-                          value={createForm.endDate}
-                          onChange={(event) => updateCreateDates('endDate', event.target.value)}
-                          className={inputClassName}
-                        />
-                      </label>
-                    </div>
-                    <label className="block text-xs font-medium text-muted">
-                      Days requested <span className="text-danger">*</span>
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-xs font-medium text-muted">
+                      Start date <span className="text-danger">*</span>
                       <input
-                        type="number"
-                        min="0.5"
-                        step="0.5"
+                        type="date"
                         required
-                        value={createForm.daysRequested}
-                        onChange={(event) =>
-                          setCreateForm((current) => ({
-                            ...current,
-                            daysRequested: event.target.value,
-                          }))
-                        }
+                        value={createForm.startDate}
+                        onChange={(event) => updateCreateDates('startDate', event.target.value)}
                         className={inputClassName}
                       />
                     </label>
-                    <label className="block text-xs font-medium text-muted">
-                      Reason
-                      <textarea
-                        rows={3}
-                        value={createForm.reason}
-                        onChange={(event) =>
-                          setCreateForm((current) => ({ ...current, reason: event.target.value }))
-                        }
-                        className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                        placeholder="Optional note for the request"
+                    <label className="text-xs font-medium text-muted">
+                      End date <span className="text-danger">*</span>
+                      <input
+                        type="date"
+                        required
+                        value={createForm.endDate}
+                        onChange={(event) => updateCreateDates('endDate', event.target.value)}
+                        className={inputClassName}
                       />
                     </label>
                   </div>
-                )}
-              </div>
-
-              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
-                {createStep === 'form' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateStep('pick');
-                      setSelectedEmployee(null);
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                  >
-                    Back
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={closeCreate}
-                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                >
-                  Cancel
-                </button>
-                {createStep === 'form' && (
-                  <button
-                    type="button"
-                    disabled={savingCreate}
-                    onClick={() => void saveCreate()}
-                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-                  >
-                    {savingCreate ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Saving…
-                      </>
-                    ) : (
-                      'Create request'
-                    )}
-                  </button>
-                )}
-              </div>
+                  <label className="block text-xs font-medium text-muted">
+                    Days requested <span className="text-danger">*</span>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      required
+                      value={createForm.daysRequested}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          daysRequested: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-muted">
+                    Reason
+                    <textarea
+                      rows={3}
+                      value={createForm.reason}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({ ...current, reason: event.target.value }))
+                      }
+                      className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                      placeholder="Optional note for the request"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
-          </div>,
-          document.body
-        )
-      : null;
 
-  const reasonModal =
-    actionModal
-      ? createPortal(
-          <div
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-            onClick={() => {
-              if (!savingAction) setActionModal(null);
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-            >
-              <div className="border-b border-border px-5 py-4">
-                <h2 className="text-lg font-semibold tracking-tight text-ink">
-                  {actionModal.action === 'reject' ? 'Reject leave request' : 'Request changes'}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  #{actionModal.request.requestId} ·{' '}
-                  {actionModal.request.fullName || actionModal.request.employeeId}
-                </p>
-              </div>
-              <div className="p-5">
-                <label className="block text-xs font-medium text-muted">
-                  {actionModal.action === 'reject' ? 'Rejection reason' : 'Feedback'}{' '}
-                  <span className="text-danger">*</span>
-                  <textarea
-                    autoFocus
-                    rows={4}
-                    value={actionReason}
-                    onChange={(event) => setActionReason(event.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                    placeholder={
-                      actionModal.action === 'reject'
-                        ? 'Explain why this leave is rejected'
-                        : 'What should HR/employee change before re-approval?'
-                    }
-                  />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+              {createStep === 'form' && (
                 <button
                   type="button"
-                  disabled={savingAction}
-                  onClick={() => setActionModal(null)}
+                  onClick={() => {
+                    setCreateStep('pick');
+                    setSelectedEmployee(null);
+                  }}
                   className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
                 >
-                  Cancel
+                  Back
                 </button>
+              )}
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+              >
+                Cancel
+              </button>
+              {createStep === 'form' && (
                 <button
                   type="button"
-                  disabled={savingAction || !actionReason.trim()}
-                  onClick={() => {
-                    setSavingAction(true);
-                    void runAction(actionModal.request, actionModal.action, actionReason.trim());
-                  }}
+                  disabled={savingCreate}
+                  onClick={() => void saveCreate()}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
                 >
-                  {savingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Confirm
+                  {savingCreate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Create request'
+                  )}
                 </button>
-              </div>
+              )}
             </div>
-          </div>,
-          document.body
-        )
-      : null;
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
+  const reasonModal = actionModal
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={() => {
+            if (!savingAction) setActionModal(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-lg font-semibold tracking-tight text-ink">
+                {actionModal.action === 'reject' ? 'Reject leave request' : 'Request changes'}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                #{actionModal.request.requestId} ·{' '}
+                {actionModal.request.fullName || actionModal.request.employeeId}
+              </p>
+            </div>
+            <div className="p-5">
+              <label className="block text-xs font-medium text-muted">
+                {actionModal.action === 'reject' ? 'Rejection reason' : 'Feedback'}{' '}
+                <span className="text-danger">*</span>
+                <textarea
+                  autoFocus
+                  rows={4}
+                  value={actionReason}
+                  onChange={(event) => setActionReason(event.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                  placeholder={
+                    actionModal.action === 'reject'
+                      ? 'Explain why this leave is rejected'
+                      : 'What should HR/employee change before re-approval?'
+                  }
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                disabled={savingAction}
+                onClick={() => setActionModal(null)}
+                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingAction || !actionReason.trim()}
+                onClick={() => {
+                  setSavingAction(true);
+                  void runAction(actionModal.request, actionModal.action, actionReason.trim());
+                }}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+              >
+                {savingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">

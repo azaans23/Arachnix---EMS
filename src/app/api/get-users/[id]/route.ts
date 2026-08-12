@@ -19,10 +19,7 @@ export async function GET(request: Request, context: RouteContext) {
     const employee = await getEmployeeById(id);
 
     if (!employee) {
-      return NextResponse.json(
-        { success: false, error: 'Employee not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
     }
 
     return NextResponse.json({

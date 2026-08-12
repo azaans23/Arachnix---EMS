@@ -50,11 +50,7 @@ export async function insertAuditLogDbRow(
 ): Promise<AuditLogDbRow> {
   const row = toAuditLogInsert(record);
 
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .insert(row)
-    .select('*')
-    .single();
+  const { data, error } = await getSupabaseAdmin().from(TABLE).insert(row).select('*').single();
 
   if (error) {
     throw new Error(`Supabase auditlog insert failed: ${error.message}`);

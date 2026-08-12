@@ -3,11 +3,7 @@ import { listEmployeeDbRows } from '@/lib/db/employees';
 import { listLeaveBalances } from '@/lib/db/leave-balances';
 import { listLeaveRequests } from '@/lib/db/leave-requests';
 import { listSalaryDbRows } from '@/lib/db/salaries';
-import {
-  searchSourcesForRole,
-  type SearchHit,
-  type SearchSource,
-} from '@/types/search-reports';
+import { searchSourcesForRole, type SearchHit, type SearchSource } from '@/types/search-reports';
 import type { AppRole } from '@/lib/rbac';
 
 const MAX_HITS = 60;
@@ -29,13 +25,8 @@ function pushHit(hits: SearchHit[], hit: SearchHit) {
   hits.push(hit);
 }
 
-function matchFields(
-  query: string,
-  fields: Array<{ label: string; value: unknown }>
-): string[] {
-  return fields
-    .filter((field) => includes(field.value, query))
-    .map((field) => field.label);
+function matchFields(query: string, fields: Array<{ label: string; value: unknown }>): string[] {
+  return fields.filter((field) => includes(field.value, query)).map((field) => field.label);
 }
 
 export async function runGlobalSearch(params: {
@@ -184,11 +175,7 @@ async function searchSalaries(query: string): Promise<SearchHit[]> {
       id: `salary:${row.uniquekey || row.salaryid}`,
       source: 'salary',
       title: `Salary · ${row.employeeid}`,
-      subtitle: [
-        row.period,
-        `Net ${Number(row.netsalary).toLocaleString()}`,
-        row.accountname,
-      ]
+      subtitle: [row.period, `Net ${Number(row.netsalary).toLocaleString()}`, row.accountname]
         .filter(Boolean)
         .join(' · '),
       meta: row.status || '—',
@@ -222,11 +209,7 @@ async function searchLeaveRequests(query: string): Promise<SearchHit[]> {
       id: `leave_request:${row.requestId}`,
       source: 'leave_request',
       title: `Leave · ${row.fullName || row.employeeId}`,
-      subtitle: [
-        row.leaveType,
-        `${row.startDate} → ${row.endDate}`,
-        `${row.daysRequested} day(s)`,
-      ]
+      subtitle: [row.leaveType, `${row.startDate} → ${row.endDate}`, `${row.daysRequested} day(s)`]
         .filter(Boolean)
         .join(' · '),
       meta: String(row.status || '—'),
@@ -256,11 +239,7 @@ async function searchLeaveBalances(query: string): Promise<SearchHit[]> {
       id: `leave_balance:${row.leaveId}`,
       source: 'leave_balance',
       title: `Leave balance · ${row.fullName || row.employeeId}`,
-      subtitle: [
-        String(row.year),
-        `Annual ${row.annualUsed}/${row.annualQuota}`,
-        row.department,
-      ]
+      subtitle: [String(row.year), `Annual ${row.annualUsed}/${row.annualQuota}`, row.department]
         .filter(Boolean)
         .join(' · '),
       meta: row.leaveId,
