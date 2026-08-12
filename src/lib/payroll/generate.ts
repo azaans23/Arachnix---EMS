@@ -167,11 +167,11 @@ export async function startSalarySlipRun(
 ): Promise<
   | { run: SalarySlipRun; message: string }
   | {
-      needsConfirmation: true;
-      incomplete: IncompleteSalaryDetail[];
-      details: SalaryDetailRecord[];
-      message: string;
-    }
+    needsConfirmation: true;
+    incomplete: IncompleteSalaryDetail[];
+    details: SalaryDetailRecord[];
+    message: string;
+  }
 > {
   const month = Number(input.month);
   const year = Number(input.year);
@@ -268,6 +268,7 @@ export async function startSalarySlipRun(
         BankAccountDetails: employee.bankAccountDetails,
         ...toSalaryDetailWebhookFields(detail),
         BaseSalary: detail?.salary || employee.baseSalary,
+        Status: 'Pending',
       };
     }),
   };
