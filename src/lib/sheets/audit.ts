@@ -23,20 +23,6 @@ const SENSITIVE_KEYS = new Set([
   'secret',
 ]);
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function pick(raw: Record<string, unknown>, ...keys: string[]): string {
-  for (const key of keys) {
-    const value = raw[key];
-    if (value !== undefined && value !== null) return String(value);
-  }
-  return '';
-}
-
 function sanitizeForAudit(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeForAudit);
   if (!value || typeof value !== 'object') return value ?? '';
@@ -91,58 +77,6 @@ export class AuditLogError extends Error {
     this.name = 'AuditLogError';
     this.status = status;
   }
-}
-
-/** n8n replies with this when a Webhook node responds before the workflow finishes. */
-const N8N_ACK_MESSAGES = new Set(['workflow was started']);
-
-const RESPOND_IMMEDIATELY_HINT =
-  'The get-audit-log workflow acknowledged the request without returning any rows. ' +
-  'In n8n, open that Webhook node and change "Respond" from "Immediately" to ' +
-  '"When Last Node Finishes" (or add a "Respond to Webhook" node) so the AuditLog rows are sent back.';
-
-/** n8n sometimes wraps each row as { json: {...} }. */
-function unwrapN8nItem(value: unknown): unknown {
-  const record = asRecord(value);
-  const inner = record.json;
-  return inner && typeof inner === 'object' ? inner : value;
-}
-
-function hasAuditIdentity(record: AuditLogRecord): boolean {
-  return Boolean(
-    record.logId || record.timestamp || record.userEmail || record.action || record.recordId
-  );
-}
-
-export function mapRawToAuditLog(rawInput: unknown): AuditLogRecord {
-  const raw = asRecord(rawInput);
-  return {
-    logId: pick(raw, 'LogID', 'logId', 'LogId', 'logid'),
-    timestamp: pick(raw, 'Timestamp', 'timestamp'),
-    userEmail: pick(raw, 'UserEmail', 'userEmail', 'useremail'),
-    action: pick(raw, 'Action', 'action'),
-    recordType: pick(raw, 'RecordType', 'recordType', 'recordtype'),
-    recordId: pick(raw, 'RecordID', 'recordId', 'RecordId', 'recordid'),
-    oldValue: serializeAuditValue(raw.OldValue ?? raw.oldValue ?? raw.oldvalue),
-    newValue: serializeAuditValue(raw.NewValue ?? raw.newValue ?? raw.newvalue),
-  };
-}
-
-export function normalizeAuditPayload(payload: unknown): AuditLogRecord[] {
-  const root = asRecord(payload);
-
-  if (!Array.isArray(payload) && typeof root.message === 'string') {
-    if (N8N_ACK_MESSAGES.has(root.message.trim().toLowerCase())) {
-      throw new AuditLogError(RESPOND_IMMEDIATELY_HINT, 502);
-    }
-  }
-
-  const data = Array.isArray(payload)
-    ? payload
-    : (root.data ?? root.records ?? root.rows ?? payload);
-  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
-
-  return rows.map((row) => mapRawToAuditLog(unwrapN8nItem(row))).filter(hasAuditIdentity);
 }
 
 async function webhookError(response: Response, fallback: string): Promise<AuditLogError> {

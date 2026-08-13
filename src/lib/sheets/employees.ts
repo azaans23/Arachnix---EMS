@@ -274,11 +274,6 @@ export async function fetchEmployees(): Promise<EmployeeRecord[]> {
   }
 }
 
-export async function fetchSheetUsers(): Promise<SheetUser[]> {
-  const employees = await fetchEmployees();
-  return employees.map(toSheetUser);
-}
-
 export async function getEmployeeById(id: string): Promise<EmployeeRecord | null> {
   const candidates = new Set<string>();
   let current = String(id || '').trim();

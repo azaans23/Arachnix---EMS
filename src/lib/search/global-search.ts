@@ -3,7 +3,12 @@ import { listEmployeeDbRows } from '@/lib/db/employees';
 import { listLeaveBalances } from '@/lib/db/leave-balances';
 import { listLeaveRequests } from '@/lib/db/leave-requests';
 import { listSalaryDbRows } from '@/lib/db/salaries';
-import { searchSourcesForRole, type SearchHit, type SearchSource } from '@/types/search-reports';
+import {
+  hrefForSearchHit,
+  searchSourcesForRole,
+  type SearchHit,
+  type SearchSource,
+} from '@/types/search-reports';
 import type { AppRole } from '@/lib/rbac';
 
 const MAX_HITS = 60;
@@ -47,7 +52,7 @@ export async function runGlobalSearch(params: {
   const hits: SearchHit[] = [];
   await Promise.all(
     requested.map(async (source) => {
-      const sourceHits = await searchSource(source, query);
+      const sourceHits = await searchSource(source, query, params.role);
       for (const hit of sourceHits.slice(0, PER_SOURCE)) {
         pushHit(hits, hit);
       }
@@ -57,24 +62,28 @@ export async function runGlobalSearch(params: {
   return hits.sort((a, b) => a.title.localeCompare(b.title)).slice(0, MAX_HITS);
 }
 
-async function searchSource(source: SearchSource, query: string): Promise<SearchHit[]> {
+async function searchSource(
+  source: SearchSource,
+  query: string,
+  role: AppRole | string
+): Promise<SearchHit[]> {
   switch (source) {
     case 'employee':
-      return searchEmployees(query);
+      return searchEmployees(query, role);
     case 'accounting':
-      return searchAccounting(query);
+      return searchAccounting(query, role);
     case 'salary':
-      return searchSalaries(query);
+      return searchSalaries(query, role);
     case 'leave_request':
-      return searchLeaveRequests(query);
+      return searchLeaveRequests(query, role);
     case 'leave_balance':
-      return searchLeaveBalances(query);
+      return searchLeaveBalances(query, role);
     default:
       return [];
   }
 }
 
-async function searchEmployees(query: string): Promise<SearchHit[]> {
+async function searchEmployees(query: string, role: AppRole | string): Promise<SearchHit[]> {
   const rows = await listEmployeeDbRows();
   const hits: SearchHit[] = [];
 
@@ -98,7 +107,7 @@ async function searchEmployees(query: string): Promise<SearchHit[]> {
       title: row.fullname || row.employeeid,
       subtitle: [row.employeeid, row.department, row.designation].filter(Boolean).join(' · '),
       meta: row.emsstatus || '—',
-      href: `/dashboard/employees/${encodeURIComponent(row.employeeid)}`,
+      href: hrefForSearchHit(role, 'employee', row.employeeid),
       matchedOn,
     });
   }
@@ -106,7 +115,7 @@ async function searchEmployees(query: string): Promise<SearchHit[]> {
   return hits;
 }
 
-async function searchAccounting(query: string): Promise<SearchHit[]> {
+async function searchAccounting(query: string, role: AppRole | string): Promise<SearchHit[]> {
   const rows = await listAccountingRecords();
   const hits: SearchHit[] = [];
 
@@ -144,7 +153,7 @@ async function searchAccounting(query: string): Promise<SearchHit[]> {
         .filter(Boolean)
         .join(' · '),
       meta: row.uploadDate.slice(0, 10) || '—',
-      href: '/dashboard/accounting-records',
+      href: hrefForSearchHit(role, 'accounting'),
       matchedOn,
     });
   }
@@ -152,7 +161,7 @@ async function searchAccounting(query: string): Promise<SearchHit[]> {
   return hits;
 }
 
-async function searchSalaries(query: string): Promise<SearchHit[]> {
+async function searchSalaries(query: string, role: AppRole | string): Promise<SearchHit[]> {
   const rows = await listSalaryDbRows();
   const hits: SearchHit[] = [];
 
@@ -175,11 +184,15 @@ async function searchSalaries(query: string): Promise<SearchHit[]> {
       id: `salary:${row.uniquekey || row.salaryid}`,
       source: 'salary',
       title: `Salary · ${row.employeeid}`,
-      subtitle: [row.period, `Net ${Number(row.netsalary).toLocaleString()}`, row.accountname]
+      subtitle: [
+        row.period,
+        `Net ${Number(row.netsalary).toLocaleString()}`,
+        row.accountname,
+      ]
         .filter(Boolean)
         .join(' · '),
       meta: row.status || '—',
-      href: '/dashboard/salary',
+      href: hrefForSearchHit(role, 'salary'),
       matchedOn,
     });
   }
@@ -187,7 +200,7 @@ async function searchSalaries(query: string): Promise<SearchHit[]> {
   return hits;
 }
 
-async function searchLeaveRequests(query: string): Promise<SearchHit[]> {
+async function searchLeaveRequests(query: string, role: AppRole | string): Promise<SearchHit[]> {
   const rows = await listLeaveRequests();
   const hits: SearchHit[] = [];
 
@@ -209,11 +222,15 @@ async function searchLeaveRequests(query: string): Promise<SearchHit[]> {
       id: `leave_request:${row.requestId}`,
       source: 'leave_request',
       title: `Leave · ${row.fullName || row.employeeId}`,
-      subtitle: [row.leaveType, `${row.startDate} → ${row.endDate}`, `${row.daysRequested} day(s)`]
+      subtitle: [
+        row.leaveType,
+        `${row.startDate} → ${row.endDate}`,
+        `${row.daysRequested} day(s)`,
+      ]
         .filter(Boolean)
         .join(' · '),
       meta: String(row.status || '—'),
-      href: '/dashboard/leave-requests',
+      href: hrefForSearchHit(role, 'leave_request'),
       matchedOn,
     });
   }
@@ -221,7 +238,7 @@ async function searchLeaveRequests(query: string): Promise<SearchHit[]> {
   return hits;
 }
 
-async function searchLeaveBalances(query: string): Promise<SearchHit[]> {
+async function searchLeaveBalances(query: string, role: AppRole | string): Promise<SearchHit[]> {
   const rows = await listLeaveBalances();
   const hits: SearchHit[] = [];
 
@@ -239,11 +256,15 @@ async function searchLeaveBalances(query: string): Promise<SearchHit[]> {
       id: `leave_balance:${row.leaveId}`,
       source: 'leave_balance',
       title: `Leave balance · ${row.fullName || row.employeeId}`,
-      subtitle: [String(row.year), `Annual ${row.annualUsed}/${row.annualQuota}`, row.department]
+      subtitle: [
+        String(row.year),
+        `Annual ${row.annualUsed}/${row.annualQuota}`,
+        row.department,
+      ]
         .filter(Boolean)
         .join(' · '),
       meta: row.leaveId,
-      href: '/dashboard/leave-balances',
+      href: hrefForSearchHit(role, 'leave_balance'),
       matchedOn,
     });
   }

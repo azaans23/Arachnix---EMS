@@ -1,5 +1,5 @@
 import type { AppRole } from '@/lib/rbac';
-import { ROLES, normalizeRole } from '@/lib/rbac';
+import { ROLES, normalizeRole, canAccess } from '@/lib/rbac';
 
 export const SEARCH_SOURCES = [
   'employee',
@@ -114,11 +114,57 @@ export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
     case ROLES.HR_MANAGER:
       return ['employee', 'salary', 'leave_request', 'leave_balance'];
     case ROLES.FINANCE_MANAGER:
-      return ['accounting', 'employee'];
+      // Finance cannot open the employees module — keep search on accounting only.
+      return ['accounting'];
     case ROLES.DIRECTOR:
+      // Directors may search people/payroll/leave for overview, but detail pages are
+      // blocked; hits link to Reports instead (see hrefForSearchHit).
       return ['accounting', 'employee', 'salary', 'leave_request'];
     default:
       return [];
+  }
+}
+
+/**
+ * Destination for a search hit. Always returns a path the role can open so
+ * middleware does not bounce the click back to /dashboard.
+ */
+export function hrefForSearchHit(
+  role: AppRole | string,
+  source: SearchSource,
+  entityId?: string
+): string {
+  const normalized = normalizeRole(role);
+  switch (source) {
+    case 'employee':
+      if (canAccess(normalized, 'employees') && entityId) {
+        return `/dashboard/employees/${encodeURIComponent(entityId)}`;
+      }
+      return canAccess(normalized, 'reports') ? '/dashboard/reports' : '/dashboard';
+    case 'accounting':
+      return canAccess(normalized, 'accounting_records')
+        ? '/dashboard/accounting-records'
+        : '/dashboard';
+    case 'salary':
+      return canAccess(normalized, 'salary_slip_runs')
+        ? '/dashboard/salary'
+        : canAccess(normalized, 'reports')
+          ? '/dashboard/reports'
+          : '/dashboard';
+    case 'leave_request':
+      return canAccess(normalized, 'leave_requests')
+        ? '/dashboard/leave-requests'
+        : canAccess(normalized, 'reports')
+          ? '/dashboard/reports'
+          : '/dashboard';
+    case 'leave_balance':
+      return canAccess(normalized, 'leave_balances')
+        ? '/dashboard/leave-balances'
+        : canAccess(normalized, 'reports')
+          ? '/dashboard/reports'
+          : '/dashboard';
+    default:
+      return '/dashboard';
   }
 }
 

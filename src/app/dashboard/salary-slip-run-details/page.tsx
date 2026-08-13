@@ -23,7 +23,7 @@ import CustomDropdown from '@/components/ui/Dropdown';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
-import { getTrustedRole } from '@/lib/rbac';
+import { canAccess, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import type { SalarySlipRun, SalarySlipRunDetail } from '@/types/salary-slip';
 
@@ -143,7 +143,7 @@ export default function SalarySlipRunDetailsPage() {
       } catch {
         /* keep JWT */
       }
-      const canRead = role === 'super_admin' || role === 'hr_manager';
+      const canRead = canAccess(role, 'salary_slip_run_details');
       setAllowed(canRead);
       if (canRead) await load();
       else setLoading(false);

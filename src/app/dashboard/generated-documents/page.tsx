@@ -1,11 +1,6 @@
-import ComingSoonPage from '@/components/ui/ComingSoonPage';
+import { redirect } from 'next/navigation';
 
+/** Placeholder route kept for bookmarks — live UI lives under Offer Letters. */
 export default function GeneratedDocumentsPage() {
-  return (
-    <ComingSoonPage
-      eyebrow="Documents"
-      title="Generated Documents"
-      description="Contracts, offer letters, and other generated files — type, Drive link, status, and email delivery."
-    />
-  );
+  redirect('/dashboard/offer-letters');
 }

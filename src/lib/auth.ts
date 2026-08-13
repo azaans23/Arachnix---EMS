@@ -166,11 +166,3 @@ export async function verifyResourceAccess(
 
   return result;
 }
-
-/**
- * @deprecated Prefer verifyEmployeeAccess / verifyRole.
- * Kept for compatibility: Super Admin only.
- */
-export async function verifyAdmin(request: Request): Promise<AuthResult> {
-  return verifyRole(request, [normalizeRole('Super Admin')]);
-}

@@ -327,12 +327,6 @@ export const NAV_ITEMS: NavItemConfig[] = [
     section: 'hr',
   },
   {
-    href: '/dashboard/generated-documents',
-    label: 'Generated Documents',
-    resource: 'generated_documents',
-    section: 'hr',
-  },
-  {
     href: '/dashboard/accounting-records',
     label: 'Accounting Records',
     resource: 'accounting_records',
