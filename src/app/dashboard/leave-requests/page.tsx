@@ -792,7 +792,7 @@ export default function LeaveRequestsPage() {
             <>
               <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] border-collapse text-left">
+                  <table className="w-full min-w-[1100px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                         <th className="px-5 py-3.5">Employee</th>
@@ -800,6 +800,7 @@ export default function LeaveRequestsPage() {
                         <th className="px-5 py-3.5">Dates</th>
                         <th className="px-5 py-3.5">Days</th>
                         <th className="px-5 py-3.5">Status</th>
+                        <th className="px-5 py-3.5">Reason</th>
                         {canEdit && <th className="px-5 py-3.5 text-right">Actions</th>}
                       </tr>
                     </thead>
@@ -835,6 +836,18 @@ export default function LeaveRequestsPage() {
                                   {row.rejectionReason}
                                 </div>
                               ) : null}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {row.reason?.trim() ? (
+                                <div
+                                  className="max-w-[16rem] truncate text-sm text-ink"
+                                  title={row.reason}
+                                >
+                                  {row.reason}
+                                </div>
+                              ) : (
+                                <span className="text-muted">—</span>
+                              )}
                             </td>
                             {canEdit && (
                               <td className="px-5 py-3.5">

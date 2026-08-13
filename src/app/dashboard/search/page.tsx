@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
-import { canAccess, getTrustedRole } from '@/lib/rbac';
+import { canAccess, getTrustedRole, ROLES, type AppRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import type { SearchHit, SearchSource } from '@/types/search-reports';
 
@@ -50,12 +50,42 @@ const SOURCE_META: Record<SearchSource, { label: string; icon: React.ReactNode; 
   },
 };
 
+const SEARCH_GUIDANCE: Record<AppRole, { description: string; placeholder: string; noMatch: string }> =
+  {
+    [ROLES.SUPER_ADMIN]: {
+      description: 'Search employees, payroll, leave, and accounting records in one place.',
+      placeholder: 'Search people, vendors, amounts, references, payroll, or leave…',
+      noMatch: 'Try an employee, vendor, reference, amount, payroll period, or leave type.',
+    },
+    [ROLES.HR_MANAGER]: {
+      description: 'Search HR information only: employees, payroll, leave requests, and balances.',
+      placeholder: 'Search employee, department, payroll period, or leave…',
+      noMatch: 'Try an employee name or ID, department, payroll period, or leave type.',
+    },
+    [ROLES.FINANCE_MANAGER]: {
+      description: 'Search accounting information only: transactions, vendors, accounts, and references.',
+      placeholder: 'Search vendor, account, amount, reference, invoice, or month…',
+      noMatch: 'Try a vendor, account, reference, amount, invoice, or month.',
+    },
+    [ROLES.DIRECTOR]: {
+      description: 'Search the financial and operational information available to Directors.',
+      placeholder: 'Search people, accounting, payroll, or leave…',
+      noMatch: 'Try an employee, vendor, reference, payroll period, or leave type.',
+    },
+    [ROLES.EMPLOYEE]: {
+      description: 'Search is not available for this role.',
+      placeholder: 'Search…',
+      noMatch: 'Try another search.',
+    },
+  };
+
 function token() {
   return localStorage.getItem('token');
 }
 
 export default function SearchPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [role, setRole] = useState<AppRole | null>(null);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [loading, setLoading] = useState(false);
@@ -79,6 +109,7 @@ export default function SearchPage() {
       } catch {
         /* keep JWT */
       }
+      setRole(role);
       setAllowed(canAccess(role, 'search'));
     };
     void boot();
@@ -138,6 +169,7 @@ export default function SearchPage() {
     }
     return map;
   }, [hits]);
+  const guidance = SEARCH_GUIDANCE[role || ROLES.EMPLOYEE];
 
   if (allowed === null) {
     return (
@@ -172,8 +204,7 @@ export default function SearchPage() {
           Search
         </h1>
         <p className="mt-1.5 text-sm text-muted">
-          Find employees, clients, vendors, amounts, references, invoices, months, and document
-          types in one place.
+          {guidance.description}
         </p>
       </div>
 
@@ -183,7 +214,7 @@ export default function SearchPage() {
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, vendor, amount, reference, invoice, month…"
+          placeholder={guidance.placeholder}
           autoFocus
           className="h-12 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-12 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
         />
@@ -215,8 +246,7 @@ export default function SearchPage() {
           <EmptyState
             icon={<Search className="h-5 w-5" />}
             title="Type at least 2 characters"
-            description="Search spans employees, accounting records, payroll, and leave, scoped to what your role can see.
-"
+            description={guidance.description}
           />
         ) : loading && hits.length === 0 ? (
           <div className="space-y-3">
@@ -228,7 +258,7 @@ export default function SearchPage() {
           <EmptyState
             icon={<FileText className="h-5 w-5" />}
             title="No matches"
-            description={`Nothing matched “${debounced}”. Try a vendor name, reference, employee ID, or amount.`}
+            description={`Nothing matched “${debounced}”. ${guidance.noMatch}`}
           />
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface shadow-panel">

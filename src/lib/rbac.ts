@@ -56,6 +56,9 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   'finance manager': ROLES.FINANCE_MANAGER,
   finance_manager: ROLES.FINANCE_MANAGER,
   finance: ROLES.FINANCE_MANAGER,
+  'accounting manager': ROLES.FINANCE_MANAGER,
+  accounting_manager: ROLES.FINANCE_MANAGER,
+  accounting: ROLES.FINANCE_MANAGER,
   director: ROLES.DIRECTOR,
   employee: ROLES.EMPLOYEE,
 };
@@ -216,7 +219,6 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
   reports: {
     [ROLES.SUPER_ADMIN]: 'read',
-    [ROLES.HR_MANAGER]: 'read',
     [ROLES.FINANCE_MANAGER]: 'read',
     [ROLES.DIRECTOR]: 'read',
   },

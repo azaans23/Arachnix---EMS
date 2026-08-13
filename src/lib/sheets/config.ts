@@ -13,5 +13,6 @@ export const SHEETS_WEBHOOKS = {
   updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
   updateLeave: `${N8N_BASE_URL}/webhook/update-leave`,
   createLeaveRequest: `${N8N_BASE_URL}/webhook/create-leave-request`,
+  createHoliday: `${N8N_BASE_URL}/webhook-test/create-holiday`,
   uploadAccountingRecord: `${N8N_BASE_URL}/webhook/create-transaction`,
 } as const;
