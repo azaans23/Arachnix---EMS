@@ -160,10 +160,6 @@ export default function AccountingRecordsPage() {
   const [directors, setDirectors] = useState<DirectorAccount[]>([]);
   const archivingRef = useRef<{ key: string; ids: string[] }>({ key: '', ids: [] });
 
-  /**
-   * A record that was archiving and is now gone was rolled back server-side because
-   * the Drive workflow never returned a link. Say so instead of letting it vanish.
-   */
   const reportRolledBackUploads = useCallback((nextRows: AccountingRecord[], key: string) => {
     const previous = archivingRef.current;
     const present = new Set(nextRows.map((row) => row.recordId));
@@ -424,21 +420,33 @@ export default function AccountingRecordsPage() {
   const net = metrics?.netCashflow ?? 0;
 
   const summary = [
-    { label: 'Income', value: formatMoney(metrics?.income ?? 0, dominantCurrency) },
-    { label: 'Expenses', value: formatMoney(metrics?.expenses ?? 0, dominantCurrency) },
-    { label: 'Payroll', value: formatMoney(metrics?.payroll ?? 0, dominantCurrency) },
-    {
-      label: 'Net cashflow',
-      value: formatMoney(net, dominantCurrency),
-      tone: net > 0 ? 'text-success' : net < 0 ? 'text-danger' : 'text-ink',
-    },
-    { label: 'Transactions', value: String(metrics?.transactionCount ?? 0) },
-    {
-      label: 'Unlinked docs',
-      value: String(metrics?.pendingDocuments ?? 0),
-      tone: (metrics?.pendingDocuments ?? 0) > 0 ? 'text-danger' : 'text-ink',
-    },
-  ];
+  {
+    label: 'Income',
+    value: formatMoney(metrics?.income ?? 0, dominantCurrency),
+    tone: 'text-success', // green
+  },
+  {
+    label: 'Expenses',
+    value: formatMoney(metrics?.expenses ?? 0, dominantCurrency),
+    tone: 'text-danger', // red
+  },
+  {
+    label: 'Payroll',
+    value: formatMoney(metrics?.payroll ?? 0, dominantCurrency),
+    tone: 'text-warning', // yellow
+  },
+  {
+    label: 'Net cashflow',
+    value: formatMoney(net, dominantCurrency),
+    tone: 'text-white', // white
+  },
+  { label: 'Transactions', value: String(metrics?.transactionCount ?? 0) },
+  {
+    label: 'Unlinked docs',
+    value: String(metrics?.pendingDocuments ?? 0),
+    tone: (metrics?.pendingDocuments ?? 0) > 0 ? 'text-danger' : 'text-ink',
+  },
+];
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">

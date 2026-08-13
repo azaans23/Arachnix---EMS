@@ -575,7 +575,7 @@ export default function SalarySlipRunsPage() {
               aria-modal="true"
               aria-labelledby="generate-slips-title"
               onClick={(event) => event.stopPropagation()}
-              className="relative flex max-h-[min(90vh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              className="relative flex max-h-[min(92vh,52rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
             >
               <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
                 <div>
@@ -599,7 +599,7 @@ export default function SalarySlipRunsPage() {
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-5">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-muted">Month</label>
@@ -654,8 +654,8 @@ export default function SalarySlipRunsPage() {
                 </div>
 
                 {mode === 'selected' && (
-                  <div className="rounded-lg border border-border">
-                    <div className="border-b border-border p-2">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border">
+                    <div className="shrink-0 border-b border-border p-2">
                       <div className="relative">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                         <input
@@ -667,7 +667,7 @@ export default function SalarySlipRunsPage() {
                         />
                       </div>
                     </div>
-                    <ul className="max-h-[7.5rem] overflow-y-auto overscroll-contain">
+                    <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                       {filteredEmployees.length === 0 ? (
                         <li className="px-3 py-4 text-center text-xs text-muted">
                           No eligible employees found.
