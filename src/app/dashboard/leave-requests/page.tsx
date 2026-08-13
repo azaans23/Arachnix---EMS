@@ -128,6 +128,7 @@ export default function LeaveRequestsPage() {
   const [actionModal, setActionModal] = useState<ActionModal | null>(null);
   const [actionReason, setActionReason] = useState('');
   const [savingAction, setSavingAction] = useState(false);
+  const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -533,6 +534,7 @@ export default function LeaveRequestsPage() {
                       min="0.5"
                       step="0.5"
                       required
+                      readOnly
                       value={createForm.daysRequested}
                       onChange={(event) =>
                         setCreateForm((current) => ({
@@ -665,6 +667,164 @@ export default function LeaveRequestsPage() {
                 {savingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Confirm
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
+  const detailModal = detailRequest
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={() => setDetailRequest(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-request-detail-title"
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="leave-request-detail-title"
+                  className="truncate text-lg font-semibold tracking-tight text-ink"
+                >
+                  {detailRequest.fullName || detailRequest.employeeId}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {detailRequest.employeeId}
+                  {detailRequest.department ? ` · ${detailRequest.department}` : ''}
+                </p>
+              </div>
+              <span
+                className={`inline-flex shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium ${statusClasses(detailRequest.status, detailRequest.changesRequested)}`}
+              >
+                {statusLabel(detailRequest)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDetailRequest(null)}
+                className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="rounded-lg border border-border bg-canvas/40 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Leave reason
+                </p>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
+                  {detailRequest.reason?.trim() || 'No reason provided.'}
+                </p>
+              </div>
+
+              {detailRequest.rejectionReason?.trim() ? (
+                <div
+                  className={`rounded-lg border p-4 ${
+                    detailRequest.status === 'Rejected'
+                      ? 'border-danger-border bg-danger-bg'
+                      : 'border-border bg-canvas/40'
+                  }`}
+                >
+                  <p
+                    className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                      detailRequest.status === 'Rejected' ? 'text-danger' : 'text-muted'
+                    }`}
+                  >
+                    {detailRequest.status === 'Rejected' ? (
+                      <XCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <MessageSquareWarning className="h-3.5 w-3.5" />
+                    )}
+                    {detailRequest.status === 'Rejected'
+                      ? 'Rejection reason'
+                      : detailRequest.changesRequested
+                        ? 'Changes requested'
+                        : 'Review note'}
+                  </p>
+                  <p
+                    className={`mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed ${
+                      detailRequest.status === 'Rejected' ? 'text-danger' : 'text-ink'
+                    }`}
+                  >
+                    {detailRequest.rejectionReason}
+                  </p>
+                </div>
+              ) : null}
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-3">
+                <DetailField label="Type" value={detailRequest.leaveType || '—'} />
+                <DetailField label="Days" value={String(detailRequest.daysRequested)} />
+                <DetailField
+                  label="Reviewed by"
+                  value={detailRequest.approvedBy?.trim() || '—'}
+                />
+                <DetailField label="From" value={displayDate(detailRequest.startDate)} />
+                <DetailField label="To" value={displayDate(detailRequest.endDate)} />
+                <DetailField
+                  label="Reviewed on"
+                  value={
+                    detailRequest.approvalDate ? displayDate(detailRequest.approvalDate) : '—'
+                  }
+                />
+              </dl>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setDetailRequest(null)}
+                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+              >
+                Close
+              </button>
+              {canEdit && detailRequest.status === 'Pending' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailRequest(null);
+                      setActionReason('');
+                      setActionModal({ request: detailRequest, action: 'request_changes' });
+                    }}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+                  >
+                    <MessageSquareWarning className="h-4 w-4" />
+                    Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailRequest(null);
+                      setActionReason('');
+                      setActionModal({ request: detailRequest, action: 'reject' });
+                    }}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-danger-border bg-danger-bg px-3.5 text-sm font-semibold text-danger transition-opacity hover:opacity-90"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actingId === detailRequest.requestId}
+                    onClick={() => {
+                      setDetailRequest(null);
+                      void runAction(detailRequest, 'approve');
+                    }}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Approve
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>,
@@ -809,7 +969,11 @@ export default function LeaveRequestsPage() {
                         const busy = actingId === row.requestId;
                         const pending = row.status === 'Pending';
                         return (
-                          <tr key={row.requestId} className="hover:bg-canvas/70">
+                          <tr
+                            key={row.requestId}
+                            className="cursor-pointer hover:bg-canvas/70"
+                            onClick={() => setDetailRequest(row)}
+                          >
                             <td className="px-5 py-3.5">
                               <div className="font-medium">{row.fullName || row.employeeId}</div>
                               <div className="text-xs text-muted">
@@ -850,7 +1014,10 @@ export default function LeaveRequestsPage() {
                               )}
                             </td>
                             {canEdit && (
-                              <td className="px-5 py-3.5">
+                              <td
+                                className="px-5 py-3.5"
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 {pending ? (
                                   <div className="flex flex-wrap justify-end gap-1.5">
                                     <button
@@ -954,6 +1121,16 @@ export default function LeaveRequestsPage() {
 
       {createModal}
       {reasonModal}
+      {detailModal}
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</dt>
+      <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
     </div>
   );
 }
