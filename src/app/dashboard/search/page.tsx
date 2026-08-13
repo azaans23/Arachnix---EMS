@@ -215,7 +215,8 @@ export default function SearchPage() {
           <EmptyState
             icon={<Search className="h-5 w-5" />}
             title="Type at least 2 characters"
-            description="Search spans employees, accounting records, payroll, and leave — scoped to what your role can see."
+            description="Search spans employees, accounting records, payroll, and leave, scoped to what your role can see.
+"
           />
         ) : loading && hits.length === 0 ? (
           <div className="space-y-3">

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyEmployeeAccess } from '@/lib/auth';
+import { syncEmployeeAuthRole, verifyEmployeeAccess } from '@/lib/auth';
 import { assertCanAssignRole, normalizeRole, roleDisplayName } from '@/lib/rbac';
 import {
   employeeInputToAuditValue,
@@ -90,13 +90,29 @@ export async function POST(request: Request) {
       () => upsertEmployee(validation.value, previous)
     );
 
+    let authRoleSynced = false;
+    if (roleChanging) {
+      const { synced } = await syncEmployeeAuthRole({
+        supabaseUserId: saved.supabaseUserId || previous?.supabaseUserId,
+        email: saved.email || previous?.email || validation.value.email,
+        roleLabel: saved.role || validation.value.role,
+      });
+      authRoleSynced = synced;
+    }
+
     return NextResponse.json({
       success: true,
       employeeId: saved.employeeId,
       auditLogged,
-      warning: auditLogged
-        ? undefined
-        : 'Employee saved, but the audit entry could not be delivered.',
+      authRoleSynced,
+      warning: [
+        !auditLogged ? 'Employee saved, but the audit entry could not be delivered.' : '',
+        roleChanging && !authRoleSynced
+          ? 'Employee role saved, but Auth permissions could not be updated. Ask the user to sign out and back in, or retry after confirming they have a registered login.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined,
     });
   } catch (error: unknown) {
     if (error instanceof SheetsError) {

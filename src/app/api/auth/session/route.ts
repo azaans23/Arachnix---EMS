@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { resolveTrustedRole } from '@/lib/auth';
-import { hasTrustedAppRole, roleDisplayName } from '@/lib/rbac';
+import { getTrustedRole, hasTrustedAppRole, roleDisplayName } from '@/lib/rbac';
 import {
   clearCookieOptions,
   createGateToken,
@@ -49,8 +49,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const hadAppRole = hasTrustedAppRole(user);
-    const role = await resolveTrustedRole(user);
+    const previousAppRole = hasTrustedAppRole(user) ? getTrustedRole(user) : null;
+    const role = await resolveTrustedRole(user, { reconcileWithSheet: true });
     const jwtExp = readJwtExpiry(token) ?? undefined;
     const signed = await createGateToken({
       uid: user.id,
@@ -73,8 +73,8 @@ export async function POST(request: Request) {
       success: true,
       role,
       roleLabel: roleDisplayName(role),
-      /** Client should refreshSession() so JWT picks up backfilled app_metadata */
-      metadataUpdated: !hadAppRole && role !== 'employee',
+      /** Client should refreshSession() so JWT picks up synced app_metadata */
+      metadataUpdated: previousAppRole === null || previousAppRole !== role,
       exp: signed.exp,
     });
 

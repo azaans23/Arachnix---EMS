@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient, User } from '@supabase/supabase-js';
+import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   AppRole,
   canAccess,
@@ -23,60 +24,122 @@ export type AuthResult = {
 };
 
 /**
+ * Write the display role into Supabase Auth app_metadata so JWT / getUser()
+ * match the employee roster after signup or a later role change.
+ */
+export async function syncAuthAppMetadataRole(
+  userId: string,
+  roleLabel: string
+): Promise<boolean> {
+  const id = userId.trim();
+  const label = roleLabel.trim();
+  if (!id || !label) return false;
+
+  try {
+    const admin = getSupabaseAdmin();
+    const { error } = await admin.auth.admin.updateUserById(id, {
+      app_metadata: { role: label },
+    });
+    if (error) {
+      console.error('Failed to sync app_metadata.role:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to sync app_metadata.role:', err);
+    return false;
+  }
+}
+
+/** Resolve Auth user id when the employee row has email but no SupabaseUserID. */
+export async function findAuthUserIdByEmail(email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  try {
+    const admin = getSupabaseAdmin();
+    // GoTrue admin filter: exact email match.
+    const { data, error } = await admin.auth.admin.listUsers({
+      page: 1,
+      perPage: 200,
+    });
+    if (error) {
+      console.error('Failed to look up Auth user by email:', error.message);
+      return null;
+    }
+    const match = (data.users || []).find(
+      (user) => (user.email || '').trim().toLowerCase() === normalized
+    );
+    return match?.id || null;
+  } catch (err) {
+    console.error('Failed to look up Auth user by email:', err);
+    return null;
+  }
+}
+
+/**
+ * Keep Auth app_metadata.role aligned with the employee roster role.
+ * Returns true when Auth metadata was written (caller should refreshSession).
+ */
+export async function syncEmployeeAuthRole(params: {
+  supabaseUserId?: string | null;
+  email?: string | null;
+  roleLabel: string;
+}): Promise<{ synced: boolean; userId: string | null }> {
+  const roleLabel = roleDisplayName(normalizeRole(params.roleLabel));
+  let userId = String(params.supabaseUserId || '').trim();
+  if (!userId && params.email) {
+    userId = (await findAuthUserIdByEmail(params.email)) || '';
+  }
+  if (!userId) return { synced: false, userId: null };
+
+  const synced = await syncAuthAppMetadataRole(userId, roleLabel);
+  return { synced, userId };
+}
+
+/**
  * Resolve the caller's role without trusting client-writable user_metadata.
  * 1) app_metadata.role (authoritative once set)
- * 2) employee sheet Role for this email (HR source of truth for legacy accounts)
- * 3) backfill app_metadata when sheet has a known role so subsequent requests are fast
+ * 2) employee sheet Role for legacy accounts missing app_metadata (then backfill Auth)
+ *
+ * Pass `reconcileWithSheet: true` (session cookie sync) to heal stale app_metadata
+ * when the roster role was changed earlier without updating Auth.
  */
-export async function resolveTrustedRole(user: User): Promise<AppRole> {
-  if (hasTrustedAppRole(user)) {
-    return getTrustedRole(user);
-  }
-
+export async function resolveTrustedRole(
+  user: User,
+  options?: { reconcileWithSheet?: boolean }
+): Promise<AppRole> {
   const email = (user.email || '').trim().toLowerCase();
-  if (!email) return ROLES.EMPLOYEE;
+  const reconcile = Boolean(options?.reconcileWithSheet);
 
   let sheetRole: AppRole | null = null;
-  try {
-    const employees = await fetchEmployees();
-    const match = employees.find((e) => e.email.trim().toLowerCase() === email);
-    if (match?.role && isKnownRoleValue(match.role)) {
-      sheetRole = normalizeRole(match.role);
+  const needSheet = reconcile || !hasTrustedAppRole(user);
+
+  if (needSheet && email) {
+    try {
+      const employees = await fetchEmployees();
+      const match = employees.find((e) => e.email.trim().toLowerCase() === email);
+      if (match?.role && isKnownRoleValue(match.role)) {
+        sheetRole = normalizeRole(match.role);
+      }
+    } catch (err) {
+      console.error('Failed to resolve role from employee sheet:', err);
     }
-  } catch (err) {
-    console.error('Failed to resolve role from employee sheet:', err);
+  }
+
+  if (hasTrustedAppRole(user)) {
+    const appRole = getTrustedRole(user);
+    if (reconcile && sheetRole && sheetRole !== appRole) {
+      await syncAuthAppMetadataRole(user.id, roleDisplayName(sheetRole));
+      return sheetRole;
+    }
+    return appRole;
   }
 
   if (!sheetRole) return ROLES.EMPLOYEE;
 
-  // Persist into app_metadata so JWT + future checks match the sheet
-  await backfillAppMetadataRole(user.id, roleDisplayName(sheetRole));
+  await syncAuthAppMetadataRole(user.id, roleDisplayName(sheetRole));
   return sheetRole;
-}
-
-async function backfillAppMetadataRole(userId: string, roleLabel: string): Promise<void> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!supabaseUrl || !serviceKey) {
-    console.warn(
-      'Cannot backfill app_metadata.role — SUPABASE_SERVICE_ROLE_KEY is not configured.'
-    );
-    return;
-  }
-
-  try {
-    const admin = createClient(supabaseUrl, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { error } = await admin.auth.admin.updateUserById(userId, {
-      app_metadata: { role: roleLabel },
-    });
-    if (error) {
-      console.error('Failed to backfill app_metadata.role:', error.message);
-    }
-  } catch (err) {
-    console.error('Failed to backfill app_metadata.role:', err);
-  }
 }
 
 async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
