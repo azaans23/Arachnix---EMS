@@ -18,10 +18,22 @@ import {
   getNavItemsForRole,
   getTrustedRole,
   roleDisplayName,
-  ROLES,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { CashflowTrendChart, ChartLegend } from '@/components/accounting/AccountingCharts';
+import {
+  ChartPanel,
+  CountBarChart,
+  CountDonutChart,
+  HeadcountTrendChart,
+} from '@/components/dashboard/DashboardCharts';
+import { compactNumber } from '@/components/charts/chart-kit';
+import {
+  hasAnyOverviewSection,
+  overviewSectionsForRole,
+  type DashboardOverview,
+} from '@/types/dashboard';
 
 type SessionUser = {
   name: string;
@@ -30,13 +42,32 @@ type SessionUser = {
   roleLabel: string;
 };
 
+type Stat = { label: string; value: string; tone?: string };
+
+/** Static strings so Tailwind keeps these column counts in the build. */
+const STAT_COLUMNS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-6',
+};
+
 function token() {
   return localStorage.getItem('token');
 }
 
+function compactMoney(value: number, currency: string) {
+  const sign = value < 0 ? '-' : '';
+  return `${sign}${currency} ${compactNumber(Math.abs(value))}`;
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -68,24 +99,22 @@ export default function DashboardPage() {
           roleLabel,
         });
 
-        if (
-          role === ROLES.DIRECTOR ||
-          role === ROLES.SUPER_ADMIN ||
-          role === ROLES.ADMIN ||
-          role === ROLES.FINANCE_MANAGER
-        ) {
-          try {
-            const response = await fetch('/api/director-dashboard', {
-              headers: { Authorization: `Bearer ${token()}` },
-              cache: 'no-store',
-            });
-            const result = await response.json();
-            if (response.ok && result.success) {
-            }
-          } catch {
-            /* overview cards are optional */
-          } finally {
+        if (!hasAnyOverviewSection(overviewSectionsForRole(role))) return;
+
+        setOverviewLoading(true);
+        try {
+          const response = await fetch('/api/dashboard-overview', {
+            headers: { Authorization: `Bearer ${token()}` },
+            cache: 'no-store',
+          });
+          const result = await response.json();
+          if (response.ok && result.success) {
+            setOverview(result.data as DashboardOverview);
           }
+        } catch {
+          /* overview charts are optional — quick links still render */
+        } finally {
+          setOverviewLoading(false);
         }
       } finally {
         setLoading(false);
@@ -105,69 +134,243 @@ export default function DashboardPage() {
         .slice(0, 6)
     : [];
 
-  const subtitle = (() => {
-    if (!user) return 'Your Arachnix workspace.';
-    switch (user.role) {
-      case 'super_admin':
-        return 'Full access across HR, payroll documents, leave, and accounting.';
-      case 'hr_manager':
-        return 'Manage employees, leave, salary slips, and generated documents.';
-      case 'finance_manager':
-        return 'Accounting uploads, records, and finance dashboards.';
-      case 'director':
-        return 'Read-only financial overview, payroll totals, and headcount.';
-      default:
-        return 'Your Arachnix workspace for account settings.';
+  const roleSections = user ? overviewSectionsForRole(user.role) : null;
+  const sections = overview?.sections ?? roleSections;
+  const headcount = overview?.headcount;
+  const finance = overview?.finance;
+  const currency = finance?.currency || 'PKR';
+  const showOverview = Boolean(roleSections && hasAnyOverviewSection(roleSections));
+
+  const stats: Stat[] = [];
+  if (roleSections?.headcount && (headcount || overviewLoading)) {
+    stats.push(
+      {
+        label: 'Employees',
+        value: headcount ? headcount.total.toLocaleString() : '—',
+      },
+      {
+        label: 'EMS Active',
+        value: headcount ? headcount.active.toLocaleString() : '—',
+        tone: 'text-success',
+      },
+      {
+        label: 'Departments',
+        value: headcount ? headcount.departmentCount.toLocaleString() : '—',
+      }
+    );
+  }
+  if (roleSections?.finance && (finance || overviewLoading)) {
+    stats.push({
+      label: 'Net cashflow',
+      value: finance ? compactMoney(finance.netCashflow, currency) : '—',
+      tone: finance && finance.netCashflow < 0 ? 'text-danger' : 'text-success',
+    });
+    // Finance-only roles have room for the fuller money strip.
+    if (!roleSections.headcount) {
+      stats.push(
+        {
+          label: 'Income',
+          value: finance ? compactMoney(finance.income, currency) : '—',
+          tone: 'text-success',
+        },
+        {
+          label: 'Expenses',
+          value: finance ? compactMoney(finance.expenses, currency) : '—',
+          tone: 'text-danger',
+        },
+        {
+          label: 'Transactions',
+          value: finance ? finance.transactionCount.toLocaleString() : '—',
+        }
+      );
     }
-  })();
+  }
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
-      <header className="mb-10 border-b border-border pb-8">
+      <header className="mb-8 border-b border-border pb-8">
         <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted">Overview</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">
           {user ? `Welcome back, ${firstName}` : 'Welcome back'}
         </h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">{subtitle}</p>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">{subtitleForUser(user)}</p>
         {user && (
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
             <span className="rounded-md border border-border bg-surface px-2.5 py-1 font-medium text-ink">
               {user.roleLabel}
             </span>
             <span className="text-muted/80">{user.email}</span>
+            {overview && <span className="text-muted/80">· {overview.monthLabel}</span>}
           </div>
         )}
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {quickLinks.length === 0 ? (
-          <QuickLink
-            href="/dashboard/settings"
-            title="Settings"
-            description="Account preferences and workspace options."
-            icon={<LayoutDashboard className="h-4 w-4" />}
-          />
-        ) : (
-          quickLinks.map((item, index) => (
+      {showOverview && (
+        <>
+          {stats.length > 0 && (
+          <section className="mb-4 overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
+            <div
+              className={`grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:divide-y-0 ${
+                STAT_COLUMNS[stats.length] || 'lg:grid-cols-6'
+              }`}
+            >
+              {stats.map((item) => (
+                <div key={item.label} className="px-4 py-3.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    {item.label}
+                  </div>
+                  <div
+                    className={`mt-1 text-lg font-semibold tabular-nums tracking-tight ${
+                      item.tone || 'text-ink'
+                    }`}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          )}
+
+          {sections?.headcount && (
+            <>
+              <div className="mb-4 grid gap-4 lg:grid-cols-5">
+                <ChartPanel
+                  title="Employee category"
+                  subtitle="Share of the roster by employment type"
+                  className="lg:col-span-2"
+                  loading={overviewLoading}
+                  isEmpty={!headcount || headcount.byEmployeeType.length === 0}
+                  emptyMessage="No employees on the roster yet. Register someone and the category split appears here."
+                >
+                  {headcount && (
+                    <CountDonutChart
+                      data={headcount.byEmployeeType}
+                      centerLabel="People"
+                      unit="person"
+                      unitPlural="people"
+                    />
+                  )}
+                </ChartPanel>
+
+                <ChartPanel
+                  title="Department split"
+                  subtitle="Headcount per department, largest first"
+                  className="lg:col-span-3"
+                  loading={overviewLoading}
+                  isEmpty={!headcount || headcount.byDepartment.length === 0}
+                  emptyMessage="No departments recorded yet."
+                >
+                  {headcount && (
+                    <CountBarChart
+                      data={headcount.byDepartment}
+                      unit="employee"
+                      maxBars={7}
+                    />
+                  )}
+                </ChartPanel>
+              </div>
+
+              <div className="mb-4">
+                <ChartPanel
+                  title="Headcount growth"
+                  subtitle="Roster size over the last 12 months, with new joiners"
+                  legend={
+                    <ChartLegend
+                      items={[
+                        { label: 'Headcount', color: 'var(--ink)', shape: 'line' },
+                        {
+                          label: 'New joiners',
+                          color: 'color-mix(in oklab, var(--ink) 28%, transparent)',
+                        },
+                      ]}
+                    />
+                  }
+                  loading={overviewLoading}
+                  isEmpty={!headcount || headcount.trend.every((point) => point.headcount === 0)}
+                  emptyMessage="No joining dates on file yet, so there is no hiring history to chart."
+                >
+                  {headcount && <HeadcountTrendChart data={headcount.trend} />}
+                </ChartPanel>
+              </div>
+            </>
+          )}
+
+          {sections?.finance && (
+            <div className="mb-4">
+              <ChartPanel
+                title="Cashflow"
+                subtitle={`Last ${finance?.trend.length || 6} months in ${currency}`}
+                legend={
+                  <ChartLegend
+                    items={[
+                      { label: 'Income', color: 'var(--success)' },
+                      { label: 'Expenses', color: 'var(--danger)' },
+                      { label: 'Net', color: 'var(--ink)', shape: 'line' },
+                    ]}
+                  />
+                }
+                loading={overviewLoading}
+                isEmpty={!finance || finance.trend.length === 0}
+                emptyMessage="No monthly history yet. Upload a transaction and the income, expense, and net lines start filling in."
+              >
+                {finance && <CashflowTrendChart data={finance.trend} currency={currency} />}
+              </ChartPanel>
+            </div>
+          )}
+        </>
+      )}
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted">
+          Jump back in
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {quickLinks.length === 0 ? (
             <QuickLink
-              key={item.href}
-              href={item.href}
-              title={item.label}
-              description={descriptionForResource(item.resource)}
-              icon={iconForHref(item.href)}
-              primary={Boolean(user && index === 0 && canAccess(user.role, 'employees'))}
+              href="/dashboard/settings"
+              title="Settings"
+              description="Account preferences and workspace options."
+              icon={<LayoutDashboard className="h-4 w-4" />}
             />
-          ))
-        )}
+          ) : (
+            quickLinks.map((item, index) => (
+              <QuickLink
+                key={item.href}
+                href={item.href}
+                title={item.label}
+                description={descriptionForResource(item.resource)}
+                icon={iconForHref(item.href)}
+                primary={Boolean(user && index === 0 && canAccess(user.role, 'employees'))}
+              />
+            ))
+          )}
+        </div>
       </section>
     </div>
   );
 }
 
+function subtitleForUser(user: SessionUser | null) {
+  if (!user) return 'Your Arachnix workspace.';
+  switch (user.role) {
+    case 'super_admin':
+      return 'Full access across HR, payroll documents, leave, and accounting.';
+    case 'hr_manager':
+      return 'Manage employees, leave, salary slips, and generated documents.';
+    case 'finance_manager':
+      return 'Accounting uploads, records, and finance dashboards.';
+    case 'director':
+      return 'Read-only financial overview, payroll totals, and headcount.';
+    default:
+      return 'Your Arachnix workspace for account settings.';
+  }
+}
+
 function DashboardSkeleton() {
   return (
     <div className="mx-auto max-w-6xl" role="status" aria-label="Loading dashboard">
-      <header className="mb-10 space-y-3 border-b border-border pb-8">
+      <header className="mb-8 space-y-3 border-b border-border pb-8">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="h-9 w-72 max-w-full" />
         <Skeleton className="h-4 w-full max-w-md" />
@@ -177,7 +380,15 @@ function DashboardSkeleton() {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Skeleton className="mb-4 h-[4.75rem] w-full" />
+
+      <div className="mb-4 grid gap-4 lg:grid-cols-5">
+        <Skeleton className="h-[20rem] lg:col-span-2" />
+        <Skeleton className="h-[20rem] lg:col-span-3" />
+      </div>
+      <Skeleton className="mb-4 h-[20rem] w-full" />
+
+      <section className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="flex flex-col rounded-lg border border-border bg-surface p-5">
             <div className="flex items-center justify-between">
