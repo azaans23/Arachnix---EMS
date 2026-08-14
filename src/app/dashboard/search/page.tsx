@@ -57,6 +57,11 @@ const SEARCH_GUIDANCE: Record<AppRole, { description: string; placeholder: strin
       placeholder: 'Search people, vendors, amounts, references, payroll, or leave…',
       noMatch: 'Try an employee, vendor, reference, amount, payroll period, or leave type.',
     },
+    [ROLES.ADMIN]: {
+      description: 'Search employees, payroll, leave, and accounting records in one place.',
+      placeholder: 'Search people, vendors, amounts, references, payroll, or leave…',
+      noMatch: 'Try an employee, vendor, reference, amount, payroll period, or leave type.',
+    },
     [ROLES.HR_MANAGER]: {
       description: 'Search HR information only: employees, payroll, leave requests, and balances.',
       placeholder: 'Search employee, department, payroll period, or leave…',
@@ -190,7 +195,7 @@ export default function SearchPage() {
         <EmptyState
           icon={<ShieldAlert className="h-5 w-5" />}
           title="Access restricted"
-          description="Global search is available to Super Admin, HR Manager, Finance Manager, and Director."
+          description="Global search is available to Super Admin, Admin, HR Manager, Finance Manager, and Director."
         />
       </div>
     );

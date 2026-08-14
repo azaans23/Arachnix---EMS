@@ -26,6 +26,7 @@ import {
   canAccess,
   canAssignRole,
   getTrustedRole,
+  isSuperAdminSelfEdit,
   normalizeRole,
   ROLE_OPTIONS as ALL_ROLES,
 } from '@/lib/rbac';
@@ -114,6 +115,8 @@ export default function EmployeesPage() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [canViewEmployees, setCanViewEmployees] = useState<boolean | null>(null);
   const [actorRole, setActorRole] = useState<string | null>(null);
+  const [actorEmail, setActorEmail] = useState<string | null>(null);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -174,6 +177,9 @@ export default function EmployeesPage() {
     const normalized = normalizeRole(role);
     if (normalized === 'super_admin') {
       return 'border-ink/15 bg-ink text-accent-fg';
+    }
+    if (normalized === 'admin') {
+      return 'border-ink/20 bg-ink/90 text-accent-fg';
     }
     if (
       normalized === 'hr_manager' ||
@@ -262,6 +268,8 @@ export default function EmployeesPage() {
       } = await supabase.auth.getSession();
       if (session?.user && session.access_token) {
         localStorage.setItem('token', session.access_token);
+        setActorEmail(session.user.email || null);
+        setActorUserId(session.user.id || null);
         let role = getTrustedRole(session.user);
         try {
           const synced = await syncSessionCookies(session.access_token);
@@ -303,7 +311,7 @@ export default function EmployeesPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Only Super Admin and HR Manager can view employee records.
+          Only Super Admin, Admin, and HR Manager can view employee records.
         </p>
       </div>
     );
@@ -455,11 +463,26 @@ export default function EmployeesPage() {
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
                         const isActive = getEmsStatus(user) === 'active';
+                        const isSelfSuperAdmin = isSuperAdminSelfEdit({
+                          actorRole: actorRole || '',
+                          actorEmail,
+                          actorUserId,
+                          targetEmail: user.email,
+                          targetSupabaseUserId: String(
+                            user.raw?.SupabaseUserId || user.raw?.supabaseUserId || ''
+                          ),
+                        });
                         return (
                           <tr
                             key={user.employeeId || user.email || idx}
-                            onClick={() => router.push(profilePath(user))}
-                            className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
+                            onClick={() => {
+                              if (!isSelfSuperAdmin) router.push(profilePath(user));
+                            }}
+                            className={`transition-colors duration-150 ${
+                              isSelfSuperAdmin
+                                ? 'bg-canvas/40'
+                                : 'cursor-pointer hover:bg-canvas/70'
+                            }`}
                           >
                             <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
                             <td className="px-5 py-3.5 text-muted">{user.email}</td>
@@ -472,7 +495,14 @@ export default function EmployeesPage() {
                             </td>
                             <td className="px-5 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {isActive ? (
+                                {isSelfSuperAdmin ? (
+                                  <span
+                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                    title="Super Admin cannot edit their own account"
+                                  >
+                                    You
+                                  </span>
+                                ) : isActive ? (
                                   <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
                                     Active
                                   </span>
@@ -500,17 +530,19 @@ export default function EmployeesPage() {
                                   </span>
                                 )}
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    router.push(profilePath(user));
-                                  }}
-                                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
-                                  title="Open profile"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
+                                {!isSelfSuperAdmin ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      router.push(profilePath(user));
+                                    }}
+                                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
+                                    title="Open profile"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>

@@ -16,12 +16,19 @@ import {
   Calendar,
   Clock,
   Hash,
+  ShieldAlert,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
-import { assignableRoleOptions, getTrustedRole, ROLE_OPTIONS } from '@/lib/rbac';
+import {
+  assignableRoleOptions,
+  canManageEmployeeRole,
+  getTrustedRole,
+  isSuperAdminSelfEdit,
+  ROLE_OPTIONS,
+} from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { supabase } from '@/lib/supabase';
 import { FormSkeleton } from '@/components/ui/Skeleton';
@@ -74,6 +81,8 @@ export default function EmployeeForm({
   const [roster, setRoster] = useState<{ employeeId: string; email: string }[]>([]);
   const [rosterLoading, setRosterLoading] = useState(true);
   const [actorRole, setActorRole] = useState<string | null>(null);
+  const [actorEmail, setActorEmail] = useState<string | null>(null);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
   const isEditMode = !!user;
 
   useEffect(() => {
@@ -82,6 +91,8 @@ export default function EmployeeForm({
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.user || !session.access_token) return;
+      setActorEmail(session.user.email || null);
+      setActorUserId(session.user.id || null);
       try {
         const synced = await syncSessionCookies(session.access_token);
         setActorRole(synced.role);
@@ -95,7 +106,7 @@ export default function EmployeeForm({
   const roleOptions = useMemo(() => {
     const assignable = actorRole
       ? assignableRoleOptions(actorRole).map((r) => ({ label: r.label, value: r.value }))
-      : ROLE_OPTIONS.filter((r) => r.value !== 'Super Admin').map((r) => ({
+      : ROLE_OPTIONS.filter((r) => r.value !== 'Super Admin' && r.value !== 'Admin').map((r) => ({
           label: r.label,
           value: r.value,
         }));
@@ -105,6 +116,27 @@ export default function EmployeeForm({
     }
     return assignable;
   }, [actorRole, user?.role]);
+
+  const editBlockedReason = useMemo(() => {
+    if (!isEditMode || !actorRole) return null;
+    if (
+      isSuperAdminSelfEdit({
+        actorRole,
+        actorEmail,
+        actorUserId,
+        targetEmail: user?.email,
+        targetSupabaseUserId: String(
+          user?.raw?.SupabaseUserId || user?.raw?.supabaseUserId || ''
+        ),
+      })
+    ) {
+      return 'Super Admin cannot change their own account.';
+    }
+    if (user?.role && !canManageEmployeeRole(actorRole, user.role)) {
+      return `You cannot edit employees with role ${user.role}.`;
+    }
+    return null;
+  }, [actorEmail, actorRole, actorUserId, isEditMode, user?.email, user?.raw, user?.role]);
 
   useEffect(() => {
     const loadRoster = async () => {
@@ -178,6 +210,10 @@ export default function EmployeeForm({
       }
     },
     onSubmit: async (values) => {
+      if (editBlockedReason) {
+        toast.error(editBlockedReason);
+        return;
+      }
       setSubmitting(true);
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -234,6 +270,14 @@ export default function EmployeeForm({
 
   return (
     <form onSubmit={formik.handleSubmit} className="flex flex-col gap-6">
+      {editBlockedReason ? (
+        <div className="flex items-start gap-2 rounded-lg border border-danger-border bg-danger-bg px-3 py-2.5 text-sm text-danger">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{editBlockedReason}</p>
+        </div>
+      ) : null}
+
+      <fieldset disabled={Boolean(editBlockedReason)} className="contents">
       <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
         <Field
           label="Employee ID (Auto-generated)"
@@ -510,7 +554,7 @@ export default function EmployeeForm({
         )}
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || Boolean(editBlockedReason)}
           className="cursor-pointer rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg shadow-sm transition-all duration-200 hover:bg-accent-hover disabled:opacity-50"
         >
           {submitting
@@ -520,6 +564,7 @@ export default function EmployeeForm({
             : submitLabel || (isEditMode ? 'Save' : 'Create Profile')}
         </button>
       </div>
+      </fieldset>
     </form>
   );
 }

@@ -1,7 +1,9 @@
 /**
  * Role-based access control for Arachnix EMS.
  *
- * Super Admin     — everything
+ * Super Admin     — everything; exactly one account; cannot be created/assigned by anyone;
+ *                   cannot edit their own employee record
+ * Admin           — same system access as Super Admin; cannot create/assign Admin or Super Admin
  * HR Manager      — employees, salary slips, contracts/offer letters, leave (not accounting)
  * Finance Manager — accounting upload/records/dashboard (not HR data)
  * Director        — read-only financial + headcount dashboard
@@ -9,6 +11,7 @@
 
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  ADMIN: 'admin',
   HR_MANAGER: 'hr_manager',
   FINANCE_MANAGER: 'finance_manager',
   DIRECTOR: 'director',
@@ -37,6 +40,7 @@ export type AccessLevel = 'none' | 'read' | 'write';
 /** Canonical display labels for assigning roles in forms */
 export const ROLE_OPTIONS = [
   { label: 'Super Admin', value: 'Super Admin' },
+  { label: 'Admin', value: 'Admin' },
   { label: 'HR Manager', value: 'HR Manager' },
   { label: 'Finance Manager', value: 'Finance Manager' },
   { label: 'Director', value: 'Director' },
@@ -49,7 +53,8 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   'super admin': ROLES.SUPER_ADMIN,
   superadmin: ROLES.SUPER_ADMIN,
   super_admin: ROLES.SUPER_ADMIN,
-  admin: ROLES.SUPER_ADMIN,
+  admin: ROLES.ADMIN,
+  administrator: ROLES.ADMIN,
   'hr manager': ROLES.HR_MANAGER,
   hr_manager: ROLES.HR_MANAGER,
   hr: ROLES.HR_MANAGER,
@@ -78,6 +83,8 @@ export function roleDisplayName(role: AppRole | string): string {
   switch (normalized) {
     case ROLES.SUPER_ADMIN:
       return 'Super Admin';
+    case ROLES.ADMIN:
+      return 'Admin';
     case ROLES.HR_MANAGER:
       return 'HR Manager';
     case ROLES.FINANCE_MANAGER:
@@ -89,12 +96,6 @@ export function roleDisplayName(role: AppRole | string): string {
   }
 }
 
-/**
- * Authorization role must come from app_metadata only (client JWT claim).
- * For legacy accounts missing app_metadata, use resolveTrustedRole() server-side
- * which can fall back to the employee sheet and backfill metadata.
- * Never trust user_metadata.role — it is client-writable.
- */
 export function getTrustedRole(
   user: { app_metadata?: Record<string, unknown> | null } | null | undefined
 ): AppRole {
@@ -120,29 +121,82 @@ export function isKnownRoleValue(raw: string | null | undefined): boolean {
   return Boolean(ROLE_ALIASES[key] || ROLE_ALIASES[compact]);
 }
 
-/**
- * Who may assign which system roles.
- * HR Manager cannot grant Super Admin (prevents privilege escalation).
- */
 const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
   [ROLES.SUPER_ADMIN]: [
-    ROLES.SUPER_ADMIN,
+    ROLES.ADMIN,
     ROLES.HR_MANAGER,
     ROLES.FINANCE_MANAGER,
     ROLES.DIRECTOR,
     ROLES.EMPLOYEE,
   ],
+  [ROLES.ADMIN]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
   [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
   [ROLES.FINANCE_MANAGER]: [],
   [ROLES.DIRECTOR]: [],
   [ROLES.EMPLOYEE]: [],
 };
 
+export function isSuperAdminRole(role: AppRole | string | null | undefined): boolean {
+  return normalizeRole(role) === ROLES.SUPER_ADMIN;
+}
+
 export function canAssignRole(actorRole: AppRole | string, targetRole: AppRole | string): boolean {
   if (!isKnownRoleValue(String(targetRole))) return false;
-  const actor = normalizeRole(actorRole);
   const target = normalizeRole(targetRole);
+  // Super Admin is seeded once and cannot be created or reassigned by any role.
+  if (target === ROLES.SUPER_ADMIN) return false;
+  const actor = normalizeRole(actorRole);
   return ASSIGNABLE_ROLES[actor]?.includes(target) ?? false;
+}
+
+/** True when actor may create/register/edit an employee who currently holds targetRole. */
+export function canManageEmployeeRole(
+  actorRole: AppRole | string,
+  targetRole: AppRole | string
+): boolean {
+  // Super Admin accounts are not editable through role management (unique, non-assignable).
+  if (isSuperAdminRole(targetRole)) return false;
+  return canAssignRole(actorRole, targetRole);
+}
+
+export function emailsMatch(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  const a = String(left || '')
+    .trim()
+    .toLowerCase();
+  const b = String(right || '')
+    .trim()
+    .toLowerCase();
+  return Boolean(a && b && a === b);
+}
+
+/** Super Admin cannot change their own employee record. */
+export function isSuperAdminSelfTarget(
+  actorRole: AppRole | string,
+  actorEmail: string | null | undefined,
+  targetEmail: string | null | undefined
+): boolean {
+  return isSuperAdminRole(actorRole) && emailsMatch(actorEmail, targetEmail);
+}
+
+/**
+ * True when a Super Admin is targeting their own employee record
+ * (matched by email and/or Supabase auth user id).
+ */
+export function isSuperAdminSelfEdit(input: {
+  actorRole: AppRole | string;
+  actorEmail?: string | null;
+  actorUserId?: string | null;
+  targetEmail?: string | null;
+  targetSupabaseUserId?: string | null;
+}): boolean {
+  if (!isSuperAdminRole(input.actorRole)) return false;
+  if (emailsMatch(input.actorEmail, input.targetEmail)) return true;
+  const actorId = String(input.actorUserId || '').trim();
+  const targetId = String(input.targetSupabaseUserId || '').trim();
+  return Boolean(actorId && targetId && actorId === targetId);
 }
 
 export function assignableRoleOptions(actorRole: AppRole | string) {
@@ -157,6 +211,12 @@ export function assertCanAssignRole(
     return { ok: false, error: `Invalid role: ${targetRole}` };
   }
   const target = normalizeRole(targetRole);
+  if (target === ROLES.SUPER_ADMIN) {
+    return {
+      ok: false,
+      error: 'Super Admin cannot be created or assigned. Only one Super Admin exists.',
+    };
+  }
   if (!canAssignRole(actorRole, target)) {
     return {
       ok: false,
@@ -166,10 +226,45 @@ export function assertCanAssignRole(
   return { ok: true, role: target };
 }
 
+export function assertCanEditEmployee(input: {
+  actorRole: AppRole | string;
+  actorEmail?: string | null;
+  actorUserId?: string | null;
+  targetEmail?: string | null;
+  targetSupabaseUserId?: string | null;
+  previousRole?: string | null;
+  nextRole: string;
+}): { ok: true; role: AppRole } | { ok: false; error: string } {
+  if (
+    isSuperAdminSelfEdit({
+      actorRole: input.actorRole,
+      actorEmail: input.actorEmail,
+      actorUserId: input.actorUserId,
+      targetEmail: input.targetEmail,
+      targetSupabaseUserId: input.targetSupabaseUserId,
+    })
+  ) {
+    return {
+      ok: false,
+      error: 'Super Admin cannot change their own account.',
+    };
+  }
+
+  if (input.previousRole && !canManageEmployeeRole(input.actorRole, input.previousRole)) {
+    return {
+      ok: false,
+      error: `${roleDisplayName(input.actorRole)} cannot edit employees with role ${roleDisplayName(input.previousRole)}`,
+    };
+  }
+
+  return assertCanAssignRole(input.actorRole, input.nextRole);
+}
+
 /** Matrix: which roles can access each resource, and at what level */
 const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = {
   dashboard: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
     [ROLES.DIRECTOR]: 'read',
@@ -177,53 +272,65 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
   employees: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   audit_log: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
   },
   salary_slip_runs: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   salary_slip_run_details: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   generated_documents: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   leave_requests: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   leave_balances: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   holiday_calendar: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
   },
   accounting_records: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
     [ROLES.DIRECTOR]: 'read',
   },
   search: {
     [ROLES.SUPER_ADMIN]: 'read',
+    [ROLES.ADMIN]: 'read',
     [ROLES.HR_MANAGER]: 'read',
     [ROLES.FINANCE_MANAGER]: 'read',
     [ROLES.DIRECTOR]: 'read',
   },
   reports: {
     [ROLES.SUPER_ADMIN]: 'read',
+    [ROLES.ADMIN]: 'read',
     [ROLES.FINANCE_MANAGER]: 'read',
     [ROLES.DIRECTOR]: 'read',
   },
   settings: {
     [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
     [ROLES.DIRECTOR]: 'read',
@@ -344,4 +451,4 @@ export function getNavItemsForRole(role: AppRole | string): NavItemConfig[] {
 }
 
 /** Roles allowed to mutate employee APIs (get-users, update-user, signup) */
-export const EMPLOYEE_API_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.HR_MANAGER];
+export const EMPLOYEE_API_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR_MANAGER];

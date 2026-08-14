@@ -5,10 +5,6 @@ import { normalizeRole, ROLES } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Read-only financial + headcount snapshot for Directors (also usable by
- * Super Admin / Finance for the same overview).
- */
 export async function GET(request: Request) {
   try {
     const { role, errorResponse } = await verifyResourceAccess(request, 'dashboard', 'read');
@@ -18,6 +14,7 @@ export async function GET(request: Request) {
     const allowed =
       normalized === ROLES.DIRECTOR ||
       normalized === ROLES.SUPER_ADMIN ||
+      normalized === ROLES.ADMIN ||
       normalized === ROLES.FINANCE_MANAGER;
     if (!allowed) {
       return NextResponse.json(

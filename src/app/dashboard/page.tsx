@@ -71,6 +71,7 @@ export default function DashboardPage() {
         if (
           role === ROLES.DIRECTOR ||
           role === ROLES.SUPER_ADMIN ||
+          role === ROLES.ADMIN ||
           role === ROLES.FINANCE_MANAGER
         ) {
           try {

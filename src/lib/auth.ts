@@ -23,10 +23,6 @@ export type AuthResult = {
   errorResponse?: NextResponse;
 };
 
-/**
- * Write the display role into Supabase Auth app_metadata so JWT / getUser()
- * match the employee roster after signup or a later role change.
- */
 export async function syncAuthAppMetadataRole(
   userId: string,
   roleLabel: string
@@ -77,10 +73,6 @@ export async function findAuthUserIdByEmail(email: string): Promise<string | nul
   }
 }
 
-/**
- * Keep Auth app_metadata.role aligned with the employee roster role.
- * Returns true when Auth metadata was written (caller should refreshSession).
- */
 export async function syncEmployeeAuthRole(params: {
   supabaseUserId?: string | null;
   email?: string | null;
@@ -97,14 +89,6 @@ export async function syncEmployeeAuthRole(params: {
   return { synced, userId };
 }
 
-/**
- * Resolve the caller's role without trusting client-writable user_metadata.
- * 1) app_metadata.role (authoritative once set)
- * 2) employee sheet Role for legacy accounts missing app_metadata (then backfill Auth)
- *
- * Pass `reconcileWithSheet: true` (session cookie sync) to heal stale app_metadata
- * when the roster role was changed earlier without updating Auth.
- */
 export async function resolveTrustedRole(
   user: User,
   options?: { reconcileWithSheet?: boolean }
@@ -174,7 +158,6 @@ async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
   return { user, role };
 }
 
-/** Require a valid session (any role). */
 export async function verifyAuth(request: Request): Promise<AuthResult> {
   return getAuthenticatedUser(request);
 }
@@ -200,7 +183,6 @@ export async function verifyRole(request: Request, allowedRoles: AppRole[]): Pro
   return result;
 }
 
-/** Super Admin or HR Manager — employee data APIs. */
 export async function verifyEmployeeAccess(request: Request): Promise<AuthResult> {
   return verifyRole(request, EMPLOYEE_API_ROLES);
 }

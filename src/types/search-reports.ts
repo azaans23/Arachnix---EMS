@@ -50,49 +50,49 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     type: 'payroll',
     label: 'Payroll',
     description: 'Salary rows for a period — base, earnings, deductions, net.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.DIRECTOR],
   },
   {
     type: 'leave',
     label: 'Leave',
     description: 'Leave requests for a year, with status and days used.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.DIRECTOR],
   },
   {
     type: 'employee',
     label: 'Employee',
     description: 'Roster snapshot — department, designation, status, join date.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.DIRECTOR],
   },
   {
     type: 'expense',
     label: 'Expense',
     description: 'Expense transactions for a month across all accounts.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'income',
     label: 'Income',
     description: 'Income transactions for a month across all accounts.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'cashflow',
     label: 'Cashflow',
     description: 'Income vs expenses and net cashflow for a month.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'director_account',
     label: 'Director account',
     description: 'Transactions filed against a director (or Arachnix Bank).',
-    roles: [ROLES.SUPER_ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'monthly_summary',
     label: 'Monthly summary',
     description: 'Income, expenses, payroll, net, and transaction counts.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
 ];
 
@@ -110,6 +110,7 @@ export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
   const normalized = normalizeRole(role);
   switch (normalized) {
     case ROLES.SUPER_ADMIN:
+    case ROLES.ADMIN:
       return [...SEARCH_SOURCES];
     case ROLES.HR_MANAGER:
       return ['employee', 'salary', 'leave_request', 'leave_balance'];

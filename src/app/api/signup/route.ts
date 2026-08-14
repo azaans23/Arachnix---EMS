@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
-import { assertCanAssignRole, roleDisplayName } from '@/lib/rbac';
+import {
+  assertCanAssignRole,
+  canManageEmployeeRole,
+  isSuperAdminSelfEdit,
+  roleDisplayName,
+} from '@/lib/rbac';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   employeeRecordToAuditValue,
@@ -45,6 +50,20 @@ export async function POST(request: Request) {
 
     const { email, password, name, role, employeeId } = await request.json();
 
+    if (
+      isSuperAdminSelfEdit({
+        actorRole: actorRole || '',
+        actorEmail: actor?.email,
+        actorUserId: actor?.id,
+        targetEmail: String(email || ''),
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Super Admin cannot change their own account.' },
+        { status: 403 }
+      );
+    }
+
     const assignment = assertCanAssignRole(actorRole || '', String(role || ''));
     if (!assignment.ok) {
       return NextResponse.json({ success: false, error: assignment.error }, { status: 403 });
@@ -61,6 +80,16 @@ export async function POST(request: Request) {
       ) || null;
     const resolvedEmployeeId =
       previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
+
+    if (previousEmployee?.role && !canManageEmployeeRole(actorRole || '', previousEmployee.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${roleDisplayName(actorRole || '')} cannot register employees with role ${roleDisplayName(previousEmployee.role)}`,
+        },
+        { status: 403 }
+      );
+    }
 
     try {
       const supabaseAdmin = getSupabaseAdmin();

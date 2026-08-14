@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { ArrowLeft, User, ShieldAlert, CheckCircle, UserCheck, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess, getTrustedRole } from '@/lib/rbac';
+import { canAccess, getTrustedRole, isSuperAdminSelfEdit } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
@@ -24,6 +24,9 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   const [user, setUser] = useState<SheetUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actorRole, setActorRole] = useState<string | null>(null);
+  const [actorEmail, setActorEmail] = useState<string | null>(null);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
 
   const loadEmployee = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,8 @@ export default function EmployeeProfilePage({ params }: PageProps) {
       }
 
       localStorage.setItem('token', session.access_token);
+      setActorEmail(session.user.email || null);
+      setActorUserId(session.user.id || null);
       let role = getTrustedRole(session.user);
       try {
         const synced = await syncSessionCookies(session.access_token);
@@ -71,6 +76,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         /* keep JWT fallback */
       }
 
+      setActorRole(role);
       const ok = canAccess(role, 'employees');
       setAllowed(ok);
       if (ok) {
@@ -112,7 +118,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can view employee profiles.
+          Only Super Admin, Admin, and HR Manager can view employee profiles.
         </p>
       </div>
     );
@@ -145,6 +151,13 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   const raw = user.raw || {};
   const status = String(raw.EMSStatus || raw.emsStatus || 'Inactive');
   const isActive = status.toLowerCase() === 'active';
+  const isSelfSuperAdmin = isSuperAdminSelfEdit({
+    actorRole: actorRole || '',
+    actorEmail,
+    actorUserId,
+    targetEmail: user.email,
+    targetSupabaseUserId: String(raw.SupabaseUserId || raw.supabaseUserId || ''),
+  });
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in-up">
@@ -155,7 +168,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         >
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
-        {!isActive && (
+        {!isActive && !isSelfSuperAdmin && (
           <button
             type="button"
             onClick={() =>
@@ -206,16 +219,31 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </span>
       </header>
 
-      <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
-        <EmployeeForm
-          user={user}
-          embedded
-          submitLabel="Save"
-          onSuccess={async () => {
-            await loadEmployee();
-          }}
-        />
-      </div>
+      {isSelfSuperAdmin ? (
+        <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
+          <div className="flex items-start gap-3 rounded-lg border border-danger-border bg-danger-bg px-4 py-3 text-sm text-danger">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold">Editing disabled</p>
+              <p className="mt-1 text-danger/90">
+                Super Admin cannot change their own account. Ask another administrator if a change
+                is required outside this system.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
+          <EmployeeForm
+            user={user}
+            embedded
+            submitLabel="Save"
+            onSuccess={async () => {
+              await loadEmployee();
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

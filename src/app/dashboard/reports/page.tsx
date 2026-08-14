@@ -222,7 +222,7 @@ export default function ReportsPage() {
         <EmptyState
           icon={<ShieldAlert className="h-5 w-5" />}
           title="Access restricted"
-          description="Reports are available to Super Admin, Finance Manager, and Director."
+          description="Reports are available to Super Admin, Admin, Finance Manager, and Director."
         />
       </div>
     );
