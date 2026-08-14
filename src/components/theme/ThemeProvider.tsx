@@ -21,14 +21,17 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') {
-      return 'light';
+  const [theme, setThemeState] = useState<Theme>('light');
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') {
+      setThemeState(stored);
+      return;
     }
 
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored === 'dark' || stored === 'light' ? stored : 'light';
-  });
+    window.localStorage.setItem(STORAGE_KEY, 'light');
+  }, []);
 
   useEffect(() => {
     applyTheme(theme);

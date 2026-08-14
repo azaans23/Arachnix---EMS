@@ -35,6 +35,9 @@ import {
   roleDisplayName,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
+import { useSearchPalette } from '@/hooks/useSearchPalette';
+
+const SEARCH_HREF = '/dashboard/search';
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
@@ -68,6 +71,7 @@ export default function Sidebar() {
   const [tip, setTip] = useState<TipState>(null);
   const pathname = usePathname();
   const logoutMutation = useLogout();
+  const { openSearch } = useSearchPalette();
 
   useEffect(() => {
     const checkRole = async () => {
@@ -180,11 +184,28 @@ export default function Sidebar() {
               )}
               {items.map((item) => {
                 const Icon = NAV_ICONS[item.href] || LayoutDashboard;
+                const icon = <Icon className="h-4 w-4 shrink-0" />;
+
+                // Search opens a floating palette over the current page instead of routing.
+                if (item.href === SEARCH_HREF) {
+                  return (
+                    <NavItem
+                      key={item.href}
+                      icon={icon}
+                      label={item.label}
+                      isOpen={isOpen}
+                      onClick={openSearch}
+                      onShowTip={showTip}
+                      onHideTip={hideTip}
+                    />
+                  );
+                }
+
                 return (
                   <NavItem
                     key={item.href}
                     href={item.href}
-                    icon={<Icon className="h-4 w-4 shrink-0" />}
+                    icon={icon}
                     label={item.label}
                     isOpen={isOpen}
                     active={isActive(item.href)}
@@ -254,34 +275,60 @@ function NavItem({
   label,
   isOpen,
   active = false,
+  onClick,
   onShowTip,
   onHideTip,
 }: {
-  href: string;
+  href?: string;
   icon: React.ReactNode;
   label: string;
   isOpen: boolean;
   active?: boolean;
+  onClick?: () => void;
   onShowTip: (label: string, el: HTMLElement) => void;
   onHideTip: () => void;
 }) {
-  return (
-    <Link
-      href={href}
-      onMouseEnter={(e) => {
-        if (!isOpen) onShowTip(label, e.currentTarget);
-      }}
-      onMouseLeave={onHideTip}
-      onFocus={(e) => {
-        if (!isOpen) onShowTip(label, e.currentTarget);
-      }}
-      onBlur={onHideTip}
-      className={`flex shrink-0 items-center text-sm font-medium transition-colors duration-200 ${
-        isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
-      } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`}
-    >
+  const className = `flex shrink-0 cursor-pointer items-center text-sm font-medium transition-colors duration-200 ${
+    isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
+  } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`;
+
+  const hoverProps = {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      if (!isOpen) onShowTip(label, e.currentTarget);
+    },
+    onMouseLeave: onHideTip,
+    onFocus: (e: React.FocusEvent<HTMLElement>) => {
+      if (!isOpen) onShowTip(label, e.currentTarget);
+    },
+    onBlur: onHideTip,
+  };
+
+  const content = (
+    <>
       {icon}
       {isOpen && <span className="overflow-hidden whitespace-nowrap">{label}</span>}
+    </>
+  );
+
+  if (!href) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onHideTip();
+          onClick?.();
+        }}
+        {...hoverProps}
+        className={className}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href} {...hoverProps} className={className}>
+      {content}
     </Link>
   );
 }
