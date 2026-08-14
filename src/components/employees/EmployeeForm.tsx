@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
+import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 import {
@@ -125,9 +126,7 @@ export default function EmployeeForm({
         actorEmail,
         actorUserId,
         targetEmail: user?.email,
-        targetSupabaseUserId: String(
-          user?.raw?.SupabaseUserId || user?.raw?.supabaseUserId || ''
-        ),
+        targetSupabaseUserId: user ? supabaseUserIdOf(user) : '',
       })
     ) {
       return 'Super Admin cannot change their own account.';
@@ -136,7 +135,10 @@ export default function EmployeeForm({
       return `You cannot edit employees with role ${user.role}.`;
     }
     return null;
-  }, [actorEmail, actorRole, actorUserId, isEditMode, user?.email, user?.raw, user?.role]);
+  }, [actorEmail, actorRole, actorUserId, isEditMode, user]);
+
+  /** EMS status can only be Active once login credentials exist. */
+  const hasLogin = user ? hasEmsLogin(user) : false;
 
   useEffect(() => {
     const loadRoster = async () => {
@@ -225,6 +227,7 @@ export default function EmployeeForm({
           },
           body: JSON.stringify({
             ...values,
+            emsStatus: hasLogin ? values.emsStatus : 'Inactive',
             originalEmployeeId: user?.employeeId || values.originalEmployeeId || '',
             originalEmail: user?.email || values.originalEmail || '',
           }),
@@ -482,17 +485,32 @@ export default function EmployeeForm({
           >
             EMS Status
           </label>
-          <CustomDropdown
-            id="emsStatus"
-            name="emsStatus"
-            value={formik.values.emsStatus}
-            onChange={(val) => formik.setFieldValue('emsStatus', val)}
-            onBlur={() => formik.setFieldTouched('emsStatus', true)}
-            options={emsStatusOptions}
-            icon={<Database className="h-4 w-4" />}
-            error={showError('emsStatus') || undefined}
-            touched={!!formik.touched.emsStatus}
-          />
+          {hasLogin ? (
+            <CustomDropdown
+              id="emsStatus"
+              name="emsStatus"
+              value={formik.values.emsStatus}
+              onChange={(val) => formik.setFieldValue('emsStatus', val)}
+              onBlur={() => formik.setFieldTouched('emsStatus', true)}
+              options={emsStatusOptions}
+              icon={<Database className="h-4 w-4" />}
+              error={showError('emsStatus') || undefined}
+              touched={!!formik.touched.emsStatus}
+            />
+          ) : (
+            <div className="relative">
+              <Database className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                id="emsStatus"
+                name="emsStatus"
+                type="text"
+                value="Inactive"
+                readOnly
+                aria-readonly="true"
+                className="w-full cursor-not-allowed rounded-lg border border-border bg-canvas py-2 pl-10 pr-4 text-sm text-muted"
+              />
+            </div>
+          )}
           {showError('emsStatus') && (
             <p className="text-xs text-danger">{showError('emsStatus')}</p>
           )}

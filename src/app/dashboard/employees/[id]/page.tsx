@@ -11,6 +11,7 @@ import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import { FormSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import type { SheetUser } from '@/types/employee';
+import { emsStatusOf, hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -149,14 +150,14 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   }
 
   const raw = user.raw || {};
-  const status = String(raw.EMSStatus || raw.emsStatus || 'Inactive');
-  const isActive = status.toLowerCase() === 'active';
+  const registered = hasEmsLogin(user);
+  const isActive = registered && emsStatusOf(user).toLowerCase() === 'active';
   const isSelfSuperAdmin = isSuperAdminSelfEdit({
     actorRole: actorRole || '',
     actorEmail,
     actorUserId,
     targetEmail: user.email,
-    targetSupabaseUserId: String(raw.SupabaseUserId || raw.supabaseUserId || ''),
+    targetSupabaseUserId: supabaseUserIdOf(user),
   });
 
   return (
@@ -168,7 +169,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         >
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
-        {!isActive && !isSelfSuperAdmin && (
+        {!registered && !isSelfSuperAdmin && (
           <button
             type="button"
             onClick={() =>
@@ -215,7 +216,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           ) : (
             <ShieldAlert className="h-3.5 w-3.5" />
           )}
-          {isActive ? 'EMS Active' : 'EMS Inactive'}
+          {isActive ? 'EMS Active' : registered ? 'EMS Inactive' : 'No login yet'}
         </span>
       </header>
 

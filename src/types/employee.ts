@@ -61,3 +61,40 @@ export function toSheetUser(employee: EmployeeRecord): SheetUser {
     raw: employee.raw,
   };
 }
+
+function pickRaw(raw: Record<string, unknown> | undefined, keys: string[]): string {
+  if (!raw) return '';
+  for (const key of keys) {
+    const value = raw[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+export function supabaseUserIdOf(user: Pick<SheetUser, 'raw'>): string {
+  return pickRaw(user.raw, [
+    'SupabaseUserID',
+    'SupabaseUserId',
+    'supabaseUserId',
+    'supabaseuserid',
+  ]);
+}
+
+export function emsStatusOf(user: Pick<SheetUser, 'raw'>): string {
+  return pickRaw(user.raw, ['EMSStatus', 'emsStatus', 'emsstatus']) || 'Inactive';
+}
+
+/**
+ * EMS login access exists only when the employee has a Supabase auth account.
+ * EMSStatus alone is a label and can be edited on the sheet, so it is never
+ * treated as proof that credentials were created.
+ */
+export function hasEmsLogin(user: Pick<SheetUser, 'raw'>): boolean {
+  return Boolean(supabaseUserIdOf(user));
+}
+
+export function isEmsActive(user: Pick<SheetUser, 'raw'>): boolean {
+  return hasEmsLogin(user) && emsStatusOf(user).toLowerCase() === 'active';
+}

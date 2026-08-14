@@ -33,7 +33,7 @@ import {
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import type { SheetUser } from '@/types/employee';
-import { toSheetUser } from '@/types/employee';
+import { emsStatusOf, hasEmsLogin, supabaseUserIdOf, toSheetUser } from '@/types/employee';
 
 type SortKey = 'name' | 'email' | 'role';
 type SortDir = 'asc' | 'desc';
@@ -58,9 +58,7 @@ const PAGE_SIZE_OPTIONS = [
 ];
 
 function getEmsStatus(user: SheetUser) {
-  return String(user.raw?.EMSStatus || user.raw?.emsStatus || '')
-    .toLowerCase()
-    .trim();
+  return emsStatusOf(user).toLowerCase();
 }
 
 interface SortIconProps {
@@ -462,15 +460,14 @@ export default function EmployeesPage() {
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
-                        const isActive = getEmsStatus(user) === 'active';
+                        const registered = hasEmsLogin(user);
+                        const isActive = registered && getEmsStatus(user) === 'active';
                         const isSelfSuperAdmin = isSuperAdminSelfEdit({
                           actorRole: actorRole || '',
                           actorEmail,
                           actorUserId,
                           targetEmail: user.email,
-                          targetSupabaseUserId: String(
-                            user.raw?.SupabaseUserId || user.raw?.supabaseUserId || ''
-                          ),
+                          targetSupabaseUserId: supabaseUserIdOf(user),
                         });
                         return (
                           <tr
@@ -502,9 +499,16 @@ export default function EmployeesPage() {
                                   >
                                     You
                                   </span>
-                                ) : isActive ? (
-                                  <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
-                                    Active
+                                ) : registered ? (
+                                  <span
+                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                    title={
+                                      isActive
+                                        ? 'Login access is active'
+                                        : 'Login exists but EMS status is Inactive'
+                                    }
+                                  >
+                                    {isActive ? 'Active' : 'Inactive'}
                                   </span>
                                 ) : actorRole && canAssignRole(actorRole, user.role) ? (
                                   <button
@@ -517,6 +521,7 @@ export default function EmployeesPage() {
                                       });
                                     }}
                                     className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                                    title="Create login credentials for this employee"
                                   >
                                     <UserPlus className="h-3.5 w-3.5" />
                                     Register

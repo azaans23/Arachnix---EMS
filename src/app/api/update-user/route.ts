@@ -130,6 +130,12 @@ export async function POST(request: Request) {
       validation.value.role = roleDisplayName(normalizeRole(previousRole));
     }
 
+    // EMS status is login state, not a free-form label: it can only read Active
+    // once the employee has a Supabase auth account (created by registration).
+    if (!targetSupabaseUserId) {
+      validation.value.emsStatus = 'Inactive';
+    }
+
     const nextValue = employeeInputToAuditValue(
       mergeEmployeeWriteInput(validation.value, previous)
     );
