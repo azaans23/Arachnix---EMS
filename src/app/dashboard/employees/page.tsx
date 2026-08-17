@@ -46,7 +46,7 @@ const ROLE_OPTIONS = [
 const STATUS_OPTIONS = [
   { label: 'All statuses', value: 'all' },
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+  { label: 'Register', value: 'register' },
 ];
 
 const PAGE_SIZE_OPTIONS = [
@@ -235,9 +235,9 @@ export default function EmployeesPage() {
     }
 
     if (statusFilter === 'active') {
-      list = list.filter((u) => getEmsStatus(u) === 'active');
-    } else if (statusFilter === 'inactive') {
-      list = list.filter((u) => getEmsStatus(u) !== 'active');
+      list = list.filter((u) => hasEmsLogin(u) && getEmsStatus(u) === 'active');
+    } else if (statusFilter === 'register') {
+      list = list.filter((u) => !hasEmsLogin(u));
     }
 
     list.sort((a, b) => {
@@ -461,7 +461,6 @@ export default function EmployeesPage() {
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
                         const registered = hasEmsLogin(user);
-                        const isActive = registered && getEmsStatus(user) === 'active';
                         const isSelfSuperAdmin = isSuperAdminSelfEdit({
                           actorRole: actorRole || '',
                           actorEmail,
@@ -502,13 +501,9 @@ export default function EmployeesPage() {
                                 ) : registered ? (
                                   <span
                                     className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
-                                    title={
-                                      isActive
-                                        ? 'Login access is active'
-                                        : 'Login exists but EMS status is Inactive'
-                                    }
+                                    title="Login access is active"
                                   >
-                                    {isActive ? 'Active' : 'Inactive'}
+                                    Active
                                   </span>
                                 ) : actorRole && canAssignRole(actorRole, user.role) ? (
                                   <button

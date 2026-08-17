@@ -38,7 +38,7 @@ import { FormSkeleton } from '@/components/ui/Skeleton';
 
 const emsStatusOptions = [
   { label: 'Active', value: 'Active' },
-  { label: 'Inactive', value: 'Inactive' },
+  { label: 'Revoke access', value: 'Inactive' },
 ];
 
 type EmployeeFormProps = {
@@ -280,9 +280,11 @@ export default function EmployeeForm({
         }
 
         toast.success(
-          isEditMode
-            ? 'Employee profile updated successfully'
-            : 'Employee created with their initial salary'
+          result.emsAccessRevoked
+            ? 'EMS access revoked. You can register this employee again.'
+            : isEditMode
+              ? 'Employee profile updated successfully'
+              : 'Employee created with their initial salary'
         );
         if (result.warning) {
           toast.warning(String(result.warning));
@@ -606,12 +608,22 @@ export default function EmployeeForm({
                 id="emsStatus"
                 name="emsStatus"
                 type="text"
-                value="Inactive"
+                value="Register"
                 readOnly
                 aria-readonly="true"
                 className="w-full cursor-not-allowed rounded-lg border border-border bg-canvas py-2 pl-10 pr-4 text-sm text-muted"
               />
             </div>
+          )}
+          {!hasLogin && isEditMode && (
+            <p className="text-xs text-muted">
+              No login yet. Use Register on the employees list or profile to grant EMS access.
+            </p>
+          )}
+          {hasLogin && formik.values.emsStatus === 'Inactive' && (
+            <p className="text-xs text-muted">
+              Saving with revoke access deletes their login so they can be registered again.
+            </p>
           )}
           {showError('emsStatus') && (
             <p className="text-xs text-danger">{showError('emsStatus')}</p>

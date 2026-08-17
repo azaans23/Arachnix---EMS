@@ -47,6 +47,21 @@ export async function syncAuthAppMetadataRole(
   }
 }
 
+/** Permanently remove a Supabase Auth user so they can no longer sign in. */
+export async function deleteAuthUser(userId: string): Promise<void> {
+  const id = userId.trim();
+  if (!id) return;
+
+  const admin = getSupabaseAdmin();
+  const { error } = await admin.auth.admin.deleteUser(id);
+  if (error) {
+    // Already gone is fine — employee row can still drop the link.
+    const message = error.message || '';
+    if (/not\s*found|user\s*not\s*found/i.test(message)) return;
+    throw new Error(`Failed to delete Auth user: ${message}`);
+  }
+}
+
 /** Resolve Auth user id when the employee row has email but no SupabaseUserID. */
 export async function findAuthUserIdByEmail(email: string): Promise<string | null> {
   const normalized = email.trim().toLowerCase();

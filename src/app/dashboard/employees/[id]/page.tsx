@@ -11,7 +11,7 @@ import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import { FormSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import type { SheetUser } from '@/types/employee';
-import { emsStatusOf, hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
+import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -151,7 +151,6 @@ export default function EmployeeProfilePage({ params }: PageProps) {
 
   const raw = user.raw || {};
   const registered = hasEmsLogin(user);
-  const isActive = registered && emsStatusOf(user).toLowerCase() === 'active';
   const isSelfSuperAdmin = isSuperAdminSelfEdit({
     actorRole: actorRole || '',
     actorEmail,
@@ -183,7 +182,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
             }
             className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
           >
-            <UserCheck className="h-3.5 w-3.5" /> Give EMS Access
+            <UserCheck className="h-3.5 w-3.5" /> Register
           </button>
         )}
       </div>
@@ -208,15 +207,15 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </div>
         <span
           className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold ${
-            isActive ? 'border-border bg-canvas text-ink' : 'border-border bg-surface text-muted'
+            registered ? 'border-border bg-canvas text-ink' : 'border-border bg-surface text-muted'
           }`}
         >
-          {isActive ? (
+          {registered ? (
             <CheckCircle className="h-3.5 w-3.5" />
           ) : (
             <ShieldAlert className="h-3.5 w-3.5" />
           )}
-          {isActive ? 'EMS Active' : registered ? 'EMS Inactive' : 'No login yet'}
+          {registered ? 'EMS Active' : 'Register'}
         </span>
       </header>
 

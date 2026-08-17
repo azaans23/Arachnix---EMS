@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { syncEmployeeAuthRole, verifyEmployeeAccess } from '@/lib/auth';
+import { deleteAuthUser, findAuthUserIdByEmail, syncEmployeeAuthRole, verifyEmployeeAccess } from '@/lib/auth';
 import {
   assertCanAssignRole,
   canManageEmployeeRole,
@@ -202,10 +202,45 @@ export async function POST(request: Request) {
       validation.value.role = roleDisplayName(normalizeRole(previousRole));
     }
 
-    // EMS status is login state, not a free-form label: it can only read Active
-    // once the employee has a Supabase auth account (created by registration).
-    if (!targetSupabaseUserId) {
+    // EMS login is created by registration. Without an Auth user the status is
+    // always Inactive (UI shows "Register"). Choosing Inactive while a login
+    // exists revokes access: delete Auth and clear the Supabase user link.
+    const requestedStatus = String(validation.value.emsStatus || '')
+      .trim()
+      .toLowerCase();
+    const wantsInactive = requestedStatus === 'inactive';
+    let authUserIdToDelete = '';
+
+    if (wantsInactive && targetSupabaseUserId) {
+      authUserIdToDelete = targetSupabaseUserId;
+      validation.value.supabaseUserId = '';
       validation.value.emsStatus = 'Inactive';
+    } else if (!targetSupabaseUserId) {
+      validation.value.emsStatus = 'Inactive';
+      validation.value.supabaseUserId = '';
+    } else {
+      validation.value.emsStatus = 'Active';
+      validation.value.supabaseUserId = targetSupabaseUserId;
+    }
+
+    if (authUserIdToDelete) {
+      try {
+        await deleteAuthUser(authUserIdToDelete);
+      } catch (authDeleteError: unknown) {
+        // Fallback: resolve by email if the stored id is stale, then retry once.
+        const byEmail = await findAuthUserIdByEmail(
+          previous?.email || validation.value.email || targetEmail
+        );
+        if (byEmail && byEmail !== authUserIdToDelete) {
+          await deleteAuthUser(byEmail);
+        } else {
+          const message =
+            authDeleteError instanceof Error
+              ? authDeleteError.message
+              : 'Failed to revoke EMS login.';
+          return NextResponse.json({ success: false, error: message }, { status: 500 });
+        }
+      }
     }
 
     const isCreate = !previous;
@@ -242,7 +277,11 @@ export async function POST(request: Request) {
     const { result: saved, auditLogged } = await runAuditedMutation(
       { email: user?.email || '' },
       {
-        action: previous ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
+        action: authUserIdToDelete
+          ? AUDIT_ACTIONS.REVOKE_ACCESS
+          : previous
+            ? AUDIT_ACTIONS.UPDATE
+            : AUDIT_ACTIONS.CREATE,
         recordType: 'Employee',
         recordId: validation.value.employeeId,
         oldValue: changes.oldValue,
@@ -273,13 +312,13 @@ export async function POST(request: Request) {
     }
 
     // Auth accounts are created by registration, so there is no role to sync
-    // until the employee has a login.
-    const hasLogin = Boolean(saved.supabaseUserId || previous?.supabaseUserId);
+    // until the employee has a login (use saved link — revoke clears it).
+    const hasLogin = Boolean(saved.supabaseUserId);
 
     let authRoleSynced = false;
     if (roleChanging && hasLogin) {
       const { synced } = await syncEmployeeAuthRole({
-        supabaseUserId: saved.supabaseUserId || previous?.supabaseUserId,
+        supabaseUserId: saved.supabaseUserId,
         email: saved.email || previous?.email || validation.value.email,
         roleLabel: saved.role || validation.value.role,
       });
@@ -291,6 +330,7 @@ export async function POST(request: Request) {
       employeeId: saved.employeeId,
       auditLogged,
       authRoleSynced,
+      emsAccessRevoked: Boolean(authUserIdToDelete),
       salarySaved: isCreate ? salarySaved : undefined,
       warning:
         [

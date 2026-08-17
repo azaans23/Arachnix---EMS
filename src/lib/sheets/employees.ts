@@ -152,7 +152,11 @@ export function mergeEmployeeWriteInput(
     bankAccountDetails: prefer(input.bankAccountDetails, previous.bankAccountDetails),
     role: prefer(input.role, previous.role),
     emsStatus: prefer(input.emsStatus, previous.emsStatus) || 'Inactive',
-    supabaseUserId: prefer(input.supabaseUserId, previous.supabaseUserId),
+    // Empty string means "clear login link" (EMS access revoked); do not fall back.
+    supabaseUserId:
+      input.supabaseUserId !== undefined && !String(input.supabaseUserId).trim()
+        ? ''
+        : prefer(input.supabaseUserId, previous.supabaseUserId),
     originalEmployeeId: input.originalEmployeeId || previous.employeeId,
     originalEmail: input.originalEmail || previous.email,
   };
