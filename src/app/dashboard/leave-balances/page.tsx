@@ -25,6 +25,7 @@ import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   LEAVE_BALANCE_FIELDS,
   buildLeaveId,
+  reconcileLeaveBalance,
   remainingLeaveDays,
   validateLeaveBalanceRules,
   type LeaveBalanceFieldKey,
@@ -114,6 +115,80 @@ function formatDays(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formNumbers(form: FormState): Omit<LeaveBalanceInput, 'leaveId' | 'employeeId' | 'year'> {
+  const read = (key: LeaveBalanceFieldKey) => {
+    const value = Number(form[key]);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  };
+  return {
+    annualQuota: read('annualQuota'),
+    annualUsed: read('annualUsed'),
+    sickQuota: read('sickQuota'),
+    sickUsed: read('sickUsed'),
+    casualQuota: read('casualQuota'),
+    casualUsed: read('casualUsed'),
+    carryForwardDays: read('carryForwardDays'),
+  };
+}
+
+/**
+ * Applies one field edit and rewrites the sibling inputs with the reconciled
+ * values, reporting which of them the rules had to move.
+ */
+function applyBalanceFieldChange(
+  form: FormState,
+  field: keyof FormState,
+  value: string
+): { form: FormState; adjusted: LeaveBalanceFieldKey[] } {
+  if (field === 'leaveId' || field === 'employeeId' || field === 'year') {
+    const next = { ...form, [field]: value };
+    next.leaveId = buildLeaveId(next.employeeId, next.year);
+    return { form: next, adjusted: [] };
+  }
+
+  const draft: FormState = { ...form, [field]: value };
+  if (!LEAVE_BALANCE_FIELDS.some((item) => item.key === field)) {
+    return { form: draft, adjusted: [] };
+  }
+
+  // Allow incomplete typing (e.g. blank or trailing ".") without forcing siblings yet.
+  if (value.trim() === '' || value.endsWith('.')) {
+    return { form: draft, adjusted: [] };
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { form: draft, adjusted: [] };
+  }
+
+  const editedKey = field as LeaveBalanceFieldKey;
+  const before = formNumbers(draft);
+  const reconciled = reconcileLeaveBalance(
+    {
+      leaveId: draft.leaveId,
+      employeeId: draft.employeeId,
+      year: Number(draft.year) || currentYear(),
+      ...before,
+      [editedKey]: parsed,
+    },
+    editedKey
+  );
+
+  const next: FormState = { ...draft };
+  const adjusted: LeaveBalanceFieldKey[] = [];
+  for (const item of LEAVE_BALANCE_FIELDS) {
+    const reconciledValue = reconciled[item.key];
+    // The edited box keeps exactly what was typed unless the rules changed it.
+    if (item.key === editedKey) {
+      next[item.key] = reconciledValue === parsed ? value : formatDays(reconciledValue);
+    } else {
+      next[item.key] = formatDays(reconciledValue);
+    }
+    if (reconciledValue !== before[item.key]) adjusted.push(item.key);
+  }
+
+  return { form: next, adjusted };
+}
+
 export default function LeaveBalancesPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -132,10 +207,12 @@ export default function LeaveBalancesPage() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeOption | null>(null);
   const [createForm, setCreateForm] = useState<FormState | null>(null);
+  const [createAdjusted, setCreateAdjusted] = useState<LeaveBalanceFieldKey[]>([]);
   const [savingCreate, setSavingCreate] = useState(false);
 
   const [editing, setEditing] = useState<LeaveBalanceRecord | null>(null);
   const [editForm, setEditForm] = useState<FormState | null>(null);
+  const [editAdjusted, setEditAdjusted] = useState<LeaveBalanceFieldKey[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
@@ -271,6 +348,7 @@ export default function LeaveBalancesPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
+    setCreateAdjusted([]);
     setEmployeeSearch('');
     await loadEmployees();
   };
@@ -280,6 +358,7 @@ export default function LeaveBalancesPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
+    setCreateAdjusted([]);
   };
 
   const selectEmployeeForCreate = (employee: EmployeeOption) => {
@@ -292,43 +371,50 @@ export default function LeaveBalancesPage() {
         row.year === year
     );
     setCreateForm(existing ? toForm(existing) : emptyForm(employee.employeeId, String(year)));
+    setCreateAdjusted([]);
   };
 
   const updateCreateField = (field: keyof FormState, value: string) => {
-    setCreateForm((current) => {
-      if (!current || !selectedEmployee) return current;
-      if (field === 'year') {
-        const year = Number(value);
-        const existing = rows.find(
-          (row) =>
-            row.employeeId.trim().toLowerCase() ===
-              selectedEmployee.employeeId.trim().toLowerCase() && row.year === year
-        );
-        return existing ? toForm(existing) : emptyForm(selectedEmployee.employeeId, value);
-      }
+    if (!selectedEmployee) return;
+    if (field === 'year') {
+      const year = Number(value);
+      const existing = rows.find(
+        (row) =>
+          row.employeeId.trim().toLowerCase() ===
+            selectedEmployee.employeeId.trim().toLowerCase() && row.year === year
+      );
+      setCreateForm(existing ? toForm(existing) : emptyForm(selectedEmployee.employeeId, value));
+      setCreateAdjusted([]);
+      return;
+    }
 
-      const next = { ...current, [field]: value };
-      next.leaveId = buildLeaveId(next.employeeId, next.year);
-      return next;
+    setCreateForm((current) => {
+      if (!current) return current;
+      const result = applyBalanceFieldChange(current, field, value);
+      setCreateAdjusted(result.adjusted.filter((key) => key !== field));
+      return result.form;
     });
   };
 
   const openEdit = (row: LeaveBalanceRecord) => {
     setEditing(row);
     setEditForm(toForm(row));
+    setEditAdjusted([]);
   };
 
   const closeEdit = () => {
     setEditing(null);
     setEditForm(null);
+    setEditAdjusted([]);
   };
 
-  const updateFormField = (
-    setter: React.Dispatch<React.SetStateAction<FormState | null>>,
-    field: keyof FormState,
-    value: string
-  ) => {
-    setter((current) => (current ? { ...current, [field]: value } : current));
+  const updateEditField = (field: keyof FormState, value: string) => {
+    setEditForm((current) => {
+      if (!current) return current;
+      const result = applyBalanceFieldChange(current, field, value);
+      setEditAdjusted(result.adjusted.filter((key) => key !== field));
+      return result.form;
+    });
   };
 
   const parseForm = (form: FormState): LeaveBalanceInput | null => {
@@ -429,8 +515,27 @@ export default function LeaveBalancesPage() {
   const renderBalanceFields = (
     form: FormState,
     onChange: (field: keyof FormState, value: string) => void,
+    adjusted: LeaveBalanceFieldKey[],
     options?: { lockEmployee?: boolean; lockYear?: boolean }
-  ) => (
+  ) => {
+    const live: LeaveBalanceInput = {
+      leaveId: form.leaveId,
+      employeeId: form.employeeId,
+      year: Number(form.year) || currentYear(),
+      ...formNumbers(form),
+    };
+    const annualLeft = Math.max(0, live.annualQuota - live.annualUsed);
+    const hint: Record<LeaveBalanceFieldKey, string> = {
+      annualQuota: `${formatDays(annualLeft)} of ${formatDays(live.annualQuota)} still available`,
+      annualUsed: `Sick + Casual used = ${formatDays(live.sickUsed + live.casualUsed)}`,
+      sickQuota: `${formatDays(live.sickQuota + live.casualQuota)} of ${formatDays(live.annualQuota)} allocated to Sick + Casual`,
+      sickUsed: `${formatDays(remainingLeaveDays('sick', live)?.remaining ?? 0)} sick days left`,
+      casualQuota: `${formatDays(live.sickQuota + live.casualQuota)} of ${formatDays(live.annualQuota)} allocated to Sick + Casual`,
+      casualUsed: `${formatDays(remainingLeaveDays('casual', live)?.remaining ?? 0)} casual days left`,
+      carryForwardDays: 'Days carried over from the previous year',
+    };
+
+    return (
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-xs font-medium text-muted">
@@ -474,29 +579,45 @@ export default function LeaveBalancesPage() {
       </div>
 
       <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
-        Total Leaves (Annual) is the overall pool. Sick and Casual quotas must fit inside it (Sick
-        Quota + Casual Quota ≤ Total Leaves). Approving sick or casual leave also consumes from the
-        total.
+        Total Leaves (Annual) is the overall pool. Sick and Casual quotas sit inside it. Changing any
+        value auto-adjusts the others so Sick + Casual stay within Total Leaves, and used days stay
+        within their quotas.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {LEAVE_BALANCE_FIELDS.map((field) => (
-          <label key={field.key} className="text-xs font-medium text-muted">
-            {field.label} <span className="text-danger">*</span>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              required
-              value={form[field.key]}
-              onChange={(event) => onChange(field.key, event.target.value)}
-              className={inputClassName}
-            />
-          </label>
-        ))}
+        {LEAVE_BALANCE_FIELDS.map((field) => {
+          const wasAdjusted = adjusted.includes(field.key);
+          return (
+            <label key={field.key} className="text-xs font-medium text-muted">
+              <span className="flex items-center justify-between gap-2">
+                <span>
+                  {field.label} <span className="text-danger">*</span>
+                </span>
+                {wasAdjusted && (
+                  <span className="rounded border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
+                    Auto-adjusted
+                  </span>
+                )}
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                required
+                value={form[field.key]}
+                onChange={(event) => onChange(field.key, event.target.value)}
+                className={`${inputClassName} ${wasAdjusted ? 'border-ink/40 bg-canvas' : ''}`}
+              />
+              <span className="mt-1 block text-[11px] font-normal text-muted/80">
+                {hint[field.key]}
+              </span>
+            </label>
+          );
+        })}
       </div>
     </div>
-  );
+    );
+  };
 
   if (allowed === null) {
     return (
@@ -611,7 +732,9 @@ export default function LeaveBalancesPage() {
                   )}
                 </div>
               ) : createForm ? (
-                renderBalanceFields(createForm, updateCreateField, { lockEmployee: true })
+                renderBalanceFields(createForm, updateCreateField, createAdjusted, {
+                  lockEmployee: true,
+                })
               ) : null}
             </div>
 
@@ -699,7 +822,8 @@ export default function LeaveBalancesPage() {
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {renderBalanceFields(
                   editForm,
-                  (field, value) => updateFormField(setEditForm, field, value),
+                  (field, value) => updateEditField(field, value),
+                  editAdjusted,
                   { lockEmployee: true, lockYear: true }
                 )}
               </div>
