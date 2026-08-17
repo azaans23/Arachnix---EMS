@@ -549,7 +549,8 @@ export default function AccountingRecordsPage() {
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-ink">Account split</h2>
             <p className="mt-0.5 text-[11px] text-muted">
-              Share of {monthLabel(monthFilter)} volume in {dominantCurrency}
+              Income positive, expenses negative · net of {monthLabel(monthFilter)} in{' '}
+              {dominantCurrency}
             </p>
           </div>
 

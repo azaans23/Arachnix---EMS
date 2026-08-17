@@ -129,12 +129,13 @@ export function CashflowTrendChart({ data, currency }: { data: TrendPoint[]; cur
   );
 }
 
-/** Share of the month's volume per account, as a donut plus a readable legend. */
+/** Share of the month's volume per account, as a donut plus a readable legend.
+ *  Amounts are signed: Income positive, Expense negative. The centre shows net. */
 export function AccountShareChart({ data, currency }: { data: AccountSlice[]; currency: string }) {
   const reduced = usePrefersReducedMotion();
 
   const slices = useMemo(() => {
-    const sorted = [...data].sort((a, b) => b.amount - a.amount);
+    const sorted = [...data].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
     if (sorted.length <= INK_RAMP.length) return sorted;
     const head = sorted.slice(0, INK_RAMP.length - 1);
     const tail = sorted.slice(INK_RAMP.length - 1);
@@ -148,18 +149,34 @@ export function AccountShareChart({ data, currency }: { data: AccountSlice[]; cu
     ];
   }, [data]);
 
-  const total = slices.reduce((sum, item) => sum + item.amount, 0);
-  const share = (amount: number) => (total > 0 ? Math.round((amount / total) * 100) : 0);
+  // Pie geometry needs positive magnitudes; labels keep the signed amounts.
+  const pieData = useMemo(
+    () =>
+      slices.map((slice) => ({
+        ...slice,
+        magnitude: Math.abs(slice.amount),
+      })),
+    [slices]
+  );
+
+  const net = slices.reduce((sum, item) => sum + item.amount, 0);
+  const absTotal = slices.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+  const share = (amount: number) =>
+    absTotal > 0 ? Math.round((Math.abs(amount) / absTotal) * 100) : 0;
 
   const renderTooltip = (props: TooltipContentProps) => {
     if (!props.active || !props.payload?.length) return null;
-    const slice = props.payload[0]?.payload as AccountSlice | undefined;
+    const slice = props.payload[0]?.payload as (AccountSlice & { magnitude?: number }) | undefined;
     if (!slice) return null;
     return (
       <TooltipCard
         title={slice.account}
         rows={[
-          { label: 'Volume', value: money(slice.amount, currency) },
+          {
+            label: slice.amount < 0 ? 'Expense' : slice.amount > 0 ? 'Income' : 'Net',
+            value: money(slice.amount, currency),
+            color: slice.amount < 0 ? 'var(--danger)' : 'var(--success)',
+          },
           { label: 'Share', value: `${share(slice.amount)}%` },
           { label: 'Transactions', value: String(slice.count) },
         ]}
@@ -168,23 +185,27 @@ export function AccountShareChart({ data, currency }: { data: AccountSlice[]; cu
   };
 
   return (
-    <div className="flex flex-col items-center gap-5 sm:flex-row">
+    <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
       <div className="relative h-[10.5rem] w-[10.5rem] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={slices}
-              dataKey="amount"
+              data={pieData}
+              dataKey="magnitude"
               nameKey="account"
               innerRadius="62%"
               outerRadius="100%"
-              paddingAngle={slices.length > 1 ? 1.5 : 0}
+              paddingAngle={pieData.length > 1 ? 1.5 : 0}
               stroke="var(--surface)"
               strokeWidth={2}
               animationDuration={reduced ? 0 : 240}
             >
-              {slices.map((slice, index) => (
-                <Cell key={slice.account} fill="var(--ink)" fillOpacity={INK_RAMP[index] ?? 0.1} />
+              {pieData.map((slice, index) => (
+                <Cell
+                  key={slice.account}
+                  fill={slice.amount < 0 ? 'var(--danger)' : 'var(--ink)'}
+                  fillOpacity={slice.amount < 0 ? 0.75 : INK_RAMP[index] ?? 0.1}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -196,10 +217,14 @@ export function AccountShareChart({ data, currency }: { data: AccountSlice[]; cu
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-            Volume
+            Net
           </span>
-          <span className="mt-0.5 text-sm font-semibold tabular-nums tracking-tight text-ink">
-            {compactNumber(total)}
+          <span
+            className={`mt-0.5 text-sm font-semibold tabular-nums tracking-tight ${
+              net < 0 ? 'text-danger' : 'text-ink'
+            }`}
+          >
+            {compactNumber(net)}
           </span>
         </div>
       </div>
@@ -210,22 +235,35 @@ export function AccountShareChart({ data, currency }: { data: AccountSlice[]; cu
             <span
               aria-hidden
               className="mt-1 h-2 w-2 shrink-0 rounded-sm"
-              style={{ background: 'var(--ink)', opacity: INK_RAMP[index] ?? 0.1 }}
+              style={{
+                background: slice.amount < 0 ? 'var(--danger)' : 'var(--ink)',
+                opacity: slice.amount < 0 ? 0.75 : INK_RAMP[index] ?? 0.1,
+              }}
             />
             <span className="min-w-0 flex-1 truncate text-ink" title={slice.account}>
               {slice.account}
             </span>
-            <span className="shrink-0 tabular-nums text-muted">
+            <span
+              className={`shrink-0 tabular-nums ${
+                slice.amount < 0 ? 'text-danger' : 'text-muted'
+              }`}
+            >
               {share(slice.amount)}% · {money(slice.amount, currency)}
             </span>
           </li>
         ))}
+        <li className="flex items-baseline justify-between gap-2.5 border-t border-border pt-2 text-xs font-semibold text-ink">
+          <span>Income − Expense</span>
+          <span className={`tabular-nums ${net < 0 ? 'text-danger' : 'text-ink'}`}>
+            {money(net, currency)}
+          </span>
+        </li>
       </ul>
     </div>
   );
 }
 
-/** Category volume ranked highest first — long labels read better horizontally. */
+/** Category volume ranked highest first as vertical bars. */
 export function CategoryBreakdownChart({
   data,
   currency,
@@ -235,7 +273,6 @@ export function CategoryBreakdownChart({
 }) {
   const reduced = usePrefersReducedMotion();
   const bars = useMemo(() => [...data].sort((a, b) => b.amount - a.amount), [data]);
-  const height = Math.max(140, bars.length * 34 + 16);
 
   const renderTooltip = (props: TooltipContentProps) => {
     if (!props.active || !props.payload?.length) return null;
@@ -253,24 +290,33 @@ export function CategoryBreakdownChart({
   };
 
   return (
-    <div className="w-full" style={{ height }}>
+    <div className="h-[240px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={bars}
-          layout="vertical"
-          margin={{ top: 4, right: 68, bottom: 4, left: 0 }}
-          barCategoryGap={10}
+          margin={{ top: 20, right: 8, bottom: 8, left: 0 }}
+          barCategoryGap="18%"
           accessibilityLayer
         >
-          <CartesianGrid horizontal={false} stroke="var(--border)" />
-          <XAxis type="number" hide />
-          <YAxis
-            type="category"
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis
             dataKey="category"
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={92}
+            interval={0}
+            height={48}
+            tickFormatter={(value: string) =>
+              value.length > 12 ? `${value.slice(0, 11)}…` : value
+            }
+          />
+          <YAxis
+            type="number"
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={false}
+            width={44}
+            tickFormatter={compactNumber}
           />
           <Tooltip
             {...TOOLTIP_PROPS}
@@ -282,13 +328,13 @@ export function CategoryBreakdownChart({
             dataKey="amount"
             fill="var(--ink)"
             fillOpacity={0.7}
-            radius={[0, 3, 3, 0]}
-            maxBarSize={16}
+            radius={[3, 3, 0, 0]}
+            maxBarSize={44}
             animationDuration={reduced ? 0 : 240}
           >
             <LabelList
               dataKey="amount"
-              position="right"
+              position="top"
               offset={8}
               fill="var(--muted)"
               fontSize={11}

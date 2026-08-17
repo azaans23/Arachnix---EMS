@@ -308,15 +308,31 @@ export function buildAccountingDashboardMetrics(
     .filter((r) => r.category === 'Payroll')
     .reduce((sum, r) => sum + r.amount, 0);
 
+  /** Income adds, Expense subtracts — transfers do not affect the signed totals. */
+  const signedAmount = (row: AccountingRecord) => {
+    if (row.transactionType === 'Income' || row.category === 'Income') return row.amount;
+    if (
+      row.transactionType === 'Expense' ||
+      row.category === 'Expenses' ||
+      row.category === 'Taxes' ||
+      row.category === 'Payroll'
+    ) {
+      return -row.amount;
+    }
+    return 0;
+  };
+
   const byAccountMap = new Map<string, { amount: number; count: number }>();
   const byCategoryMap = new Map<string, { amount: number; count: number }>();
   for (const row of monthRecords) {
+    const signed = signedAmount(row);
     const account = byAccountMap.get(row.account) || { amount: 0, count: 0 };
-    account.amount += row.amount;
+    account.amount += signed;
     account.count += 1;
     byAccountMap.set(row.account, account);
 
     const category = byCategoryMap.get(row.category) || { amount: 0, count: 0 };
+    // Folder volume stays absolute magnitude for ranking bars.
     category.amount += row.amount;
     category.count += 1;
     byCategoryMap.set(row.category, category);
@@ -356,8 +372,8 @@ export function buildAccountingDashboardMetrics(
     // Charts read these in order; zero-value buckets would render invisible slices.
     byAccount: [...byAccountMap.entries()]
       .map(([account, value]) => ({ account, ...value }))
-      .filter((item) => item.amount > 0)
-      .sort((a, b) => b.amount - a.amount),
+      .filter((item) => item.amount !== 0)
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
     byCategory: [...byCategoryMap.entries()]
       .map(([category, value]) => ({ category, ...value }))
       .filter((item) => item.amount > 0)

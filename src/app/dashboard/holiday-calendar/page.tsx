@@ -390,7 +390,7 @@ export default function HolidayCalendarPage() {
             Holiday Calendar
           </h1>
           <p className="mt-1.5 text-sm text-muted">
-            Company holidays by date, name, and type — stored in Supabase and synced to the sheet.
+            Company holidays by date, name, and type.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
