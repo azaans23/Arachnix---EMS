@@ -50,8 +50,6 @@ export type HeadcountOverview = {
   byEmployeeType: CountSlice[];
   byDepartment: CountSlice[];
   byRole: CountSlice[];
-  /** Twelve months ending at the requested month. */
-  trend: Array<{ month: string; joined: number; headcount: number }>;
 };
 
 export type FinanceOverview = {

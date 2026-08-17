@@ -2,12 +2,10 @@
 
 import { useMemo, type ReactNode } from 'react';
 import {
-  Area,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  ComposedChart,
   LabelList,
   Pie,
   PieChart,
@@ -19,9 +17,7 @@ import {
 } from 'recharts';
 import {
   AXIS_TICK,
-  compactNumber,
   INK_RAMP,
-  shortMonth,
   TOOLTIP_PROPS,
   TooltipCard,
   usePrefersReducedMotion,
@@ -33,16 +29,6 @@ type SliceStyle = { color: string; opacity: number };
 
 function inkRamp(_label: string, index: number): SliceStyle {
   return { color: 'var(--ink)', opacity: INK_RAMP[index] ?? 0.1 };
-}
-
-function monthAndYear(period: string) {
-  const [year, month] = period.split('-').map(Number);
-  if (!year || !month) return period;
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString('en-US', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
 }
 
 function plural(count: number, singular: string, pluralForm = `${singular}s`) {
@@ -70,8 +56,10 @@ export function ChartPanel({
   children: ReactNode;
 }) {
   return (
-    <section className={`rounded-lg border border-border bg-surface p-5 shadow-panel ${className}`}>
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+    <section
+      className={`flex h-full flex-col rounded-lg border border-border bg-surface p-5 shadow-panel ${className}`}
+    >
+      <div className="mb-4 flex shrink-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div>
           <h2 className="text-sm font-semibold text-ink">{title}</h2>
           {subtitle && <p className="mt-0.5 text-[11px] text-muted">{subtitle}</p>}
@@ -79,17 +67,19 @@ export function ChartPanel({
         {legend}
       </div>
 
-      {loading ? (
-        <Skeleton className="h-[13.5rem] w-full" />
-      ) : isEmpty ? (
-        <div className="flex h-[13.5rem] items-center justify-center rounded-lg border border-dashed border-border px-6">
-          <p className="max-w-[22rem] text-center text-xs leading-relaxed text-muted">
-            {emptyMessage}
-          </p>
-        </div>
-      ) : (
-        children
-      )}
+      <div className="flex min-h-0 flex-1 flex-col justify-center">
+        {loading ? (
+          <Skeleton className="h-[13.5rem] w-full" />
+        ) : isEmpty ? (
+          <div className="flex h-[13.5rem] items-center justify-center rounded-lg border border-dashed border-border px-6">
+            <p className="max-w-[22rem] text-center text-xs leading-relaxed text-muted">
+              {emptyMessage}
+            </p>
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </section>
   );
 }
@@ -143,7 +133,7 @@ export function CountDonutChart({
   };
 
   return (
-    <div className="flex flex-col items-center gap-5 sm:flex-row">
+    <div className="flex flex-col items-center justify-center gap-5 sm:flex-row sm:items-center">
       <div className="relative h-[10.5rem] w-[10.5rem] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -206,7 +196,7 @@ export function CountDonutChart({
   );
 }
 
-/** Ranked horizontal bars — long department and leave-type labels read better sideways. */
+/** Ranked vertical bars for category counts (department, designation, etc.). */
 export function CountBarChart({
   data,
   unit = 'record',
@@ -227,7 +217,6 @@ export function CountBarChart({
         .slice(0, maxBars),
     [data, maxBars]
   );
-  const height = Math.max(140, bars.length * 34 + 16);
 
   const renderTooltip = (props: TooltipContentProps) => {
     if (!props.active || !props.payload?.length) return null;
@@ -237,24 +226,33 @@ export function CountBarChart({
   };
 
   return (
-    <div className="w-full" style={{ height }}>
+    <div className="h-[240px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={bars}
-          layout="vertical"
-          margin={{ top: 4, right: 44, bottom: 4, left: 0 }}
-          barCategoryGap={10}
+          margin={{ top: 20, right: 8, bottom: 8, left: 0 }}
+          barCategoryGap="18%"
           accessibilityLayer
         >
-          <CartesianGrid horizontal={false} stroke="var(--border)" />
-          <XAxis type="number" hide allowDecimals={false} />
-          <YAxis
-            type="category"
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis
             dataKey="label"
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={104}
+            interval={0}
+            height={48}
+            tickFormatter={(value: string) =>
+              value.length > 12 ? `${value.slice(0, 11)}…` : value
+            }
+          />
+          <YAxis
+            type="number"
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            allowDecimals={false}
           />
           <Tooltip
             {...TOOLTIP_PROPS}
@@ -266,13 +264,13 @@ export function CountBarChart({
             dataKey="value"
             fill="var(--ink)"
             fillOpacity={0.7}
-            radius={[0, 3, 3, 0]}
-            maxBarSize={16}
+            radius={[3, 3, 0, 0]}
+            maxBarSize={44}
             animationDuration={reduced ? 0 : 240}
           >
             <LabelList
               dataKey="value"
-              position="right"
+              position="top"
               offset={8}
               fill="var(--muted)"
               fontSize={11}
@@ -280,96 +278,6 @@ export function CountBarChart({
             />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-/** Rolling roster size as an area, with each month's new joiners as bars behind it. */
-export function HeadcountTrendChart({
-  data,
-}: {
-  data: Array<{ month: string; joined: number; headcount: number }>;
-}) {
-  const reduced = usePrefersReducedMotion();
-  const points = useMemo(
-    () => data.map((point) => ({ ...point, label: shortMonth(point.month) })),
-    [data]
-  );
-
-  const renderTooltip = (props: TooltipContentProps) => {
-    if (!props.active || !props.payload?.length) return null;
-    const point = props.payload[0]?.payload as (typeof points)[number] | undefined;
-    if (!point) return null;
-    return (
-      <TooltipCard
-        title={monthAndYear(point.month)}
-        rows={[
-          { label: 'Headcount', value: point.headcount.toLocaleString(), color: 'var(--ink)' },
-          {
-            label: 'New joiners',
-            value: point.joined.toLocaleString(),
-            color: 'var(--ink)',
-            opacity: 0.35,
-          },
-        ]}
-      />
-    );
-  };
-
-  return (
-    <div className="h-[13.5rem] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -8 }} accessibilityLayer>
-          <CartesianGrid vertical={false} stroke="var(--border)" />
-          <XAxis
-            dataKey="label"
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
-            tickMargin={8}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            yAxisId="headcount"
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={false}
-            width={40}
-            allowDecimals={false}
-            tickFormatter={compactNumber}
-          />
-          <YAxis yAxisId="joined" orientation="right" hide allowDecimals={false} />
-          <Tooltip
-            {...TOOLTIP_PROPS}
-            content={renderTooltip}
-            cursor={{ fill: 'var(--ink)', fillOpacity: 0.04 }}
-            animationDuration={reduced ? 0 : 120}
-          />
-          <Bar
-            yAxisId="joined"
-            dataKey="joined"
-            name="New joiners"
-            fill="var(--ink)"
-            fillOpacity={0.28}
-            radius={[3, 3, 0, 0]}
-            maxBarSize={16}
-            animationDuration={reduced ? 0 : 240}
-          />
-          <Area
-            yAxisId="headcount"
-            type="monotone"
-            dataKey="headcount"
-            name="Headcount"
-            stroke="var(--ink)"
-            strokeWidth={1.5}
-            fill="var(--ink)"
-            fillOpacity={0.08}
-            dot={false}
-            activeDot={{ r: 4, fill: 'var(--ink)', stroke: 'var(--surface)', strokeWidth: 2 }}
-            animationDuration={reduced ? 0 : 240}
-          />
-        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

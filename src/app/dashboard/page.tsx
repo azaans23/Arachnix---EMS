@@ -26,7 +26,6 @@ import {
   ChartPanel,
   CountBarChart,
   CountDonutChart,
-  HeadcountTrendChart,
 } from '@/components/dashboard/DashboardCharts';
 import { compactNumber } from '@/components/charts/chart-kit';
 import {
@@ -268,29 +267,6 @@ export default function DashboardPage() {
                       maxBars={7}
                     />
                   )}
-                </ChartPanel>
-              </div>
-
-              <div className="mb-4">
-                <ChartPanel
-                  title="Headcount growth"
-                  subtitle="Roster size over the last 12 months, with new joiners"
-                  legend={
-                    <ChartLegend
-                      items={[
-                        { label: 'Headcount', color: 'var(--ink)', shape: 'line' },
-                        {
-                          label: 'New joiners',
-                          color: 'color-mix(in oklab, var(--ink) 28%, transparent)',
-                        },
-                      ]}
-                    />
-                  }
-                  loading={overviewLoading}
-                  isEmpty={!headcount || headcount.trend.every((point) => point.headcount === 0)}
-                  emptyMessage="No joining dates on file yet, so there is no hiring history to chart."
-                >
-                  {headcount && <HeadcountTrendChart data={headcount.trend} />}
                 </ChartPanel>
               </div>
             </>

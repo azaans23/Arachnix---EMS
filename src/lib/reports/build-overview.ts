@@ -9,7 +9,6 @@ import type {
   HeadcountOverview,
 } from '@/types/dashboard';
 
-const HEADCOUNT_TREND_MONTHS = 12;
 const DEFAULT_CURRENCY = 'PKR';
 
 function currentMonth() {
@@ -24,18 +23,6 @@ function monthLabel(period: string) {
     year: 'numeric',
     timeZone: 'UTC',
   });
-}
-
-/** `count` month keys (YYYY-MM) ending at — and including — `end`. */
-function recentMonths(end: string, count: number): string[] {
-  const [year, month] = end.split('-').map(Number);
-  if (!year || !month) return [];
-  const keys: string[] = [];
-  for (let offset = count - 1; offset >= 0; offset -= 1) {
-    const date = new Date(Date.UTC(year, month - 1 - offset, 1));
-    keys.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`);
-  }
-  return keys;
 }
 
 function tally(values: string[]): CountSlice[] {
@@ -73,16 +60,6 @@ function buildHeadcount(rows: EmployeeDbRow[], month: string): HeadcountOverview
     .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
     .map((date) => monthsBetween(date, now));
 
-  const trend = recentMonths(month, HEADCOUNT_TREND_MONTHS).map((key) => ({
-    month: key,
-    joined: rows.filter((row) => joinMonth(row) === key).length,
-    // Cumulative roster: everyone hired on or before this month who is still on the books.
-    headcount: rows.filter((row) => {
-      const joined = joinMonth(row);
-      return Boolean(joined) && joined <= key;
-    }).length,
-  }));
-
   return {
     total: rows.length,
     active: active.length,
@@ -95,7 +72,6 @@ function buildHeadcount(rows: EmployeeDbRow[], month: string): HeadcountOverview
     byEmployeeType: tally(rows.map((row) => row.employeetype)),
     byDepartment: tally(rows.map((row) => row.department)),
     byRole: tally(rows.map((row) => row.role)),
-    trend,
   };
 }
 
