@@ -38,7 +38,7 @@ export default function EmployeeCreateModal({
           <p className="mt-1 text-sm text-muted">
             {isEditMode
               ? 'Update the fields below to modify this employee profile.'
-              : 'Fill in the details below to add a new employee profile to the system.'}
+              : 'Add the profile, initial salary (base, tax, allowance), and bank details. Totals are calculated automatically.'}
           </p>
         </div>
 

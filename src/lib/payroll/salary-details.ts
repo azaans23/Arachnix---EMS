@@ -130,12 +130,22 @@ function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
     tax: detail.tax,
     contributions: 'contributions' in detail ? detail.contributions : '',
   });
-  const overtimePay = ('overtimePay' in detail && detail.overtimePay) || String(totals.overtimepay);
+  const overtimePay =
+    'overtimePay' in detail && String(detail.overtimePay ?? '').trim() !== ''
+      ? String(detail.overtimePay).trim()
+      : '';
   const performanceBonus =
-    ('performanceBonus' in detail && detail.performanceBonus) || String(totals.performancebonus);
+    'performanceBonus' in detail && String(detail.performanceBonus ?? '').trim() !== ''
+      ? String(detail.performanceBonus).trim()
+      : '';
   const contributions =
-    ('contributions' in detail && detail.contributions) || String(totals.contributions);
-  const others = ('others' in detail && detail.others) || String(totals.others);
+    'contributions' in detail && String(detail.contributions ?? '').trim() !== ''
+      ? String(detail.contributions).trim()
+      : '';
+  const others =
+    'others' in detail && String(detail.others ?? '').trim() !== ''
+      ? String(detail.others).trim()
+      : '';
   const netSalary = ('netSalary' in detail && detail.netSalary) || String(totals.netsalary);
   const totalEarning =
     ('totalEarning' in detail && detail.totalEarning) || String(totals.totalearning);
@@ -253,10 +263,11 @@ export async function updateSalaryDetails(
       totalEarning: detail.totalEarning || String(totals.totalearning),
       totalDeduction: detail.totalDeduction || String(totals.totaldeduction),
       netSalary: detail.netSalary || String(totals.netsalary),
-      overtimePay: detail.overtimePay ?? String(totals.overtimepay),
-      performanceBonus: detail.performanceBonus ?? String(totals.performancebonus),
-      contributions: detail.contributions ?? String(totals.contributions),
-      others: detail.others ?? String(totals.others),
+      // Keep optional components blank when the caller did not supply them.
+      overtimePay: detail.overtimePay ?? '',
+      performanceBonus: detail.performanceBonus ?? '',
+      contributions: detail.contributions ?? '',
+      others: detail.others ?? '',
     };
   });
 

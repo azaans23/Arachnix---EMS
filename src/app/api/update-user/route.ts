@@ -19,8 +19,70 @@ import {
 } from '@/lib/sheets/employees';
 import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
+import { updateSalaryDetails } from '@/lib/payroll/salary-details';
+import {
+  computeSalaryTotals,
+  currentSalaryPeriod,
+  formatSalaryPeriod,
+} from '@/lib/payroll/period';
+import type { SalaryDetailInput } from '@/types/salary-slip';
+import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
+
+function periodFromJoiningDate(joiningDate: string): string {
+  const match = String(joiningDate || '')
+    .trim()
+    .match(/^(\d{4})-(\d{2})/);
+  if (!match) return currentSalaryPeriod();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return currentSalaryPeriod();
+  return formatSalaryPeriod(month, year);
+}
+
+function composeBankAccountDetails(input: EmployeeWriteInput): string {
+  const parts = [input.bankName, input.accountName, input.accountNumber]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  if (parts.length > 0) return parts.join(' · ');
+  return String(input.bankAccountDetails || '').trim();
+}
+
+function buildInitialSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput {
+  const salary = String(input.baseSalary || '').trim();
+  const allowance = String(input.allowance ?? '').trim();
+  const tax = String(input.tax ?? '').trim();
+  const totals = computeSalaryTotals({
+    salary,
+    allowance,
+    tax,
+    overtimePay: '',
+    performanceBonus: '',
+    contributions: '',
+    others: '',
+  });
+
+  return {
+    employeeId: input.employeeId.trim(),
+    salary,
+    allowance,
+    tax,
+    accountNumber: String(input.accountNumber || '').trim(),
+    accountName: String(input.accountName || input.name || '').trim(),
+    bankName: String(input.bankName || '').trim(),
+    // Left blank on hire — filled later from Salary when needed.
+    overtimePay: '',
+    performanceBonus: '',
+    contributions: '',
+    others: '',
+    totalEarning: String(totals.totalearning),
+    totalDeduction: String(totals.totaldeduction),
+    netSalary: String(totals.netsalary),
+    period: periodFromJoiningDate(input.joiningDate),
+    status: 'Pending',
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -37,6 +99,16 @@ export async function POST(request: Request) {
 
     if (!editingExisting || !String(body.employeeId || '').trim()) {
       body.employeeId = getNextEmployeeId(existing);
+    }
+
+    // Create flow: structured bank fields also fill employees.bankAccountDetails.
+    if (!editingExisting) {
+      const draft = body as Partial<EmployeeWriteInput>;
+      if (!String(draft.accountName || '').trim() && String(draft.name || '').trim()) {
+        draft.accountName = String(draft.name).trim();
+      }
+      draft.bankAccountDetails = composeBankAccountDetails(draft as EmployeeWriteInput);
+      Object.assign(body, draft);
     }
 
     const validation = await validateEmployeeWrite(body, { existing });
@@ -136,6 +208,29 @@ export async function POST(request: Request) {
       validation.value.emsStatus = 'Inactive';
     }
 
+    const isCreate = !previous;
+    let initialSalary: SalaryDetailInput | null = null;
+    if (isCreate) {
+      initialSalary = buildInitialSalaryDetail(validation.value);
+      if (!initialSalary.accountNumber || !initialSalary.accountName || !initialSalary.bankName) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Account number, account name, and bank name are required for the initial salary.',
+            fieldErrors: {
+              ...(!initialSalary.accountNumber
+                ? { accountNumber: 'Account number is required' }
+                : {}),
+              ...(!initialSalary.accountName ? { accountName: 'Account name is required' } : {}),
+              ...(!initialSalary.bankName ? { bankName: 'Bank name is required' } : {}),
+            },
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const nextValue = employeeInputToAuditValue(
       mergeEmployeeWriteInput(validation.value, previous)
     );
@@ -156,6 +251,27 @@ export async function POST(request: Request) {
       () => upsertEmployee(validation.value, previous)
     );
 
+    let salarySaved = false;
+    let salaryWarning = '';
+    if (isCreate && initialSalary) {
+      try {
+        await updateSalaryDetails([
+          {
+            ...initialSalary,
+            employeeId: saved.employeeId || initialSalary.employeeId,
+          },
+        ]);
+        salarySaved = true;
+      } catch (salaryError: unknown) {
+        const message =
+          salaryError instanceof Error
+            ? salaryError.message
+            : 'Failed to save the initial salary row.';
+        console.error('[POST /api/update-user] initial salary write failed:', message, salaryError);
+        salaryWarning = `Employee profile was saved, but the initial salary could not be written: ${message}`;
+      }
+    }
+
     let authRoleSynced = false;
     if (roleChanging) {
       const { synced } = await syncEmployeeAuthRole({
@@ -171,12 +287,14 @@ export async function POST(request: Request) {
       employeeId: saved.employeeId,
       auditLogged,
       authRoleSynced,
+      salarySaved: isCreate ? salarySaved : undefined,
       warning:
         [
           !auditLogged ? 'Employee saved, but the audit entry could not be delivered.' : '',
           roleChanging && !authRoleSynced
             ? 'Employee role saved, but Auth permissions could not be updated. Ask the user to sign out and back in, or retry after confirming they have a registered login.'
             : '',
+          salaryWarning,
         ]
           .filter(Boolean)
           .join(' ') || undefined,

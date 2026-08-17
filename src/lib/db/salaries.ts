@@ -111,16 +111,22 @@ export function toSalaryDbRow(
     throw new Error(`Invalid salary status: ${status}`);
   }
 
+  /** Blank optional earnings/deductions stay null instead of 0. */
+  const optionalMoney = (raw: string | number | null | undefined, value: number): number | null => {
+    if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+    return value;
+  };
+
   return {
     employeeid,
     basesalary,
     netsalary,
-    overtimepay: computed.overtimepay,
-    performancebonus: computed.performancebonus,
-    contributions: computed.contributions,
-    allowance: computed.allowance,
-    tax: computed.tax,
-    others: computed.others,
+    overtimepay: optionalMoney(input.overtimePay, computed.overtimepay),
+    performancebonus: optionalMoney(input.performanceBonus, computed.performancebonus),
+    contributions: optionalMoney(input.contributions, computed.contributions),
+    allowance: optionalMoney(input.allowance, computed.allowance) ?? computed.allowance,
+    tax: optionalMoney(input.tax, computed.tax) ?? computed.tax,
+    others: optionalMoney(input.others, computed.others),
     accountnumber,
     accountname,
     bankname,

@@ -17,12 +17,14 @@ import {
   Clock,
   Hash,
   ShieldAlert,
+  Landmark,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
 import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
+import { computeSalaryTotals } from '@/lib/payroll/period';
 import {
   assignableRoleOptions,
   canManageEmployeeRole,
@@ -64,11 +66,28 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     role: 'Employee',
     emsStatus: 'Active',
     supabaseUserId: '',
+    tax: '0',
+    allowance: '0',
+    accountNumber: '',
+    accountName: '',
+    bankName: '',
   };
 }
 
 function valuesFromUser(user: SheetUser): EmployeeWriteInput {
   return employeeToFormValues(mapRawToEmployee(user.raw || {}));
+}
+
+function composeBankAccountDetails(values: EmployeeWriteInput): string {
+  const parts = [values.bankName, values.accountName, values.accountNumber]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  if (parts.length > 0) return parts.join(' · ');
+  return String(values.bankAccountDetails || '').trim();
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString('en-PK', { maximumFractionDigits: 0 });
 }
 
 export default function EmployeeForm({
@@ -193,7 +212,14 @@ export default function EmployeeForm({
     enableReinitialize: true,
     validate: async (values) => {
       try {
-        await employeeValidationSchema.validate(values, {
+        const toValidate: EmployeeWriteInput = { ...values };
+        if (!isEditMode) {
+          if (!toValidate.accountName?.trim() && toValidate.name.trim()) {
+            toValidate.accountName = toValidate.name.trim();
+          }
+          toValidate.bankAccountDetails = composeBankAccountDetails(toValidate);
+        }
+        await employeeValidationSchema.validate(toValidate, {
           abortEarly: false,
           context: uniquenessContext,
         });
@@ -219,18 +245,27 @@ export default function EmployeeForm({
       setSubmitting(true);
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const payload: EmployeeWriteInput = {
+          ...values,
+          emsStatus: hasLogin ? values.emsStatus : 'Inactive',
+          originalEmployeeId: user?.employeeId || values.originalEmployeeId || '',
+          originalEmail: user?.email || values.originalEmail || '',
+        };
+
+        if (!isEditMode) {
+          if (!payload.accountName?.trim()) {
+            payload.accountName = payload.name.trim();
+          }
+          payload.bankAccountDetails = composeBankAccountDetails(payload);
+        }
+
         const res = await fetch('/api/update-user', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            ...values,
-            emsStatus: hasLogin ? values.emsStatus : 'Inactive',
-            originalEmployeeId: user?.employeeId || values.originalEmployeeId || '',
-            originalEmail: user?.email || values.originalEmail || '',
-          }),
+          body: JSON.stringify(payload),
         });
 
         const result = await res.json();
@@ -244,11 +279,15 @@ export default function EmployeeForm({
           throw new Error(result.error || 'Failed to update user.');
         }
 
-        toast.success(
-          isEditMode
-            ? 'Employee profile updated successfully'
-            : 'Employee profile created successfully'
-        );
+        if (result.warning) {
+          toast.warning(String(result.warning));
+        } else {
+          toast.success(
+            isEditMode
+              ? 'Employee profile updated successfully'
+              : 'Employee profile and initial salary saved'
+          );
+        }
         onSuccess?.();
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : 'Failed to save employee profile.';
@@ -258,6 +297,24 @@ export default function EmployeeForm({
       }
     },
   });
+
+  const salaryPreview = useMemo(() => {
+    if (isEditMode) return null;
+    return computeSalaryTotals({
+      salary: formik.values.baseSalary,
+      allowance: formik.values.allowance,
+      tax: formik.values.tax,
+      overtimePay: '',
+      performanceBonus: '',
+      contributions: '',
+      others: '',
+    });
+  }, [
+    formik.values.allowance,
+    formik.values.baseSalary,
+    formik.values.tax,
+    isEditMode,
+  ]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.touched[name] && formik.errors[name] ? String(formik.errors[name]) : null;
@@ -452,6 +509,8 @@ export default function EmployeeForm({
             id="baseSalary"
             name="baseSalary"
             type="number"
+            min="0"
+            step="1"
             placeholder="85000"
             value={formik.values.baseSalary}
             onChange={formik.handleChange}
@@ -459,6 +518,50 @@ export default function EmployeeForm({
             className={fieldClass('baseSalary')}
           />
         </Field>
+
+        {!isEditMode && (
+          <>
+            <Field
+              label="Tax (PKR)"
+              htmlFor="tax"
+              error={showError('tax')}
+              icon={<DollarSign className="h-4 w-4" />}
+            >
+              <input
+                id="tax"
+                name="tax"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={formik.values.tax || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('tax')}
+              />
+            </Field>
+
+            <Field
+              label="Allowance (PKR)"
+              htmlFor="allowance"
+              error={showError('allowance')}
+              icon={<DollarSign className="h-4 w-4" />}
+            >
+              <input
+                id="allowance"
+                name="allowance"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={formik.values.allowance || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('allowance')}
+              />
+            </Field>
+          </>
+        )}
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-ink" htmlFor="role">
@@ -536,25 +639,121 @@ export default function EmployeeForm({
           />
         </Field>
 
-        <Field
-          label="Bank Account Details"
-          htmlFor="bankAccountDetails"
-          error={showError('bankAccountDetails')}
-          icon={<CreditCard className="h-4 w-4" />}
-          className="md:col-span-2"
-          iconTop
-        >
-          <textarea
-            id="bankAccountDetails"
-            name="bankAccountDetails"
-            rows={2}
-            placeholder="Alfalah Bank, Account No: 1234-56789-001, IBAN: PK00ALFA..."
-            value={formik.values.bankAccountDetails}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={`${fieldClass('bankAccountDetails')} resize-none`}
-          />
-        </Field>
+        {isEditMode ? (
+          <Field
+            label="Bank Account Details"
+            htmlFor="bankAccountDetails"
+            error={showError('bankAccountDetails')}
+            icon={<CreditCard className="h-4 w-4" />}
+            className="md:col-span-2"
+            iconTop
+          >
+            <textarea
+              id="bankAccountDetails"
+              name="bankAccountDetails"
+              rows={2}
+              placeholder="Alfalah Bank, Account No: 1234-56789-001, IBAN: PK00ALFA..."
+              value={formik.values.bankAccountDetails}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={`${fieldClass('bankAccountDetails')} resize-none`}
+            />
+          </Field>
+        ) : (
+          <>
+            <div className="md:col-span-2 rounded-lg border border-border bg-canvas/50 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                Initial salary
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                Base salary, tax, and allowance are saved to the salary table for the joining month.
+                Overtime, performance bonus, contributions, and others stay empty.
+              </p>
+              {salaryPreview && (
+                <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted">Total earning</p>
+                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                      PKR {formatMoney(salaryPreview.totalearning)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted">Total deduction</p>
+                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                      PKR {formatMoney(salaryPreview.totaldeduction)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted">Net salary</p>
+                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                      PKR {formatMoney(salaryPreview.netsalary)}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Field
+              label="Bank Name"
+              htmlFor="bankName"
+              error={showError('bankName')}
+              icon={<Landmark className="h-4 w-4" />}
+            >
+              <input
+                id="bankName"
+                name="bankName"
+                type="text"
+                placeholder="Bank Alfalah"
+                value={formik.values.bankName || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('bankName')}
+              />
+            </Field>
+
+            <Field
+              label="Account Name"
+              htmlFor="accountName"
+              error={showError('accountName')}
+              icon={<User className="h-4 w-4" />}
+            >
+              <input
+                id="accountName"
+                name="accountName"
+                type="text"
+                placeholder={formik.values.name || 'Account holder name'}
+                value={formik.values.accountName || ''}
+                onChange={formik.handleChange}
+                onBlur={(event) => {
+                  formik.handleBlur(event);
+                  if (!formik.values.accountName?.trim() && formik.values.name.trim()) {
+                    formik.setFieldValue('accountName', formik.values.name.trim());
+                  }
+                }}
+                className={fieldClass('accountName')}
+              />
+            </Field>
+
+            <Field
+              label="Account Number"
+              htmlFor="accountNumber"
+              error={showError('accountNumber')}
+              icon={<CreditCard className="h-4 w-4" />}
+              className="md:col-span-2"
+            >
+              <input
+                id="accountNumber"
+                name="accountNumber"
+                type="text"
+                placeholder="1234-56789-001"
+                value={formik.values.accountNumber || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('accountNumber')}
+              />
+            </Field>
+          </>
+        )}
       </div>
 
       <div

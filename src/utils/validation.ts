@@ -28,6 +28,13 @@ export type EmployeeUniquenessContext = {
   excludeEmail?: string;
 };
 
+const moneyOptional = Yup.string()
+  .trim()
+  .test('is-number', 'Must be a valid number', (value) => {
+    if (value === undefined || value === null || value === '') return true;
+    return !Number.isNaN(Number(value)) && Number(value) >= 0;
+  });
+
 /** Required fields + email format. Uniqueness is enforced via context when provided. */
 export const employeeValidationSchema = Yup.object({
   employeeId: Yup.string()
@@ -72,7 +79,7 @@ export const employeeValidationSchema = Yup.object({
     .required('Base salary is required')
     .test('is-number', 'Base salary must be a valid number', (value) => {
       if (!value) return false;
-      return !Number.isNaN(Number(value));
+      return !Number.isNaN(Number(value)) && Number(value) > 0;
     }),
   bankAccountDetails: Yup.string().trim().required('Bank account details are required'),
   role: Yup.string()
@@ -82,6 +89,38 @@ export const employeeValidationSchema = Yup.object({
   emsStatus: Yup.string().trim().required('EMS status is required'),
   originalEmployeeId: Yup.string().trim().optional(),
   originalEmail: Yup.string().trim().optional(),
+  // Create-only salary fields (ignored on edit; required when creating).
+  tax: moneyOptional.when('originalEmployeeId', {
+    is: (value: string | undefined) => !String(value || '').trim(),
+    then: (schema) => schema.required('Tax is required'),
+    otherwise: (schema) => schema.optional(),
+  }),
+  allowance: moneyOptional.when('originalEmployeeId', {
+    is: (value: string | undefined) => !String(value || '').trim(),
+    then: (schema) => schema.required('Allowance is required'),
+    otherwise: (schema) => schema.optional(),
+  }),
+  accountNumber: Yup.string()
+    .trim()
+    .when('originalEmployeeId', {
+      is: (value: string | undefined) => !String(value || '').trim(),
+      then: (schema) => schema.required('Account number is required'),
+      otherwise: (schema) => schema.optional(),
+    }),
+  accountName: Yup.string()
+    .trim()
+    .when('originalEmployeeId', {
+      is: (value: string | undefined) => !String(value || '').trim(),
+      then: (schema) => schema.required('Account name is required'),
+      otherwise: (schema) => schema.optional(),
+    }),
+  bankName: Yup.string()
+    .trim()
+    .when('originalEmployeeId', {
+      is: (value: string | undefined) => !String(value || '').trim(),
+      then: (schema) => schema.required('Bank name is required'),
+      otherwise: (schema) => schema.optional(),
+    }),
 });
 
 export function buildEmployeeUniquenessContext(
