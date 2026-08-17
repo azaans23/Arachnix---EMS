@@ -272,8 +272,12 @@ export async function POST(request: Request) {
       }
     }
 
+    // Auth accounts are created by registration, so there is no role to sync
+    // until the employee has a login.
+    const hasLogin = Boolean(saved.supabaseUserId || previous?.supabaseUserId);
+
     let authRoleSynced = false;
-    if (roleChanging) {
+    if (roleChanging && hasLogin) {
       const { synced } = await syncEmployeeAuthRole({
         supabaseUserId: saved.supabaseUserId || previous?.supabaseUserId,
         email: saved.email || previous?.email || validation.value.email,
@@ -291,8 +295,8 @@ export async function POST(request: Request) {
       warning:
         [
           !auditLogged ? 'Employee saved, but the audit entry could not be delivered.' : '',
-          roleChanging && !authRoleSynced
-            ? 'Employee role saved, but Auth permissions could not be updated. Ask the user to sign out and back in, or retry after confirming they have a registered login.'
+          roleChanging && hasLogin && !authRoleSynced
+            ? 'Employee role saved, but Auth permissions could not be updated. Ask the user to sign out and back in.'
             : '',
           salaryWarning,
         ]

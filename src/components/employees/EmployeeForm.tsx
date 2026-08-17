@@ -279,14 +279,13 @@ export default function EmployeeForm({
           throw new Error(result.error || 'Failed to update user.');
         }
 
+        toast.success(
+          isEditMode
+            ? 'Employee profile updated successfully'
+            : 'Employee created with their initial salary'
+        );
         if (result.warning) {
           toast.warning(String(result.warning));
-        } else {
-          toast.success(
-            isEditMode
-              ? 'Employee profile updated successfully'
-              : 'Employee profile and initial salary saved'
-          );
         }
         onSuccess?.();
       } catch (err: unknown) {
