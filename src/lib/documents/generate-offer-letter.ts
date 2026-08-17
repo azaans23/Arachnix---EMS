@@ -37,6 +37,17 @@ function wholeNumber(value: unknown, label: string) {
   return number;
 }
 
+function asBoolean(value: unknown, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(text)) return true;
+  if (['false', '0', 'no', 'n'].includes(text)) return false;
+  return fallback;
+}
+
 function displayDate(value: unknown, label: string) {
   const raw = requiredText(value, label);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
@@ -65,15 +76,24 @@ function normalizeOffer(raw: OfferLetterInput): OfferLetterInput {
     throw new Error('Email must be valid.');
   }
 
+  const hasPartTimeTenure = asBoolean(raw.hasPartTimeTenure, false);
+
   return {
     employeeId: String(raw.employeeId || '').trim() || undefined,
     fullName: requiredText(raw.fullName, 'Full name'),
     email,
     designation: requiredText(raw.designation, 'Designation'),
     joiningDate: requiredText(raw.joiningDate, 'Joining date'),
-    partTimeTenure: requiredText(raw.partTimeTenure, 'Part-time tenure'),
-    fullTimeTenure: requiredText(raw.fullTimeTenure, 'Full-time tenure'),
-    partTimeSalary: positiveNumber(raw.partTimeSalary, 'Part-time salary'),
+    hasPartTimeTenure,
+    partTimeTenure: hasPartTimeTenure
+      ? requiredText(raw.partTimeTenure, 'Part-time tenure')
+      : '',
+    fullTimeStart: hasPartTimeTenure
+      ? requiredText(raw.fullTimeStart, 'Full-time start')
+      : '',
+    partTimeSalary: hasPartTimeTenure
+      ? positiveNumber(raw.partTimeSalary, 'Part-time salary')
+      : 0,
     fullTimeSalary: positiveNumber(raw.fullTimeSalary, 'Full-time salary'),
     numberOfLeaves: wholeNumber(raw.numberOfLeaves, 'Number of leaves'),
   };
@@ -223,9 +243,14 @@ export async function startOfferLetterRun(
       Designation: offer.designation,
       OfferDate: offerDate,
       JoiningDate: displayDate(offer.joiningDate, 'Joining date'),
-      PartTimeTenure: displayDate(offer.partTimeTenure, 'Part-time tenure'),
-      FullTimeTenure: displayDate(offer.fullTimeTenure, 'Full-time tenure'),
-      PartTimeSalary: offer.partTimeSalary,
+      HasPartTimeTenure: offer.hasPartTimeTenure,
+      PartTimeTenure: offer.hasPartTimeTenure
+        ? displayDate(offer.partTimeTenure, 'Part-time tenure')
+        : '',
+      FullTimeStart: offer.hasPartTimeTenure
+        ? displayDate(offer.fullTimeStart, 'Full-time start')
+        : '',
+      PartTimeSalary: offer.hasPartTimeTenure ? offer.partTimeSalary : '',
       FullTimeSalary: offer.fullTimeSalary,
       NumberOfLeaves: offer.numberOfLeaves,
     })),

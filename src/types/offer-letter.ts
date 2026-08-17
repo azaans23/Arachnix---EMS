@@ -46,8 +46,11 @@ export interface OfferLetterInput {
   email: string;
   designation: string;
   joiningDate: string;
+  /** When false, part-time tenure/salary and full-time start are omitted. */
+  hasPartTimeTenure: boolean;
   partTimeTenure: string;
-  fullTimeTenure: string;
+  /** Required when hasPartTimeTenure is true. */
+  fullTimeStart: string;
   partTimeSalary: number;
   fullTimeSalary: number;
   numberOfLeaves: number;

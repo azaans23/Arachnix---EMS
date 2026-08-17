@@ -41,8 +41,9 @@ export async function POST(request: Request) {
             email: body.Email ?? body.email,
             designation: body.Designation ?? body.designation,
             joiningDate: body.JoiningDate ?? body.joiningDate,
+            hasPartTimeTenure: body.HasPartTimeTenure ?? body.hasPartTimeTenure,
             partTimeTenure: body.PartTimeTenure ?? body.partTimeTenure,
-            fullTimeTenure: body.FullTimeTenure ?? body.fullTimeTenure,
+            fullTimeStart: body.FullTimeStart ?? body.fullTimeStart,
             partTimeSalary: body.PartTimeSalary ?? body.partTimeSalary,
             fullTimeSalary: body.FullTimeSalary ?? body.fullTimeSalary,
             numberOfLeaves: body.NumberOfLeaves ?? body.numberOfLeaves,
@@ -51,14 +52,20 @@ export async function POST(request: Request) {
 
     const offers: OfferLetterInput[] = offersRaw.map((row) => {
       const item = (row || {}) as Record<string, unknown>;
+      const hasPartTimeRaw = item.hasPartTimeTenure ?? item.HasPartTimeTenure;
+      const hasPartTimeTenure =
+        typeof hasPartTimeRaw === 'boolean'
+          ? hasPartTimeRaw
+          : ['true', '1', 'yes', 'y'].includes(String(hasPartTimeRaw ?? '').trim().toLowerCase());
       return {
         employeeId: String(item.employeeId ?? item.EmployeeID ?? '').trim() || undefined,
         fullName: String(item.fullName ?? item.FullName ?? '').trim(),
         email: String(item.email ?? item.Email ?? '').trim(),
         designation: String(item.designation ?? item.Designation ?? '').trim(),
         joiningDate: String(item.joiningDate ?? item.JoiningDate ?? '').trim(),
+        hasPartTimeTenure,
         partTimeTenure: String(item.partTimeTenure ?? item.PartTimeTenure ?? '').trim(),
-        fullTimeTenure: String(item.fullTimeTenure ?? item.FullTimeTenure ?? '').trim(),
+        fullTimeStart: String(item.fullTimeStart ?? item.FullTimeStart ?? '').trim(),
         partTimeSalary: Number(item.partTimeSalary ?? item.PartTimeSalary),
         fullTimeSalary: Number(item.fullTimeSalary ?? item.FullTimeSalary),
         numberOfLeaves: Number(item.numberOfLeaves ?? item.NumberOfLeaves),

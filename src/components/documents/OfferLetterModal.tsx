@@ -19,8 +19,9 @@ type OfferLetterForm = {
   email: string;
   designation: string;
   joiningDate: string;
+  hasPartTimeTenure: boolean;
   partTimeTenure: string;
-  fullTimeTenure: string;
+  fullTimeStart: string;
   partTimeSalary: string;
   fullTimeSalary: string;
   numberOfLeaves: string;
@@ -35,8 +36,9 @@ function emptyForm(): OfferLetterForm {
     email: '',
     designation: '',
     joiningDate: '',
+    hasPartTimeTenure: true,
     partTimeTenure: '',
-    fullTimeTenure: '',
+    fullTimeStart: '',
     partTimeSalary: '',
     fullTimeSalary: '',
     numberOfLeaves: '',
@@ -74,7 +76,11 @@ export default function OfferLetterModal({
     };
   }, [onClose, submitting]);
 
-  const updateField = (index: number, field: keyof OfferLetterForm, value: string) => {
+  const updateField = <K extends keyof OfferLetterForm>(
+    index: number,
+    field: K,
+    value: OfferLetterForm[K]
+  ) => {
     setForms((current) =>
       current.map((form, formIndex) => (formIndex === index ? { ...form, [field]: value } : form))
     );
@@ -88,8 +94,9 @@ export default function OfferLetterModal({
       email: string;
       designation: string;
       joiningDate: string;
+      hasPartTimeTenure: boolean;
       partTimeTenure: string;
-      fullTimeTenure: string;
+      fullTimeStart: string;
       partTimeSalary: number;
       fullTimeSalary: number;
       numberOfLeaves: number;
@@ -103,11 +110,19 @@ export default function OfferLetterModal({
         !form.fullName.trim() ||
         !form.email.trim() ||
         !form.designation.trim() ||
-        !form.joiningDate ||
-        !form.partTimeTenure ||
-        !form.fullTimeTenure
+        !form.joiningDate
       ) {
-        toast.error(`${label}: complete all employee and tenure fields.`);
+        toast.error(`${label}: complete all employee and joining date fields.`);
+        return;
+      }
+
+      if (form.hasPartTimeTenure && !form.partTimeTenure) {
+        toast.error(`${label}: enter the part-time tenure end date.`);
+        return;
+      }
+
+      if (form.hasPartTimeTenure && !form.fullTimeStart) {
+        toast.error(`${label}: enter the full-time start date.`);
         return;
       }
 
@@ -115,15 +130,19 @@ export default function OfferLetterModal({
       const fullTimeSalary = Number(form.fullTimeSalary);
       const numberOfLeaves = Number(form.numberOfLeaves);
 
-      if (
-        !Number.isFinite(partTimeSalary) ||
-        partTimeSalary <= 0 ||
-        !Number.isFinite(fullTimeSalary) ||
-        fullTimeSalary <= 0
-      ) {
-        toast.error(`${label}: part-time and full-time salaries must be greater than zero.`);
+      if (!Number.isFinite(fullTimeSalary) || fullTimeSalary <= 0) {
+        toast.error(`${label}: full-time salary must be greater than zero.`);
         return;
       }
+
+      if (
+        form.hasPartTimeTenure &&
+        (!Number.isFinite(partTimeSalary) || partTimeSalary <= 0)
+      ) {
+        toast.error(`${label}: part-time salary must be greater than zero.`);
+        return;
+      }
+
       if (!Number.isInteger(numberOfLeaves) || numberOfLeaves < 0) {
         toast.error(`${label}: number of leaves must be a whole number of zero or more.`);
         return;
@@ -134,9 +153,10 @@ export default function OfferLetterModal({
         email: form.email.trim(),
         designation: form.designation.trim(),
         joiningDate: form.joiningDate,
-        partTimeTenure: form.partTimeTenure,
-        fullTimeTenure: form.fullTimeTenure,
-        partTimeSalary,
+        hasPartTimeTenure: form.hasPartTimeTenure,
+        partTimeTenure: form.hasPartTimeTenure ? form.partTimeTenure : '',
+        fullTimeStart: form.hasPartTimeTenure ? form.fullTimeStart : '',
+        partTimeSalary: form.hasPartTimeTenure ? partTimeSalary : 0,
         fullTimeSalary,
         numberOfLeaves,
       });
@@ -271,8 +291,42 @@ export default function OfferLetterModal({
                   </div>
 
                   <div>
-                    <p className="text-xs font-medium text-muted">Employment timeline</p>
-                    <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-muted">Employment timeline</p>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={form.hasPartTimeTenure}
+                        aria-label="Part-time tenure"
+                        disabled={submitting}
+                        onClick={() =>
+                          updateField(index, 'hasPartTimeTenure', !form.hasPartTimeTenure)
+                        }
+                        className="inline-flex cursor-pointer items-center gap-2.5 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span className="text-xs font-medium text-ink">Part-time tenure</span>
+                        <span
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                            form.hasPartTimeTenure
+                              ? 'border-accent bg-accent'
+                              : 'border-border bg-canvas'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-surface shadow-sm transition-transform ${
+                              form.hasPartTimeTenure
+                                ? 'translate-x-5 bg-accent-fg'
+                                : 'translate-x-1'
+                            }`}
+                          />
+                        </span>
+                      </button>
+                    </div>
+                    <div
+                      className={`mt-3 grid gap-4 ${
+                        form.hasPartTimeTenure ? 'sm:grid-cols-3' : 'sm:grid-cols-1'
+                      }`}
+                    >
                       <label className="text-xs font-medium text-muted">
                         Joining date <span className="text-danger">*</span>
                         <span className="relative block">
@@ -288,53 +342,64 @@ export default function OfferLetterModal({
                           />
                         </span>
                       </label>
-                      <label className="text-xs font-medium text-muted">
-                        Part-time tenure ends <span className="text-danger">*</span>
-                        <input
-                          type="date"
-                          required
-                          value={form.partTimeTenure}
-                          onChange={(event) =>
-                            updateField(index, 'partTimeTenure', event.target.value)
-                          }
-                          className={inputClassName}
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-muted">
-                        Full-time tenure ends <span className="text-danger">*</span>
-                        <input
-                          type="date"
-                          required
-                          value={form.fullTimeTenure}
-                          onChange={(event) =>
-                            updateField(index, 'fullTimeTenure', event.target.value)
-                          }
-                          className={inputClassName}
-                        />
-                      </label>
+                      {form.hasPartTimeTenure && (
+                        <>
+                          <label className="text-xs font-medium text-muted">
+                            Part-time tenure ends <span className="text-danger">*</span>
+                            <input
+                              type="date"
+                              required
+                              value={form.partTimeTenure}
+                              onChange={(event) =>
+                                updateField(index, 'partTimeTenure', event.target.value)
+                              }
+                              className={inputClassName}
+                            />
+                          </label>
+                          <label className="text-xs font-medium text-muted">
+                            Full-time start <span className="text-danger">*</span>
+                            <input
+                              type="date"
+                              required
+                              value={form.fullTimeStart}
+                              onChange={(event) =>
+                                updateField(index, 'fullTimeStart', event.target.value)
+                              }
+                              className={inputClassName}
+                            />
+                          </label>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   <div>
                     <p className="text-xs font-medium text-muted">Compensation and leave</p>
-                    <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                    <div
+                      className={`mt-3 grid gap-4 ${
+                        form.hasPartTimeTenure ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+                      }`}
+                    >
+                      {form.hasPartTimeTenure && (
+                        <label className="text-xs font-medium text-muted">
+                          Part-time salary <span className="text-danger">*</span>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            required
+                            value={form.partTimeSalary}
+                            onChange={(event) =>
+                              updateField(index, 'partTimeSalary', event.target.value)
+                            }
+                            className={inputClassName}
+                            placeholder="60000"
+                          />
+                        </label>
+                      )}
                       <label className="text-xs font-medium text-muted">
-                        Part-time salary <span className="text-danger">*</span>
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          required
-                          value={form.partTimeSalary}
-                          onChange={(event) =>
-                            updateField(index, 'partTimeSalary', event.target.value)
-                          }
-                          className={inputClassName}
-                          placeholder="60000"
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-muted">
-                        Full-time salary <span className="text-danger">*</span>
+                        {form.hasPartTimeTenure ? 'Full-time salary' : 'Salary'}{' '}
+                        <span className="text-danger">*</span>
                         <input
                           type="number"
                           min="1"
