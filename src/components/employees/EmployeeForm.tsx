@@ -698,8 +698,7 @@ export default function EmployeeForm({
                 Initial salary
               </p>
               <p className="mt-1 text-xs text-muted">
-                Base salary, tax, and allowance are saved to the salary table for the joining month.
-                Overtime, performance bonus, contributions, and others stay empty.
+                Enter Base salary, Allowance and Tax to see the total salary breakdown. These values can be updated later in the payroll section.
               </p>
               {salaryPreview && (
                 <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
