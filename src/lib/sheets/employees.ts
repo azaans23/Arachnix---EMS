@@ -249,20 +249,22 @@ export class SheetsError extends Error {
   }
 }
 
-async function parseWebhookError(response: Response, fallback: string): Promise<string> {
-  let errText = '';
-  try {
-    errText = await response.text();
-  } catch {
-    /* ignore */
-  }
+/**
+ * n8n answers with these when the workflow did run but its final node emitted
+ * no items (e.g. a Sheets delete node), so they must not be treated as failures.
+ */
+function isWebhookAckBody(text: string): boolean {
+  const body = text.toLowerCase();
+  return body.includes('no item to return was found') || body.includes('workflow was started');
+}
 
+function formatWebhookError(status: number, errText: string, fallback: string): string {
   try {
     const jsonErr = JSON.parse(errText);
     if (jsonErr.message) {
       const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
       const message = String(jsonErr.message) + hint;
-      if (response.status === 404) {
+      if (status === 404) {
         return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
       }
       return message;
@@ -271,7 +273,7 @@ async function parseWebhookError(response: Response, fallback: string): Promise<
     /* keep text */
   }
 
-  if (response.status === 404) {
+  if (status === 404) {
     return (
       errText ||
       'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
@@ -397,10 +399,13 @@ export async function upsertEmployee(
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
+    const bodyText = await response.text().catch(() => '');
+
+    if (!response.ok && !isWebhookAckBody(bodyText)) {
       throw new SheetsError(
-        await parseWebhookError(
-          response,
+        formatWebhookError(
+          response.status,
+          bodyText,
           `n8n update-user webhook returned status ${response.status}.`
         ),
         response.status
@@ -462,10 +467,13 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
       }),
     });
 
-    if (!response.ok) {
+    const bodyText = await response.text().catch(() => '');
+
+    if (!response.ok && !isWebhookAckBody(bodyText)) {
       throw new SheetsError(
-        await parseWebhookError(
-          response,
+        formatWebhookError(
+          response.status,
+          bodyText,
           `n8n delete-employee webhook returned status ${response.status}.`
         ),
         response.status
