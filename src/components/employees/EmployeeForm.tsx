@@ -22,7 +22,12 @@ import {
 import CustomDropdown from '@/components/ui/Dropdown';
 import DatePicker, { toIsoDate } from '@/components/ui/DatePicker';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
-import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
+import {
+  DEPARTMENT_OPTIONS,
+  EMPLOYMENT_TYPE_OPTIONS,
+  hasEmsLogin,
+  supabaseUserIdOf,
+} from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 import { computeSalaryTotals } from '@/lib/payroll/period';
@@ -41,6 +46,16 @@ const emsStatusOptions = [
   { label: 'Active', value: 'Active' },
   { label: 'Revoke access', value: 'Inactive' },
 ];
+
+const departmentOptions = DEPARTMENT_OPTIONS.map((option) => ({
+  label: option.label,
+  value: option.value,
+}));
+
+const employmentTypeOptions = EMPLOYMENT_TYPE_OPTIONS.map((option) => ({
+  label: option.label,
+  value: option.value,
+}));
 
 type EmployeeFormProps = {
   user?: SheetUser;
@@ -137,6 +152,31 @@ export default function EmployeeForm({
     }
     return assignable;
   }, [actorRole, user?.role]);
+
+  const departmentFieldOptions = useMemo(() => {
+    const current = String(
+      (user?.raw?.Department as string | undefined) ||
+        (user?.raw?.department as string | undefined) ||
+        ''
+    ).trim();
+    if (current && !departmentOptions.some((option) => option.value === current)) {
+      return [{ label: current, value: current }, ...departmentOptions];
+    }
+    return departmentOptions;
+  }, [user]);
+
+  const employmentTypeFieldOptions = useMemo(() => {
+    const current = String(
+      (user?.raw?.EmployeeType as string | undefined) ||
+        (user?.raw?.employeeType as string | undefined) ||
+        (user?.raw?.EmploymentType as string | undefined) ||
+        ''
+    ).trim();
+    if (current && !employmentTypeOptions.some((option) => option.value === current)) {
+      return [{ label: current, value: current }, ...employmentTypeOptions];
+    }
+    return employmentTypeOptions;
+  }, [user]);
 
   const editBlockedReason = useMemo(() => {
     if (!isEditMode || !actorRole) return null;
@@ -415,41 +455,47 @@ export default function EmployeeForm({
           />
         </Field>
 
-        <Field
-          label="Department"
-          htmlFor="department"
-          error={showError('department')}
-          icon={<Briefcase className="h-4 w-4" />}
-        >
-          <input
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs font-semibold uppercase tracking-wide text-ink"
+            htmlFor="department"
+          >
+            Department
+          </label>
+          <CustomDropdown
             id="department"
             name="department"
-            type="text"
-            placeholder="Engineering"
+            placeholder="Select department"
             value={formik.values.department}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('department')}
+            onChange={(val) => void formik.setFieldValue('department', val)}
+            onBlur={() => void formik.setFieldTouched('department', true)}
+            options={departmentFieldOptions}
+            icon={<Briefcase className="h-4 w-4" />}
+            error={showError('department') || undefined}
+            touched={!!formik.touched.department}
           />
-        </Field>
+        </div>
 
-        <Field
-          label="Employment Type"
-          htmlFor="employmentType"
-          error={showError('employmentType')}
-          icon={<Clock className="h-4 w-4" />}
-        >
-          <input
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs font-semibold uppercase tracking-wide text-ink"
+            htmlFor="employmentType"
+          >
+            Employment Type
+          </label>
+          <CustomDropdown
             id="employmentType"
             name="employmentType"
-            type="text"
-            placeholder="Full-time / Contract"
+            placeholder="Select employment type"
             value={formik.values.employmentType}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('employmentType')}
+            onChange={(val) => void formik.setFieldValue('employmentType', val)}
+            onBlur={() => void formik.setFieldTouched('employmentType', true)}
+            options={employmentTypeFieldOptions}
+            icon={<Clock className="h-4 w-4" />}
+            error={showError('employmentType') || undefined}
+            touched={!!formik.touched.employmentType}
           />
-        </Field>
+        </div>
 
         <Field
           label="Phone Number"

@@ -1,3 +1,23 @@
+/** Fixed department choices for create / edit forms. */
+export const DEPARTMENT_OPTIONS = [
+  { label: 'Engineering', value: 'Engineering' },
+  { label: 'People', value: 'People' },
+  { label: 'Branding', value: 'Branding' },
+  { label: 'Operations', value: 'Operations' },
+  { label: 'Finance', value: 'Finance' },
+] as const;
+
+export const DEPARTMENT_VALUES = DEPARTMENT_OPTIONS.map((option) => option.value);
+
+/** Fixed employment type choices for create / edit forms. */
+export const EMPLOYMENT_TYPE_OPTIONS = [
+  { label: 'Full-time', value: 'Full-time' },
+  { label: 'Contract', value: 'Contract' },
+  { label: 'Part-time', value: 'Part-time' },
+] as const;
+
+export const EMPLOYMENT_TYPE_VALUES = EMPLOYMENT_TYPE_OPTIONS.map((option) => option.value);
+
 /** Canonical Employees sheet row (PRD schema). */
 export interface EmployeeRecord {
   employeeId: string;
