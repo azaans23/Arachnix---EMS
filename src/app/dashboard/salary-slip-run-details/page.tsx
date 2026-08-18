@@ -336,7 +336,7 @@ export default function SalarySlipRunDetailsPage() {
           )}
           <button
             type="button"
-            onClick={load}
+            onClick={() => void load()}
             disabled={loading}
             className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:opacity-50"
           >

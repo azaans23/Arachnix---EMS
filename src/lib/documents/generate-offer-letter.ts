@@ -99,55 +99,14 @@ function normalizeOffer(raw: OfferLetterInput): OfferLetterInput {
   };
 }
 
-type WebhookResultItem = {
-  runDetailId?: string;
-  RunDetailID?: string;
-  employeeId?: string;
-  EmployeeID?: string;
-  email?: string;
-  Email?: string;
-  status?: string;
-  success?: boolean;
-  pdfLink?: string;
-  PdfLink?: string;
-  PDFLink?: string;
-  pdfStatus?: string;
-  PDFStatus?: string;
-  emailStatus?: string;
-  EmailStatus?: string;
-  error?: string;
-  errorReason?: string;
-  ErrorReason?: string;
+export type PreparedOfferLetterRun = {
+  run: OfferLetterRun;
+  actorEmail: string;
+  month: number;
+  year: number;
+  employeeKeys: string[];
+  payload: Record<string, unknown>;
 };
-
-function parseWebhookBody(text: string): {
-  ackOnly: boolean;
-  results: WebhookResultItem[];
-  message?: string;
-} {
-  if (!text.trim()) return { ackOnly: true, results: [] };
-
-  try {
-    const json = JSON.parse(text);
-    if (json && typeof json === 'object' && !Array.isArray(json)) {
-      const message = String(json.message || '');
-      if (message.toLowerCase().includes('workflow was started')) {
-        return { ackOnly: true, results: [], message };
-      }
-      const results = Array.isArray(json.results)
-        ? json.results
-        : Array.isArray(json.data)
-          ? json.data
-          : [];
-      return { ackOnly: false, results, message: json.error || json.message };
-    }
-    if (Array.isArray(json)) return { ackOnly: false, results: json };
-  } catch {
-    /* non-JSON body */
-  }
-
-  return { ackOnly: true, results: [] };
-}
 
 /** Dual-writes to Supabase + Sheets; never fails the offer letter run. */
 async function logOfferLetterRunAudit(
@@ -168,15 +127,15 @@ async function logOfferLetterRunAudit(
 }
 
 /**
- * Creates an OfferLetterRun (plus a Pending OfferLetterRunDetail row per offer),
- * fires the n8n generate-offer-letter webhook once with the whole batch, then
- * updates run/detail rows when the workflow returns per-candidate results.
- * If n8n only acknowledges the trigger, the run stays "Processing".
+ * Creates an OfferLetterRun (Processing) with Pending detail rows and builds the
+ * n8n payload. Does not wait for the workflow — call `dispatchOfferLetterWebhook`
+ * from `after()` so the API can return immediately. n8n updates run/detail
+ * status in Supabase when generation finishes.
  */
 export async function startOfferLetterRun(
   actorEmail: string,
   input: GenerateOfferLettersInput
-): Promise<{ run: OfferLetterRun; message: string }> {
+): Promise<{ prepared: PreparedOfferLetterRun; message: string }> {
   const month = Number(input.month);
   const year = Number(input.year);
 
@@ -252,8 +211,25 @@ export async function startOfferLetterRun(
     })),
   };
 
-  let webhookOk = false;
-  let webhookText = '';
+  return {
+    prepared: {
+      run,
+      actorEmail,
+      month,
+      year,
+      employeeKeys,
+      payload,
+    },
+    message: 'Offer letter generation started. Status will update when the workflow finishes.',
+  };
+}
+
+/**
+ * Fires the n8n webhook. On trigger failure, marks the run Failed.
+ * Success/Failed completion is owned by the workflow (Supabase updates).
+ */
+export async function dispatchOfferLetterWebhook(prepared: PreparedOfferLetterRun): Promise<void> {
+  const { run, actorEmail, month, year, employeeKeys, payload } = prepared;
 
   try {
     const response = await fetch(SHEETS_WEBHOOKS.generateOfferLetter, {
@@ -262,8 +238,7 @@ export async function startOfferLetterRun(
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
-    webhookText = await response.text();
-    webhookOk = response.ok;
+    const webhookText = await response.text();
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(
@@ -307,89 +282,4 @@ export async function startOfferLetterRun(
     });
     throw new Error(message);
   }
-
-  const parsed = parseWebhookBody(webhookText);
-
-  if (!parsed.ackOnly && parsed.results.length > 0) {
-    const keyByLookup = new Map<string, string>();
-    offers.forEach((offer, index) => {
-      const key = employeeKeys[index];
-      keyByLookup.set(key.toLowerCase(), key);
-      keyByLookup.set(offer.email.toLowerCase(), key);
-      if (offer.employeeId) keyByLookup.set(offer.employeeId.toLowerCase(), key);
-      keyByLookup.set(buildOfferLetterRunDetailId(run.runId, key).toLowerCase(), key);
-    });
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const item of parsed.results) {
-      const lookup = String(
-        item.runDetailId ||
-          item.RunDetailID ||
-          item.employeeId ||
-          item.EmployeeID ||
-          item.email ||
-          item.Email ||
-          ''
-      )
-        .trim()
-        .toLowerCase();
-      const employeeKey = keyByLookup.get(lookup);
-      if (!employeeKey) continue;
-
-      const status = String(item.status || '').toLowerCase();
-      const ok = item.success === true || status === 'success' || status === 'completed';
-      if (ok) successCount += 1;
-      else failCount += 1;
-
-      const pdfLink = item.pdfLink || item.PdfLink || item.PDFLink || '';
-      await upsertOfferLetterRunDetail({
-        runId: run.runId,
-        employeeKey,
-        status: ok ? 'Completed' : 'Failed',
-        pdfLink,
-        pdfStatus: item.pdfStatus || item.PDFStatus || (ok ? 'Generated' : 'Failed'),
-        emailStatus: item.emailStatus || item.EmailStatus || (ok ? 'Sent' : 'Failed'),
-        errorReason: item.errorReason || item.ErrorReason || item.error || '',
-      });
-    }
-
-    const runStatus = successCount > 0 ? 'Completed' : 'Failed';
-    const updated = await updateOfferLetterRun(run.runId, {
-      status: runStatus,
-      successCount,
-      failCount,
-    });
-
-    await logOfferLetterRunAudit(actorEmail, {
-      action: runStatus === 'Completed' ? AUDIT_ACTIONS.CREATE : AUDIT_ACTIONS.UPDATE,
-      runId: run.runId,
-      oldValue: { status: 'Processing' },
-      newValue: {
-        month,
-        year,
-        status: runStatus,
-        successCount,
-        failCount,
-        offerLetterCount: offers.length,
-      },
-    });
-
-    if (successCount === 0) {
-      throw new Error(parsed.message || 'Failed to generate offer letters.');
-    }
-
-    return {
-      run: updated,
-      message: `Offer letter run ${runStatus.toLowerCase()}: ${successCount} succeeded, ${failCount} failed.`,
-    };
-  }
-
-  return {
-    run,
-    message: webhookOk
-      ? 'Offer letter workflow started. Refresh this page to see progress as results come in.'
-      : 'Run created.',
-  };
 }

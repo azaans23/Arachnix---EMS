@@ -110,8 +110,8 @@ export default function OfferLettersPage() {
 
   const token = () => localStorage.getItem('token');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoading(true);
     try {
       const response = await fetch('/api/offer-letters', {
         headers: { Authorization: `Bearer ${token()}` },
@@ -123,9 +123,11 @@ export default function OfferLettersPage() {
       }
       setRuns(result.data || []);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load offer letter data.');
+      if (!options.silent) {
+        toast.error(error instanceof Error ? error.message : 'Failed to load offer letter data.');
+      }
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, []);
 
@@ -155,6 +157,17 @@ export default function OfferLettersPage() {
     };
     void boot();
   }, [load]);
+
+  const hasProcessingRuns = useMemo(
+    () => runs.some((run) => run.status.toLowerCase() === 'processing'),
+    [runs]
+  );
+
+  useEffect(() => {
+    if (!allowed || !hasProcessingRuns) return;
+    const timer = window.setInterval(() => void load({ silent: true }), 5000);
+    return () => window.clearInterval(timer);
+  }, [allowed, hasProcessingRuns, load]);
 
   const filteredRuns = useMemo(() => {
     let list = [...runs];
@@ -357,7 +370,7 @@ export default function OfferLettersPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={load}
+            onClick={() => void load()}
             disabled={loading}
             className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:opacity-50"
           >
@@ -569,9 +582,8 @@ export default function OfferLettersPage() {
           month={Number(month)}
           year={Number(year)}
           onClose={() => setDetailsOpen(false)}
-          onSuccess={(runId) => {
+          onSuccess={() => {
             void load();
-            if (runId) router.push(`/dashboard/offer-letter-run-details?runId=${runId}`);
           }}
         />
       )}

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileOfferLetterRunAudits } from '@/lib/audit/run-completion';
 import { getOfferLetterRun, listOfferLetterRunDetails } from '@/lib/db/offer-letters';
 import { fetchEmployees } from '@/lib/sheets/employees';
 
@@ -41,6 +42,14 @@ export async function GET(request: Request, context: RouteContext) {
         candidateName: match?.fullName || '',
         candidateEmail: match?.email || (looksLikeEmail ? detail.employeeId : ''),
       };
+    });
+
+    after(async () => {
+      try {
+        await reconcileOfferLetterRunAudits([run]);
+      } catch (error) {
+        console.error('Offer letter run audit reconciliation failed:', error);
+      }
     });
 
     return NextResponse.json({ success: true, data: { run, details: enriched } });

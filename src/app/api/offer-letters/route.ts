@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileOfferLetterRunAudits } from '@/lib/audit/run-completion';
 import { listOfferLetterRuns } from '@/lib/db/offer-letters';
-import { startOfferLetterRun } from '@/lib/documents/generate-offer-letter';
+import {
+  dispatchOfferLetterWebhook,
+  startOfferLetterRun,
+} from '@/lib/documents/generate-offer-letter';
 import type { OfferLetterInput } from '@/types/offer-letter';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +16,17 @@ export async function GET(request: Request) {
     if (errorResponse) return errorResponse;
 
     const runs = await listOfferLetterRuns();
+
+    // n8n finishes runs by writing to Supabase, so the completion audit entry is
+    // backfilled here once a run leaves Processing.
+    after(async () => {
+      try {
+        await reconcileOfferLetterRunAudits(runs);
+      } catch (error) {
+        console.error('Offer letter run audit reconciliation failed:', error);
+      }
+    });
+
     return NextResponse.json({ success: true, data: runs });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load offer letter runs.';
@@ -78,9 +93,19 @@ export async function POST(request: Request) {
       offers,
     });
 
+    // Non-blocking: respond immediately; n8n is triggered in after() and owns
+    // updating run/detail success/failure in Supabase when the workflow finishes.
+    after(async () => {
+      try {
+        await dispatchOfferLetterWebhook(result.prepared);
+      } catch (error) {
+        console.error('Offer letter webhook dispatch failed:', error);
+      }
+    });
+
     return NextResponse.json({
       success: true,
-      data: result.run,
+      data: result.prepared.run,
       message: result.message,
     });
   } catch (error: unknown) {

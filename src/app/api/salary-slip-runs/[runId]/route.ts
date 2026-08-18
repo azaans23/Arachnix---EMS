@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileSalarySlipRunAudits } from '@/lib/audit/run-completion';
 import { getSalarySlipRun, listSalarySlipRunDetails } from '@/lib/db/salary-slips';
 import { fetchEmployees } from '@/lib/sheets/employees';
 
@@ -40,6 +41,14 @@ export async function GET(request: Request, context: RouteContext) {
         employeeName: employee?.fullName || '',
         employeeEmail: employee?.email || '',
       };
+    });
+
+    after(async () => {
+      try {
+        await reconcileSalarySlipRunAudits([run]);
+      } catch (error) {
+        console.error('Salary slip run audit reconciliation failed:', error);
+      }
     });
 
     return NextResponse.json({ success: true, data: { run, details: enriched } });

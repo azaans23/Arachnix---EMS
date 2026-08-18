@@ -1,5 +1,6 @@
 import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileSalarySlipRunAudits } from '@/lib/audit/run-completion';
 import { listSalarySlipRuns } from '@/lib/db/salary-slips';
 import { dispatchSalarySlipWebhook, startSalarySlipRun } from '@/lib/payroll/generate';
 import type { SalarySlipExtrasInput } from '@/types/salary-slip';
@@ -26,6 +27,17 @@ export async function GET(request: Request) {
     if (errorResponse) return errorResponse;
 
     const runs = await listSalarySlipRuns();
+
+    // n8n finishes runs by writing to Supabase, so the completion audit entry is
+    // backfilled here once a run leaves Processing.
+    after(async () => {
+      try {
+        await reconcileSalarySlipRunAudits(runs);
+      } catch (error) {
+        console.error('Salary slip run audit reconciliation failed:', error);
+      }
+    });
+
     return NextResponse.json({ success: true, data: runs });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load salary slip runs.';
