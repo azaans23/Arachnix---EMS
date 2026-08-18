@@ -21,7 +21,6 @@ import {
   fetchSalaryDetails,
   findIncompleteSalaryDetails,
   isSalaryDetailComplete,
-  mergeSalaryDetails,
   toSalaryDetailWebhookFields,
 } from '@/lib/payroll/salary-details';
 
@@ -203,10 +202,9 @@ export async function startSalarySlipRun(
   const employees = await resolvePayrollEmployees(input.employeeIds);
   const employeeIds = employees.map((employee) => employee.employeeId);
 
-  let salaryDetails = await fetchSalaryDetails(employeeIds);
-  if (input.salaryDetails && input.salaryDetails.length > 0) {
-    salaryDetails = mergeSalaryDetails(salaryDetails, input.salaryDetails);
-  }
+  // Always load stored salary from DB. Base / allowance / tax / bank are edited
+  // only on the Salary page — slip runs never accept overrides.
+  const salaryDetails = await fetchSalaryDetails(employeeIds);
 
   if (!input.confirmIncomplete) {
     const incomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails);
@@ -215,7 +213,7 @@ export async function startSalarySlipRun(
       incomplete,
       details: salaryDetails,
       message:
-        'Review salary details and enter overtime, bonus, others, and contributions for this slip. Those extras are sent to the workflow only and are not stored.',
+        'Review stored salary (read-only) and enter overtime, bonus, others, and contributions for this slip. Extras are sent to the workflow only and are not stored. Edit base salary, tax, allowance, or bank details on the Salary page.',
     };
   }
 
@@ -231,7 +229,7 @@ export async function startSalarySlipRun(
       needsConfirmation: true,
       incomplete: stillIncomplete,
       details: salaryDetails,
-      message: `${stillIncomplete.length} employee${stillIncomplete.length === 1 ? '' : 's'} are still missing Base Salary or bank details.`,
+      message: `${stillIncomplete.length} employee${stillIncomplete.length === 1 ? '' : 's'} are missing Base Salary or bank details. Fix them on the Salary page, then try again.`,
     };
   }
 

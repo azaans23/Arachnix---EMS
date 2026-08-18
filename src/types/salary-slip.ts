@@ -62,11 +62,6 @@ export interface GenerateSalarySlipsInput {
    * When false/omitted, the API returns needsConfirmation with run employees.
    */
   confirmIncomplete?: boolean;
-  /**
-   * Optional stored-salary overrides (base/allowance/tax/bank). Merged over
-   * fetched salary rows before generate — still persisted if saved separately.
-   */
-  salaryDetails?: SalaryDetailInput[];
   /** Slip-only OT/bonus/others/contributions — workflow only, not stored. */
   slipExtras?: SalarySlipExtrasInput[];
 }

@@ -35,7 +35,6 @@ import {
   SALARY_DETAIL_FIELDS,
   SALARY_SLIP_EXTRA_FIELDS,
   type IncompleteSalaryDetail,
-  type SalaryDetailFieldKey,
   type SalaryDetailInput,
   type SalaryDetailRecord,
   type SalarySlipExtraFieldKey,
@@ -179,21 +178,6 @@ function buildSlipExtrasForms(employeeIds: string[]): Record<string, SalarySlipE
   return map;
 }
 
-function toStoredSalaryPayload(row: SalaryDetailInput): SalaryDetailInput {
-  return {
-    employeeId: row.employeeId,
-    salary: row.salary,
-    allowance: isEmptyValue(row.allowance) ? '0' : row.allowance,
-    tax: isEmptyValue(row.tax) ? '0' : row.tax,
-    accountNumber: row.accountNumber,
-    accountName: row.accountName,
-    bankName: row.bankName,
-    netSalary: row.netSalary,
-    totalEarning: row.totalEarning,
-    totalDeduction: row.totalDeduction,
-  };
-}
-
 function toSlipExtrasPayload(extras: SalarySlipExtrasInput): SalarySlipExtrasInput {
   return {
     employeeId: extras.employeeId,
@@ -232,6 +216,10 @@ function emptyFieldsForForm(row: SalaryDetailInput): string[] {
   return SALARY_DETAIL_FIELDS.filter((field) => isEmptyValue(row[field.key])).map(
     (field) => field.missing
   );
+}
+
+function requiredMissingForForm(row: SalaryDetailInput): string[] {
+  return emptyFieldsForForm(row).filter((field) => REQUIRED_MISSING.has(field));
 }
 
 export default function SalarySlipRunsPage() {
@@ -410,7 +398,6 @@ export default function SalarySlipRunsPage() {
   const handleGenerate = async (
     options: {
       confirmIncomplete?: boolean;
-      salaryDetails?: SalaryDetailInput[];
       slipExtras?: SalarySlipExtrasInput[];
     } = {}
   ) => {
@@ -433,7 +420,6 @@ export default function SalarySlipRunsPage() {
           year: Number(year),
           employeeIds: mode === 'selected' ? selectedIds : undefined,
           confirmIncomplete: options.confirmIncomplete || undefined,
-          salaryDetails: options.salaryDetails,
           slipExtras: options.slipExtras,
         }),
       });
@@ -491,16 +477,6 @@ export default function SalarySlipRunsPage() {
     }
   };
 
-  const updateSalaryFormField = (
-    employeeId: string,
-    field: SalaryDetailFieldKey,
-    value: string
-  ) => {
-    setSalaryForms((current) =>
-      current.map((row) => (row.employeeId === employeeId ? { ...row, [field]: value } : row))
-    );
-  };
-
   const updateSlipExtraField = (
     employeeId: string,
     field: SalarySlipExtraFieldKey,
@@ -515,46 +491,34 @@ export default function SalarySlipRunsPage() {
     });
   };
 
-  const handleSaveDetailsAndGenerate = async () => {
+  const blockedByIncompleteSalary = useMemo(
+    () => salaryForms.some((row) => requiredMissingForForm(row).length > 0),
+    [salaryForms]
+  );
+
+  const handleConfirmAndGenerate = async () => {
     if (!salaryReview || salaryForms.length === 0) return;
 
     for (const row of salaryForms) {
-      for (const field of SALARY_DETAIL_FIELDS) {
-        if (REQUIRED_MISSING.has(field.missing) && isEmptyValue(row[field.key])) {
-          toast.error(`Enter ${field.label} for ${row.employeeId}.`);
-          return;
-        }
+      const missing = requiredMissingForForm(row);
+      if (missing.length > 0) {
+        toast.error(
+          `${row.employeeId} is missing ${missing.join(', ')}. Update the salary record on the Salary page, then try again.`
+        );
+        return;
       }
     }
 
-    const storedDetails = salaryForms.map(toStoredSalaryPayload);
     const slipExtras = salaryForms.map((row) =>
       toSlipExtrasPayload(slipExtrasForms[row.employeeId] || emptySlipExtras(row.employeeId))
     );
 
     setSavingDetails(true);
     try {
-      const updateRes = await fetch('/api/salary-details', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token()}`,
-        },
-        body: JSON.stringify({ details: storedDetails }),
-      });
-      const updateJson = await updateRes.json();
-      if (!updateRes.ok || !updateJson.success) {
-        throw new Error(updateJson.error || 'Failed to update salary details.');
-      }
-
-      toast.success(updateJson.message || 'Salary details saved.');
       await handleGenerate({
         confirmIncomplete: true,
-        salaryDetails: storedDetails,
         slipExtras,
       });
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update salary details.');
     } finally {
       setSavingDetails(false);
     }
@@ -790,8 +754,13 @@ export default function SalarySlipRunsPage() {
                   </h2>
                   <p className="mt-1 text-sm text-muted">
                     Slip period <span className="font-medium text-ink">{runPeriodLabel}</span>.
-                    Stored salary fields can be edited below. Overtime, bonus, others, and
-                    contributions apply to this slip only and are not saved to salary records.
+                    Stored salary is read-only here — edit base salary, tax, allowance, or bank
+                    details on the{' '}
+                    <Link href="/dashboard/salary" className="font-medium text-ink underline">
+                      Salary
+                    </Link>{' '}
+                    page. Overtime, bonus, others, and contributions apply to this slip only and
+                    are not saved.
                   </p>
                 </div>
                 <button
@@ -805,6 +774,15 @@ export default function SalarySlipRunsPage() {
               </div>
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                {blockedByIncompleteSalary ? (
+                  <div className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger">
+                    One or more employees are missing required salary fields. Fix them on the{' '}
+                    <Link href="/dashboard/salary" className="font-medium underline">
+                      Salary
+                    </Link>{' '}
+                    page, then generate again.
+                  </div>
+                ) : null}
                 {salaryForms.map((row) => {
                   const meta =
                     salaryReview.find((item) => item.employeeId === row.employeeId) || null;
@@ -828,11 +806,13 @@ export default function SalarySlipRunsPage() {
                           <p className="mt-0.5 truncate text-xs text-muted">{meta.email}</p>
                         ) : null}
                         {empty.length > 0 ? (
-                          <p className="mt-1.5 text-xs text-danger">Empty: {empty.join(', ')}</p>
+                          <p className="mt-1.5 text-xs text-danger">
+                            Missing on Salary page: {empty.join(', ')}
+                          </p>
                         ) : null}
                       </div>
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                        Stored salary
+                        Stored salary (read-only)
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {SALARY_DETAIL_FIELDS.map((field) => {
@@ -851,23 +831,14 @@ export default function SalarySlipRunsPage() {
                               </span>
                               <input
                                 type="text"
-                                inputMode={
-                                  field.key === 'accountNumber' ||
-                                  field.key === 'accountName' ||
-                                  field.key === 'bankName'
-                                    ? 'text'
-                                    : 'decimal'
-                                }
                                 value={row[field.key] || ''}
-                                onChange={(e) =>
-                                  updateSalaryFormField(row.employeeId, field.key, e.target.value)
-                                }
-                                className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                                readOnly
+                                tabIndex={-1}
+                                className={`h-9 w-full cursor-default rounded-md border bg-canvas px-3 text-sm text-ink ${
                                   isEmpty
                                     ? 'border-danger-border ring-1 ring-danger/30'
                                     : 'border-border'
                                 }`}
-                                placeholder={isEmpty ? `Enter ${field.label}` : undefined}
                               />
                             </label>
                           );
@@ -908,19 +879,19 @@ export default function SalarySlipRunsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleSaveDetailsAndGenerate()}
-                  disabled={submitting || savingDetails}
+                  onClick={() => void handleConfirmAndGenerate()}
+                  disabled={submitting || savingDetails || blockedByIncompleteSalary}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                 >
                   {savingDetails || submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Saving…
+                      Generating…
                     </>
                   ) : (
                     <>
                       <Banknote className="h-4 w-4" />
-                      Save & generate
+                      Generate
                     </>
                   )}
                 </button>

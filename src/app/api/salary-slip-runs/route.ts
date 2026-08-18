@@ -2,29 +2,9 @@ import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
 import { listSalarySlipRuns } from '@/lib/db/salary-slips';
 import { startSalarySlipRun } from '@/lib/payroll/generate';
-import type { SalaryDetailInput, SalarySlipExtrasInput } from '@/types/salary-slip';
+import type { SalarySlipExtrasInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
-
-function normalizeSalaryDetail(row: Record<string, unknown>): SalaryDetailInput {
-  return {
-    employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
-    salary: String(row.salary ?? row.Salary ?? row.BaseSalary ?? row.baseSalary ?? '').trim(),
-    allowance: String(row.allowance ?? row.Allowance ?? '').trim(),
-    tax: String(row.tax ?? row.Tax ?? '').trim(),
-    netSalary: String(row.netSalary ?? row.NetSalary ?? '').trim() || undefined,
-    accountNumber: String(
-      row.accountNumber ?? row.AccountNumber ?? row['Account Number'] ?? ''
-    ).trim(),
-    accountName: String(row.accountName ?? row.AccountName ?? row['Account Name'] ?? '').trim(),
-    bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
-    totalEarning:
-      String(row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? '').trim() || undefined,
-    totalDeduction:
-      String(row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? '').trim() ||
-      undefined,
-  };
-}
 
 function normalizeSlipExtras(row: Record<string, unknown>): SalarySlipExtrasInput {
   return {
@@ -69,9 +49,6 @@ export async function POST(request: Request) {
       ? body.employeeIds.map((id: unknown) => String(id))
       : undefined;
     const confirmIncomplete = Boolean(body.confirmIncomplete);
-    const salaryDetails = Array.isArray(body.salaryDetails)
-      ? body.salaryDetails.map((row: Record<string, unknown>) => normalizeSalaryDetail(row))
-      : undefined;
     const slipExtras = Array.isArray(body.slipExtras)
       ? body.slipExtras.map((row: Record<string, unknown>) => normalizeSlipExtras(row))
       : Array.isArray(body.salaryDetails)
@@ -84,7 +61,6 @@ export async function POST(request: Request) {
       year,
       employeeIds,
       confirmIncomplete,
-      salaryDetails,
       slipExtras,
     });
 
