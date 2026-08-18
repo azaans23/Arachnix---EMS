@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { listEmployeeDbRows } from '@/lib/db/employees';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import {
   buildLeaveId,
   type LeaveBalanceInput,
@@ -249,8 +251,9 @@ export async function rollbackLeaveBalanceWrites(
  * If the webhook write fails, Supabase changes are rolled back.
  */
 export async function updateLeaveBalances(
-  balances: LeaveBalanceInput[]
-): Promise<{ message: string; data: LeaveBalanceInput[] }> {
+  balances: LeaveBalanceInput[],
+  options?: { actorEmail?: string }
+): Promise<{ message: string; data: LeaveBalanceInput[]; auditLogged: boolean }> {
   if (!balances.length) {
     throw new Error('No leave balances provided to update.');
   }
@@ -324,7 +327,79 @@ export async function updateLeaveBalances(
       if (text.trim()) message = text.trim();
     }
 
-    return { message, data: saved };
+    let auditLogged = true;
+    const employeeRows = await listEmployeeDbRows().catch(() => []);
+    const employeesById = new Map(
+      employeeRows.map((row) => {
+        const id = String(row.employeeid || '').trim().toLowerCase();
+        return [
+          id,
+          {
+            fullName: String(row.fullname || '').trim(),
+            email: String(row.email || '').trim(),
+            department: String(row.department || '').trim(),
+            designation: String(row.designation || '').trim(),
+          },
+        ] as const;
+      })
+    );
+
+    for (let i = 0; i < saved.length; i += 1) {
+      const next = saved[i];
+      const previous = snapshots[i]?.previous;
+      const employee = employeesById.get(String(next.employeeId).trim().toLowerCase()) || null;
+      const nextValue = {
+        leaveId: next.leaveId,
+        employeeId: next.employeeId,
+        fullName: employee?.fullName || '',
+        email: employee?.email || '',
+        department: employee?.department || '',
+        designation: employee?.designation || '',
+        year: next.year,
+        annualQuota: next.annualQuota,
+        annualUsed: next.annualUsed,
+        sickQuota: next.sickQuota,
+        sickUsed: next.sickUsed,
+        casualQuota: next.casualQuota,
+        casualUsed: next.casualUsed,
+        carryForwardDays: next.carryForwardDays,
+      };
+      const event = previous
+        ? {
+            action: AUDIT_ACTIONS.UPDATE,
+            recordType: AUDIT_RECORD_TYPES.LEAVE_BALANCE,
+            recordId: String(next.leaveId),
+            ...diffAuditValues(
+              {
+                leaveId: previous.leaveid,
+                employeeId: previous.employeeid,
+                fullName: employee?.fullName || '',
+                email: employee?.email || '',
+                department: employee?.department || '',
+                designation: employee?.designation || '',
+                year: previous.year,
+                annualQuota: previous.annualquota,
+                annualUsed: previous.annualused,
+                sickQuota: previous.sickquota,
+                sickUsed: previous.sickused,
+                casualQuota: previous.casualquota,
+                casualUsed: previous.casualused,
+                carryForwardDays: previous.carryforwarddays,
+              },
+              nextValue
+            ),
+          }
+        : {
+            action: AUDIT_ACTIONS.CREATE,
+            recordType: AUDIT_RECORD_TYPES.LEAVE_BALANCE,
+            recordId: String(next.leaveId),
+            newValue: nextValue,
+          };
+      const ok = await logAuditBestEffort(options?.actorEmail, event, 'Leave balance audit');
+      if (!ok) auditLogged = false;
+    }
+
+    return { message, data: saved, auditLogged };
   } catch (sheetError) {
     try {
       await rollbackLeaveBalanceWrites(snapshots);

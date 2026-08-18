@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'leave_balances', 'write');
+    const { user, errorResponse } = await verifyResourceAccess(request, 'leave_balances', 'write');
     if (errorResponse) return errorResponse;
 
     const body = (await request.json()) as Record<string, unknown>;
@@ -64,12 +64,13 @@ export async function POST(request: Request) {
     const balances = rows.map((row) =>
       normalizeLeaveBalanceInput((row || {}) as Record<string, unknown>)
     );
-    const result = await updateLeaveBalances(balances);
+    const result = await updateLeaveBalances(balances, { actorEmail: user?.email || '' });
 
     return NextResponse.json({
       success: true,
       data: result.data,
       message: result.message,
+      auditLogged: result.auditLogged,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to save leave balance.';

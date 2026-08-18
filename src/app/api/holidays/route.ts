@@ -32,12 +32,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'holiday_calendar', 'write');
+    const { user, errorResponse } = await verifyResourceAccess(
+      request,
+      'holiday_calendar',
+      'write'
+    );
     if (errorResponse) return errorResponse;
 
     const body = (await request.json()) as Record<string, unknown>;
     const input = normalizeHolidayInput(body);
-    const result = await saveHoliday(input);
+    const result = await saveHoliday(input, { actorEmail: user?.email || '' });
 
     return NextResponse.json({
       success: true,

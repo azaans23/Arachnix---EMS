@@ -62,7 +62,11 @@ export async function GET(request: Request) {
 /** POST — write salary profile rows (no period / status / slip extras). */
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'salary_slip_runs', 'write');
+    const { user, errorResponse } = await verifyResourceAccess(
+      request,
+      'salary_slip_runs',
+      'write'
+    );
     if (errorResponse) return errorResponse;
 
     const body = await request.json();
@@ -85,11 +89,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await updateSalaryDetails(details);
+    const result = await updateSalaryDetails(details, { actorEmail: user?.email || '' });
     return NextResponse.json({
       success: true,
       message: result.message,
       data: details,
+      auditLogged: result.auditLogged,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to update salary details.';

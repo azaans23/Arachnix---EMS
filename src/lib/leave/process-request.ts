@@ -9,6 +9,8 @@ import {
 import { getLeaveBalance, upsertLeaveBalance } from '@/lib/db/leave-balances';
 import { buildLeaveId, remainingLeaveDays, type LeaveBalanceInput } from '@/types/leave-balance';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type { LeaveRequest, LeaveRequestAction, LeaveRequestInput } from '@/types/leave-request';
 
 async function postLeaveRequestWebhook(
@@ -69,6 +71,50 @@ function remainingForType(leaveType: string, balance: LeaveBalanceInput | null) 
   return remainingLeaveDays(leaveType, balance);
 }
 
+function leaveRequestToAuditValue(request: LeaveRequest): Record<string, unknown> {
+  return {
+    requestId: request.requestId,
+    employeeId: request.employeeId,
+    leaveType: request.leaveType,
+    startDate: request.startDate,
+    endDate: request.endDate,
+    daysRequested: request.daysRequested,
+    reason: request.reason,
+    status: request.status,
+    approvedBy: request.approvedBy,
+    approvalDate: request.approvalDate,
+    rejectionReason: request.rejectionReason,
+    changesRequested: Boolean(request.changesRequested),
+  };
+}
+
+function leaveBalanceToAuditValue(
+  balance: LeaveBalanceInput,
+  employee?: {
+    fullName?: string;
+    email?: string;
+    department?: string;
+    designation?: string;
+  } | null
+): Record<string, unknown> {
+  return {
+    leaveId: balance.leaveId || buildLeaveId(balance.employeeId, balance.year),
+    employeeId: balance.employeeId,
+    fullName: employee?.fullName || '',
+    email: employee?.email || '',
+    department: employee?.department || '',
+    designation: employee?.designation || '',
+    year: balance.year,
+    annualQuota: balance.annualQuota,
+    annualUsed: balance.annualUsed,
+    sickQuota: balance.sickQuota,
+    sickUsed: balance.sickUsed,
+    casualQuota: balance.casualQuota,
+    casualUsed: balance.casualUsed,
+    carryForwardDays: balance.carryForwardDays,
+  };
+}
+
 /**
  * Consumes quota in Supabase only. Annual = total pool.
  * Sick / Casual also increment AnnualUsed. Sheet sync goes via create-leave-request.
@@ -125,7 +171,8 @@ async function applyApprovedLeaveToBalance(request: LeaveRequest): Promise<{
  * Writes Supabase first, then notifies n8n / Sheets. Rolls back on webhook failure.
  */
 export async function startLeaveRequest(
-  input: LeaveRequestInput | Record<string, unknown>
+  input: LeaveRequestInput | Record<string, unknown>,
+  options?: { actorEmail?: string }
 ): Promise<{ request: LeaveRequest; message: string }> {
   const normalized =
     'employeeId' in input && typeof (input as LeaveRequestInput).daysRequested === 'number'
@@ -142,6 +189,17 @@ export async function startLeaveRequest(
         request: toWebhookLeaveRequestRow(request),
       },
       'create-leave-request'
+    );
+
+    await logAuditBestEffort(
+      options?.actorEmail,
+      {
+        action: AUDIT_ACTIONS.CREATE,
+        recordType: AUDIT_RECORD_TYPES.LEAVE_REQUEST,
+        recordId: request.requestId,
+        newValue: leaveRequestToAuditValue(request),
+      },
+      'Leave request audit'
     );
 
     return {
@@ -244,6 +302,39 @@ export async function processLeaveRequestAction(
         'create-leave-request'
       );
 
+      await logAuditBestEffort(
+        actor.email,
+        {
+          action: AUDIT_ACTIONS.APPROVE,
+          recordType: AUDIT_RECORD_TYPES.LEAVE_REQUEST,
+          recordId: approved.requestId,
+          ...diffAuditValues(leaveRequestToAuditValue(existing), leaveRequestToAuditValue(approved)),
+        },
+        'Leave request audit'
+      );
+
+      if (previousBalance && balance) {
+        const employeeProfile = {
+          fullName: approved.fullName || existing.fullName || '',
+          email: approved.email || existing.email || '',
+          department: approved.department || existing.department || '',
+          designation: approved.designation || existing.designation || '',
+        };
+        await logAuditBestEffort(
+          actor.email,
+          {
+            action: AUDIT_ACTIONS.UPDATE,
+            recordType: AUDIT_RECORD_TYPES.LEAVE_BALANCE,
+            recordId: balance.leaveId || buildLeaveId(balance.employeeId, balance.year),
+            ...diffAuditValues(
+              leaveBalanceToAuditValue(previousBalance, employeeProfile),
+              leaveBalanceToAuditValue(balance, employeeProfile)
+            ),
+          },
+          'Leave balance audit'
+        );
+      }
+
       return {
         request: approved,
         message: message || `Leave request #${approved.requestId} approved.`,
@@ -284,6 +375,17 @@ export async function processLeaveRequestAction(
         'create-leave-request'
       );
 
+      await logAuditBestEffort(
+        actor.email,
+        {
+          action: AUDIT_ACTIONS.REJECT,
+          recordType: AUDIT_RECORD_TYPES.LEAVE_REQUEST,
+          recordId: rejected.requestId,
+          ...diffAuditValues(leaveRequestToAuditValue(existing), leaveRequestToAuditValue(rejected)),
+        },
+        'Leave request audit'
+      );
+
       return {
         request: rejected,
         message: message || `Leave request #${rejected.requestId} rejected.`,
@@ -317,8 +419,20 @@ export async function processLeaveRequestAction(
       'create-leave-request'
     );
 
+    const withChanges = { ...updated, changesRequested: true };
+    await logAuditBestEffort(
+      actor.email,
+      {
+        action: AUDIT_ACTIONS.REQUEST_CHANGES,
+        recordType: AUDIT_RECORD_TYPES.LEAVE_REQUEST,
+        recordId: updated.requestId,
+        ...diffAuditValues(leaveRequestToAuditValue(existing), leaveRequestToAuditValue(withChanges)),
+      },
+      'Leave request audit'
+    );
+
     return {
-      request: { ...updated, changesRequested: true },
+      request: withChanges,
       message: message || `Changes requested for leave request #${updated.requestId}.`,
     };
   } catch (webhookError) {

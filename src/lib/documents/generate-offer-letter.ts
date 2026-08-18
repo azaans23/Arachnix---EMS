@@ -7,8 +7,8 @@ import {
 } from '@/lib/db/offer-letters';
 import { formatMonthName } from '@/lib/payroll/period';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
-import { createAuditLog } from '@/lib/sheets/audit';
-import { AUDIT_ACTIONS } from '@/types/audit';
+import { logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type {
   GenerateOfferLettersInput,
   OfferLetterInput,
@@ -154,21 +154,17 @@ async function logOfferLetterRunAudit(
   actorEmail: string,
   input: { action: string; runId: string; oldValue?: unknown; newValue: unknown }
 ): Promise<void> {
-  const email = actorEmail.trim() || 'system@arachnix.io';
-  try {
-    await createAuditLog(
-      { email },
-      {
-        action: input.action,
-        recordType: 'OfferLetterRun',
-        recordId: input.runId,
-        oldValue: input.oldValue,
-        newValue: input.newValue,
-      }
-    );
-  } catch (auditError) {
-    console.error('Offer letter run audit failed:', auditError);
-  }
+  await logAuditBestEffort(
+    actorEmail,
+    {
+      action: input.action,
+      recordType: AUDIT_RECORD_TYPES.OFFER_LETTER_RUN,
+      recordId: input.runId,
+      oldValue: input.oldValue,
+      newValue: input.newValue,
+    },
+    'Offer letter run audit'
+  );
 }
 
 /**

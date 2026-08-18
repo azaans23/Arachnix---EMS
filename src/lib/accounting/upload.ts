@@ -7,6 +7,8 @@ import {
   updateAccountingRecordDriveLink,
 } from '@/lib/db/accounting';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES, SYSTEM_AUDIT_EMAIL } from '@/types/audit';
 import {
   ACCOUNTING_ARCHIVE_GRACE_MINUTES,
   buildAccountingDriveFileName,
@@ -150,6 +152,30 @@ export async function startAccountingUpload(params: {
     uploadedBy: params.uploadedBy,
   });
 
+  await logAuditBestEffort(
+    params.uploadedBy,
+    {
+      action: AUDIT_ACTIONS.UPLOAD,
+      recordType: AUDIT_RECORD_TYPES.ACCOUNTING_RECORD,
+      recordId: record.recordId,
+      newValue: {
+        recordId: record.recordId,
+        period: meta.period,
+        account: record.account,
+        category: record.category,
+        transactionType: record.transactionType,
+        amount: record.amount,
+        currency: record.currency,
+        clientVendor: record.clientVendor,
+        reference: record.reference,
+        fileName: record.fileName,
+        uploadedBy: record.uploadedBy,
+        status: record.status,
+      },
+    },
+    'Accounting upload audit'
+  );
+
   return {
     record,
     period: meta.period,
@@ -201,7 +227,46 @@ export async function dispatchAccountingUploadWebhook(
   const driveLink = parseDriveLink(responseText);
   if (driveLink) {
     try {
-      await updateAccountingRecordDriveLink(prepared.record.recordId, { driveLink });
+      const updated = await updateAccountingRecordDriveLink(prepared.record.recordId, { driveLink });
+      await logAuditBestEffort(
+        SYSTEM_AUDIT_EMAIL,
+        {
+          action: AUDIT_ACTIONS.UPDATE,
+          recordType: AUDIT_RECORD_TYPES.ACCOUNTING_RECORD,
+          recordId: prepared.record.recordId,
+          ...diffAuditValues(
+            {
+              recordId: prepared.record.recordId,
+              account: prepared.record.account,
+              category: prepared.record.category,
+              transactionType: prepared.record.transactionType,
+              amount: prepared.record.amount,
+              currency: prepared.record.currency,
+              clientVendor: prepared.record.clientVendor,
+              reference: prepared.record.reference,
+              uploadedBy: prepared.record.uploadedBy,
+              status: prepared.record.status,
+              fileName: prepared.record.fileName,
+              driveLink: prepared.record.driveLink || '',
+            },
+            {
+              recordId: updated.recordId,
+              account: updated.account,
+              category: updated.category,
+              transactionType: updated.transactionType,
+              amount: updated.amount,
+              currency: updated.currency,
+              clientVendor: updated.clientVendor,
+              reference: updated.reference,
+              uploadedBy: updated.uploadedBy,
+              status: updated.status,
+              fileName: updated.fileName,
+              driveLink: updated.driveLink || '',
+            }
+          ),
+        },
+        'Accounting Drive link audit'
+      );
       return;
     } catch (error) {
       // File is archived; only our write-back failed. Keep the row and let n8n PATCH it.

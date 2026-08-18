@@ -62,16 +62,50 @@ function prettyValue(value: string): string {
   }
 }
 
+function parseAuditPayload(value: string): {
+  context: Record<string, unknown>;
+  changes: Record<string, unknown>;
+  changedFields: string[];
+  raw: string;
+} | null {
+  if (!value?.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    const changedFields = Array.isArray(record.changedFields)
+      ? record.changedFields.map((field) => String(field))
+      : [];
+    const changedSet = new Set(changedFields.map((field) => field.toLowerCase()));
+    const context: Record<string, unknown> = {};
+    const changes: Record<string, unknown> = {};
+
+    for (const [key, entry] of Object.entries(record)) {
+      if (key === 'changedFields') continue;
+      if (changedSet.has(key.toLowerCase())) changes[key] = entry;
+      else context[key] = entry;
+    }
+
+    return { context, changes, changedFields, raw: prettyValue(value) };
+  } catch {
+    return null;
+  }
+}
+
 function actionClasses(action: string): string {
   switch (action.toUpperCase()) {
     case 'CREATE':
     case 'GRANT_ACCESS':
     case 'APPROVE':
+    case 'UPLOAD':
+    case 'GENERATE':
       return 'border-border bg-ink text-accent-fg';
     case 'DELETE':
     case 'REJECT':
     case 'REVOKE_ACCESS':
       return 'border-danger-border bg-danger-bg text-danger';
+    case 'REQUEST_CHANGES':
+      return 'border-border bg-canvas text-ink';
     default:
       return 'border-border bg-canvas text-ink';
   }
@@ -480,14 +514,59 @@ export default function AuditLogPage() {
 }
 
 function AuditValue({ label, value }: { label: string; value: string }) {
+  const parsed = parseAuditPayload(value);
+
+  if (!parsed) {
+    return (
+      <div className="min-w-0 rounded-md border border-border bg-surface p-3">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+          {label}
+        </p>
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+          {prettyValue(value)}
+        </pre>
+      </div>
+    );
+  }
+
+  const hasContext = Object.keys(parsed.context).length > 0;
+  const hasChanges = Object.keys(parsed.changes).length > 0;
+
   return (
     <div className="min-w-0 rounded-md border border-border bg-surface p-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
         {label}
       </p>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
-        {prettyValue(value)}
-      </pre>
+      {parsed.changedFields.length > 0 ? (
+        <p className="mb-2 text-xs text-muted">
+          Changed:{' '}
+          <span className="font-medium text-ink">{parsed.changedFields.join(', ')}</span>
+        </p>
+      ) : null}
+      {hasContext ? (
+        <div className="mb-3">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            Record
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+            {JSON.stringify(parsed.context, null, 2)}
+          </pre>
+        </div>
+      ) : null}
+      {hasChanges ? (
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            Changes
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+            {JSON.stringify(parsed.changes, null, 2)}
+          </pre>
+        </div>
+      ) : !hasContext ? (
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+          {parsed.raw}
+        </pre>
+      ) : null}
     </div>
   );
 }

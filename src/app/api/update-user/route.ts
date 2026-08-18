@@ -268,12 +268,15 @@ export async function POST(request: Request) {
     let salaryWarning = '';
     if (isCreate && initialSalary) {
       try {
-        await updateSalaryDetails([
-          {
-            ...initialSalary,
-            employeeId: saved.employeeId || initialSalary.employeeId,
-          },
-        ]);
+        await updateSalaryDetails(
+          [
+            {
+              ...initialSalary,
+              employeeId: saved.employeeId || initialSalary.employeeId,
+            },
+          ],
+          { actorEmail: user?.email || '' }
+        );
         salarySaved = true;
       } catch (salaryError: unknown) {
         const message =

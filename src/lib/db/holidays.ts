@@ -1,5 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import {
   HOLIDAY_TYPES,
   isIsoDate,
@@ -240,7 +242,10 @@ async function postHolidayWebhook(holiday: Holiday, label: string) {
  * Create or update a holiday in Supabase, then sync to the sheet via n8n.
  * Rolls back the DB write if the webhook fails.
  */
-export async function saveHoliday(input: HolidayInput): Promise<{
+export async function saveHoliday(
+  input: HolidayInput,
+  options?: { actorEmail?: string }
+): Promise<{
   holiday: Holiday;
   message: string;
   created: boolean;
@@ -273,6 +278,43 @@ export async function saveHoliday(input: HolidayInput): Promise<{
 
   try {
     const webhookMessage = await postHolidayWebhook(saved, 'create-holiday');
+
+    const nextValue = {
+      holidayDate: saved.holidayDate,
+      holidayName: saved.holidayName,
+      type: saved.type,
+    };
+    if (isCreate) {
+      await logAuditBestEffort(
+        options?.actorEmail,
+        {
+          action: AUDIT_ACTIONS.CREATE,
+          recordType: AUDIT_RECORD_TYPES.HOLIDAY,
+          recordId: saved.holidayDate,
+          newValue: nextValue,
+        },
+        'Holiday audit'
+      );
+    } else {
+      await logAuditBestEffort(
+        options?.actorEmail,
+        {
+          action: AUDIT_ACTIONS.UPDATE,
+          recordType: AUDIT_RECORD_TYPES.HOLIDAY,
+          recordId: saved.holidayDate,
+          ...diffAuditValues(
+            {
+              holidayDate: previous?.holidayDate || originalDate,
+              holidayName: previous?.holidayName || '',
+              type: previous?.type || '',
+            },
+            nextValue
+          ),
+        },
+        'Holiday audit'
+      );
+    }
+
     return {
       holiday: saved,
       created: isCreate,

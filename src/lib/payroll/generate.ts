@@ -7,8 +7,8 @@ import {
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
 import { formatSalaryPeriod } from '@/lib/payroll/period';
-import { createAuditLog } from '@/lib/sheets/audit';
-import { AUDIT_ACTIONS } from '@/types/audit';
+import { logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
 import type {
   GenerateSalarySlipsInput,
@@ -142,21 +142,17 @@ async function logSalarySlipRunAudit(
     newValue: unknown;
   }
 ): Promise<void> {
-  const email = actorEmail.trim() || 'system@arachnix.io';
-  try {
-    await createAuditLog(
-      { email },
-      {
-        action: input.action,
-        recordType: 'SalarySlipRun',
-        recordId: input.runId,
-        oldValue: input.oldValue,
-        newValue: input.newValue,
-      }
-    );
-  } catch (auditError) {
-    console.error('Salary slip run audit failed:', auditError);
-  }
+  await logAuditBestEffort(
+    actorEmail,
+    {
+      action: input.action,
+      recordType: AUDIT_RECORD_TYPES.SALARY_SLIP_RUN,
+      recordId: input.runId,
+      oldValue: input.oldValue,
+      newValue: input.newValue,
+    },
+    'Salary slip run audit'
+  );
 }
 
 function extrasByEmployeeId(extras?: SalarySlipExtrasInput[]) {

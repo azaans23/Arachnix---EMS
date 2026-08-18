@@ -10,6 +10,8 @@ import {
   type SalaryDbRow,
 } from '@/lib/db/salaries';
 import { listEmployeeDbRows, dbRowToEmployeeRecord } from '@/lib/db/employees';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type {
   IncompleteSalaryDetail,
   SalaryDetailInput,
@@ -138,6 +140,54 @@ function toWebhookSalaryRow(detail: SalaryDetailInput | SalaryDetailRecord) {
   };
 }
 
+function salaryDetailToAuditValue(
+  detail: SalaryDetailInput | SalaryDetailRecord | SalaryDbRow,
+  employee?: {
+    fullName?: string;
+    email?: string;
+    department?: string;
+    designation?: string;
+  } | null
+): Record<string, unknown> {
+  const profile = {
+    fullName: employee?.fullName || ('fullName' in detail ? detail.fullName || '' : ''),
+    email: employee?.email || ('email' in detail ? detail.email || '' : ''),
+    department: employee?.department || ('department' in detail ? detail.department || '' : ''),
+    designation:
+      employee?.designation || ('designation' in detail ? detail.designation || '' : ''),
+  };
+
+  if ('employeeid' in detail) {
+    return {
+      employeeId: detail.employeeid,
+      ...profile,
+      salary: detail.basesalary,
+      allowance: detail.allowance,
+      tax: detail.tax,
+      accountNumber: detail.accountnumber,
+      accountName: detail.accountname,
+      bankName: detail.bankname,
+      totalEarning: detail.totalearning,
+      totalDeduction: detail.totaldeduction,
+      netSalary: detail.netsalary,
+    };
+  }
+
+  return {
+    employeeId: detail.employeeId,
+    ...profile,
+    salary: detail.salary,
+    allowance: detail.allowance,
+    tax: detail.tax,
+    accountNumber: detail.accountNumber,
+    accountName: detail.accountName,
+    bankName: detail.bankName,
+    totalEarning: 'totalEarning' in detail ? detail.totalEarning || '' : '',
+    totalDeduction: 'totalDeduction' in detail ? detail.totalDeduction || '' : '',
+    netSalary: 'netSalary' in detail ? detail.netSalary || '' : '',
+  };
+}
+
 /**
  * Read salary rows from Supabase `salaries` (one per employee), enriched with
  * employee profile fields.
@@ -171,10 +221,12 @@ export async function fetchSalaryDetails(employeeIds?: string[]): Promise<Salary
 /**
  * Dual-write salary rows: Supabase first, then n8n update-salary-detail.
  * If the sheet/webhook write fails, Supabase changes are rolled back.
+ * Audit is best-effort after a successful dual-write.
  */
 export async function updateSalaryDetails(
-  details: SalaryDetailInput[]
-): Promise<{ message: string }> {
+  details: SalaryDetailInput[],
+  options?: { actorEmail?: string }
+): Promise<{ message: string; auditLogged: boolean }> {
   if (!details.length) {
     throw new Error('No salary details provided to update.');
   }
@@ -254,7 +306,38 @@ export async function updateSalaryDetails(
       if (text.trim()) message = text.trim();
     }
 
-    return { message };
+    let auditLogged = true;
+    const employeeRows = await listEmployeeDbRows().catch(() => []);
+    const employeesById = new Map(
+      employeeRows.map((row) => {
+        const employee = dbRowToEmployeeRecord(row);
+        return [employee.employeeId.trim().toLowerCase(), employee] as const;
+      })
+    );
+
+    for (let i = 0; i < writes.length; i += 1) {
+      const detail = writes[i];
+      const previous = snapshots[i]?.previous ?? null;
+      const employee = employeesById.get(detail.employeeId.trim().toLowerCase()) || null;
+      const nextValue = salaryDetailToAuditValue(detail, employee);
+      const event = previous
+        ? {
+            action: AUDIT_ACTIONS.UPDATE,
+            recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
+            recordId: detail.employeeId,
+            ...diffAuditValues(salaryDetailToAuditValue(previous, employee), nextValue),
+          }
+        : {
+            action: AUDIT_ACTIONS.CREATE,
+            recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
+            recordId: detail.employeeId,
+            newValue: nextValue,
+          };
+      const ok = await logAuditBestEffort(options?.actorEmail, event, 'Salary detail audit');
+      if (!ok) auditLogged = false;
+    }
+
+    return { message, auditLogged };
   } catch (sheetError) {
     try {
       await rollbackSalaryDbWrites(snapshots);

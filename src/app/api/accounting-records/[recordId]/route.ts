@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
 import { getAccountingRecord, updateAccountingRecordDriveLink } from '@/lib/db/accounting';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES, SYSTEM_AUDIT_EMAIL } from '@/types/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,18 +54,67 @@ function driveLinkFrom(body: Record<string, unknown>): string | undefined {
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
+    let actorEmail = SYSTEM_AUDIT_EMAIL;
     if (!isTrustedCallback(request)) {
-      const { errorResponse } = await verifyResourceAccess(request, 'accounting_records', 'write');
+      const { user, errorResponse } = await verifyResourceAccess(
+        request,
+        'accounting_records',
+        'write'
+      );
       if (errorResponse) return errorResponse;
+      actorEmail = user?.email || SYSTEM_AUDIT_EMAIL;
     }
 
     const { recordId } = await context.params;
+    const previous = await getAccountingRecord(recordId);
     const body = (await request.json()) as Record<string, unknown>;
     const record = await updateAccountingRecordDriveLink(recordId, {
       driveLink: driveLinkFrom(body),
       fileName: body.fileName != null ? String(body.fileName) : undefined,
       notes: body.notes != null ? String(body.notes) : undefined,
     });
+
+    await logAuditBestEffort(
+      actorEmail,
+      {
+        action: AUDIT_ACTIONS.UPDATE,
+        recordType: AUDIT_RECORD_TYPES.ACCOUNTING_RECORD,
+        recordId,
+        ...diffAuditValues(
+          {
+            recordId: previous?.recordId || recordId,
+            account: previous?.account || '',
+            category: previous?.category || '',
+            transactionType: previous?.transactionType || '',
+            amount: previous?.amount ?? '',
+            currency: previous?.currency || '',
+            clientVendor: previous?.clientVendor || '',
+            reference: previous?.reference || '',
+            uploadedBy: previous?.uploadedBy || '',
+            status: previous?.status || '',
+            driveLink: previous?.driveLink || '',
+            fileName: previous?.fileName || '',
+            notes: previous?.notes || '',
+          },
+          {
+            recordId: record.recordId,
+            account: record.account,
+            category: record.category,
+            transactionType: record.transactionType,
+            amount: record.amount,
+            currency: record.currency,
+            clientVendor: record.clientVendor,
+            reference: record.reference,
+            uploadedBy: record.uploadedBy,
+            status: record.status,
+            driveLink: record.driveLink || '',
+            fileName: record.fileName || '',
+            notes: record.notes || '',
+          }
+        ),
+      },
+      'Accounting Drive link audit'
+    );
 
     return NextResponse.json({ success: true, data: record });
   } catch (error: unknown) {
