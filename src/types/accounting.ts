@@ -109,6 +109,18 @@ export function sanitizeFileToken(value: string, fallback = 'NA'): string {
   return cleaned || fallback;
 }
 
+/** Next invoice-style reference: INV-0001, INV-0002, … */
+export function nextAccountingInvoiceReference(references: Iterable<string>): string {
+  let max = 0;
+  for (const value of references) {
+    const match = /^INV-(\d+)$/i.exec(String(value || '').trim());
+    if (!match) continue;
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `INV-${String(max + 1).padStart(4, '0')}`;
+}
+
 /**
  * Target Drive filename:
  * YYYY-MM-DD_Account_TransactionType_Client_Amount_Reference.ext

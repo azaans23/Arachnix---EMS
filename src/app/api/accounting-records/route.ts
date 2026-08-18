@@ -6,6 +6,7 @@ import {
   listAccountingRecords,
 } from '@/lib/db/accounting';
 import { dispatchAccountingUploadWebhook, startAccountingUpload } from '@/lib/accounting/upload';
+import { nextAccountingInvoiceReference } from '@/types/accounting';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
       data: filtered,
       metrics,
       directors,
+      nextReference: nextAccountingInvoiceReference(records.map((row) => row.reference)),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load accounting records.';

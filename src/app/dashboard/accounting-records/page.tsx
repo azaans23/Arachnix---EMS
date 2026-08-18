@@ -38,6 +38,7 @@ import {
   ACCOUNTING_TRANSACTION_TYPES,
   buildAccountingDriveFileName,
   isAllowedAccountingFileName,
+  nextAccountingInvoiceReference,
   type AccountingDashboardMetrics,
   type AccountingRecord,
 } from '@/types/accounting';
@@ -155,6 +156,7 @@ export default function AccountingRecordsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [form, setForm] = useState<UploadForm>(() => emptyForm(currentPeriod()));
+  const [nextReference, setNextReference] = useState('INV-0001');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [directors, setDirectors] = useState<DirectorAccount[]>([]);
@@ -200,6 +202,10 @@ export default function AccountingRecordsPage() {
       if (Array.isArray(result.directors)) {
         setDirectors(result.directors);
       }
+      setNextReference(
+        String(result.nextReference || '').trim() ||
+          nextAccountingInvoiceReference(nextRows.map((row) => row.reference))
+      );
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to load accounting records.');
     } finally {
@@ -334,7 +340,9 @@ export default function AccountingRecordsPage() {
   }, [directorNames, rows]);
 
   const openUpload = () => {
-    setForm(emptyForm(monthFilter));
+    const invoice =
+      nextReference || nextAccountingInvoiceReference(rows.map((row) => row.reference));
+    setForm({ ...emptyForm(monthFilter), reference: invoice });
     setFile(null);
     setUploadOpen(true);
   };
@@ -378,6 +386,14 @@ export default function AccountingRecordsPage() {
       toast.success(result.message || 'Upload accepted. Drive archival is running.');
       setUploadOpen(false);
       setFile(null);
+      const used = String(form.reference || '').trim();
+      setNextReference(
+        nextAccountingInvoiceReference([
+          ...rows.map((row) => row.reference),
+          used,
+          nextReference,
+        ])
+      );
       setForm(emptyForm(monthFilter));
       if (form.period !== monthFilter) setMonthFilter(form.period);
       else await load();
@@ -939,15 +955,17 @@ export default function AccountingRecordsPage() {
                     />
                   </label>
                   <label className="text-xs font-medium text-muted">
-                    Reference
+                    Invoice number
                     <input
                       value={form.reference}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, reference: event.target.value }))
-                      }
-                      placeholder="INV-1042"
-                      className={inputClassName}
+                      readOnly
+                      aria-readonly="true"
+                      title="Auto-generated invoice number"
+                      className={`${inputClassName} cursor-not-allowed bg-canvas text-muted dark:bg-canvas/80`}
                     />
+                    <span className="mt-1 block text-[11px] font-normal text-muted">
+                      Generated automatically
+                    </span>
                   </label>
                   <label className="text-xs font-medium text-muted">
                     Source

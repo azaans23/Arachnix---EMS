@@ -1,4 +1,5 @@
 import {
+  allocateAccountingInvoiceReference,
   createAccountingRecord,
   deleteAccountingRecord,
   getAccountingRecord,
@@ -118,8 +119,12 @@ export async function startAccountingUpload(params: {
 }): Promise<PreparedAccountingUpload> {
   const meta =
     'period' in params.fields && typeof (params.fields as AccountingUploadInput).amount === 'number'
-      ? (params.fields as AccountingUploadInput)
+      ? { ...(params.fields as AccountingUploadInput) }
       : normalizeAccountingUploadInput(params.fields as Record<string, unknown>);
+
+  if (!String(meta.reference || '').trim()) {
+    meta.reference = await allocateAccountingInvoiceReference();
+  }
 
   if (!parsePeriodMonth(meta.period)) {
     throw new Error('Period must be YYYY-MM.');

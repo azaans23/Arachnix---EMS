@@ -6,6 +6,7 @@ import {
   ACCOUNTING_ARCHIVE_GRACE_MINUTES,
   ACCOUNTING_COMPANY_ROOT,
   ACCOUNTING_BANK_ACCOUNT,
+  nextAccountingInvoiceReference,
   type AccountingRecord,
   type AccountingUploadInput,
   type AccountingDashboardMetrics,
@@ -214,6 +215,16 @@ export async function listAccountingRecords(filters?: {
   return rows;
 }
 
+/** Next INV-#### from every reference currently stored. */
+export async function allocateAccountingInvoiceReference(): Promise<string> {
+  const { data, error } = await getSupabaseAdmin().from(TABLE).select('reference');
+  if (error) throw new Error(`Failed to allocate invoice reference: ${error.message}`);
+  const references = ((data as Array<{ reference: string | null }>) || []).map(
+    (row) => row.reference || ''
+  );
+  return nextAccountingInvoiceReference(references);
+}
+
 export async function getAccountingRecord(recordId: string): Promise<AccountingRecord | null> {
   const id = Number(recordId);
   if (!Number.isFinite(id)) return null;
@@ -234,6 +245,9 @@ export async function createAccountingRecord(input: {
   fileName: string;
   uploadedBy: string;
 }): Promise<AccountingRecord> {
+  const reference =
+    String(input.meta.reference || '').trim() || (await allocateAccountingInvoiceReference());
+
   const payload = {
     account: input.meta.account,
     category: input.meta.category,
@@ -243,7 +257,7 @@ export async function createAccountingRecord(input: {
     clientvendor: input.meta.clientVendor || null,
     source: input.meta.source || null,
     destination: input.meta.destination || null,
-    reference: input.meta.reference || null,
+    reference,
     notes: input.meta.notes || null,
     filename: input.fileName,
     drivelink: null,
