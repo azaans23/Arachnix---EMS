@@ -6,11 +6,12 @@ export type HolidayInput = {
   holidayDate: string;
   holidayName: string;
   type: HolidayType;
-  /** When updating and moving a holiday to a new date. */
-  originalHolidayDate?: string;
+  /** When updating an existing holiday. */
+  id?: string;
 };
 
 export type Holiday = {
+  id: string;
   holidayDate: string;
   holidayName: string;
   type: HolidayType;

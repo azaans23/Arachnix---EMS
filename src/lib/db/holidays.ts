@@ -11,6 +11,7 @@ import {
 } from '@/types/holiday';
 
 type HolidayDbRow = {
+  id: number;
   holidaydate: string;
   holidayname: string;
   type: string;
@@ -42,22 +43,23 @@ export function normalizeHolidayInput(raw: Record<string, unknown>): HolidayInpu
     'HolidayName'
   );
   const type = requiredText(raw.type ?? raw.Type, 'Type') as HolidayType;
-  const originalRaw = raw.originalHolidayDate ?? raw.OriginalHolidayDate;
-  const originalHolidayDate =
-    originalRaw === undefined || String(originalRaw).trim() === ''
+  const idRaw = raw.id ?? raw.ID ?? raw.Id;
+  const id =
+    idRaw === undefined || idRaw === null || String(idRaw).trim() === ''
       ? undefined
-      : requireIsoDate(originalRaw, 'OriginalHolidayDate');
+      : String(idRaw).trim();
 
   return {
+    id,
     holidayDate,
     holidayName,
     type,
-    originalHolidayDate,
   };
 }
 
 export function mapHolidayRow(row: HolidayDbRow): Holiday {
   return {
+    id: String(row.id),
     holidayDate: String(row.holidaydate).slice(0, 10),
     holidayName: row.holidayname || '',
     type: row.type || '',
@@ -67,6 +69,7 @@ export function mapHolidayRow(row: HolidayDbRow): Holiday {
 /** Sheet / webhook column names for Holiday Calendar. */
 export function toWebhookHolidayRow(holiday: Holiday) {
   return {
+    ID: holiday.id,
     HolidayDate: holiday.holidayDate,
     HolidayName: holiday.holidayName,
     Type: holiday.type,
@@ -78,13 +81,15 @@ export async function listHolidays(filters?: {
   from?: string;
   to?: string;
 }): Promise<Holiday[]> {
-  let query = getSupabaseAdmin().from(TABLE).select('*').order('holidaydate', { ascending: true });
+  let query = getSupabaseAdmin()
+    .from(TABLE)
+    .select('*')
+    .order('holidaydate', { ascending: true })
+    .order('id', { ascending: true });
 
   if (filters?.year) {
     const year = filters.year;
-    query = query
-      .gte('holidaydate', `${year}-01-01`)
-      .lte('holidaydate', `${year}-12-31`);
+    query = query.gte('holidaydate', `${year}-01-01`).lte('holidaydate', `${year}-12-31`);
   }
   if (filters?.from) {
     query = query.gte('holidaydate', filters.from);
@@ -101,18 +106,34 @@ export async function listHolidays(filters?: {
   return ((data as HolidayDbRow[]) || []).map(mapHolidayRow);
 }
 
-export async function getHoliday(holidayDate: string): Promise<Holiday | null> {
-  const date = requireIsoDate(holidayDate, 'HolidayDate');
+export async function getHolidayById(id: string): Promise<Holiday | null> {
+  const numericId = Number(String(id).trim());
+  if (!Number.isFinite(numericId)) return null;
+
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)
     .select('*')
-    .eq('holidaydate', date)
+    .eq('id', numericId)
     .maybeSingle();
 
   if (error) {
     throw new Error(`Supabase holiday calendar read failed: ${error.message}`);
   }
   return data ? mapHolidayRow(data as HolidayDbRow) : null;
+}
+
+export async function listHolidaysOnDate(holidayDate: string): Promise<Holiday[]> {
+  const date = requireIsoDate(holidayDate, 'HolidayDate');
+  const { data, error } = await getSupabaseAdmin()
+    .from(TABLE)
+    .select('*')
+    .eq('holidaydate', date)
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(`Supabase holiday calendar read failed: ${error.message}`);
+  }
+  return ((data as HolidayDbRow[]) || []).map(mapHolidayRow);
 }
 
 type PostgrestErrorLike = {
@@ -122,10 +143,6 @@ type PostgrestErrorLike = {
   hint?: string | null;
 };
 
-/**
- * Postgres rejects the row for reasons the UI can act on (bad Type value,
- * duplicate date). Surface the constraint text instead of a bare 500.
- */
 function holidayWriteError(error: PostgrestErrorLike, input: HolidayInput, action: string): Error {
   console.error(`Supabase holidaycalendar ${action} failed:`, {
     code: error.code,
@@ -133,10 +150,6 @@ function holidayWriteError(error: PostgrestErrorLike, input: HolidayInput, actio
     details: error.details,
     hint: error.hint,
   });
-
-  if (error.code === '23505') {
-    return new Error(`A holiday already exists on ${input.holidayDate}.`);
-  }
 
   if (error.code === '23514') {
     return new Error(
@@ -172,8 +185,14 @@ async function insertHolidayRow(input: HolidayInput): Promise<Holiday> {
   return mapHolidayRow(data as HolidayDbRow);
 }
 
-async function updateHolidayRow(date: string, input: HolidayInput): Promise<Holiday> {
+async function updateHolidayRow(id: string, input: HolidayInput): Promise<Holiday> {
+  const numericId = Number(String(id).trim());
+  if (!Number.isFinite(numericId)) {
+    throw new Error('Holiday ID is required to update.');
+  }
+
   const payload = {
+    holidaydate: input.holidayDate,
     holidayname: input.holidayName,
     type: input.type,
   };
@@ -181,7 +200,7 @@ async function updateHolidayRow(date: string, input: HolidayInput): Promise<Holi
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)
     .update(payload)
-    .eq('holidaydate', date)
+    .eq('id', numericId)
     .select('*')
     .maybeSingle();
 
@@ -189,24 +208,37 @@ async function updateHolidayRow(date: string, input: HolidayInput): Promise<Holi
     throw holidayWriteError(error, input, 'update');
   }
   if (!data) {
-    throw new Error(`Holiday on ${date} was not found.`);
+    throw new Error(`Holiday ${id} was not found.`);
   }
 
   return mapHolidayRow(data as HolidayDbRow);
 }
 
-async function deleteHolidayRow(date: string): Promise<void> {
-  const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('holidaydate', date);
+async function deleteHolidayRow(id: string): Promise<void> {
+  const numericId = Number(String(id).trim());
+  if (!Number.isFinite(numericId)) {
+    throw new Error('Holiday ID is required to delete.');
+  }
+
+  const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('id', numericId);
   if (error) {
     throw new Error(`Supabase holiday calendar delete failed: ${error.message}`);
   }
 }
 
-async function postHolidayWebhook(holiday: Holiday, label: string) {
-  const response = await fetch(SHEETS_WEBHOOKS.createHoliday, {
+async function postHolidayWebhook(
+  holiday: Holiday,
+  label: string,
+  action: 'UPSERT' | 'DELETE' = 'UPSERT'
+) {
+  const url = SHEETS_WEBHOOKS.createHoliday;
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(toWebhookHolidayRow(holiday)),
+    body: JSON.stringify({
+      ...toWebhookHolidayRow(holiday),
+      Action: action,
+    }),
     cache: 'no-store',
   });
   const text = await response.text();
@@ -214,9 +246,7 @@ async function postHolidayWebhook(holiday: Holiday, label: string) {
   if (!response.ok) {
     if (response.status === 404) {
       throw new Error(
-        `${label} webhook not registered (404) at ${SHEETS_WEBHOOKS.createHoliday}. ` +
-          'Activate the n8n workflow to serve /webhook/, or set N8N_CREATE_HOLIDAY_WEBHOOK_URL ' +
-          'to the /webhook-test/ URL while testing.'
+        `${label} webhook not registered (404) at ${url}. Activate the n8n workflow.`
       );
     }
     throw new Error(text || `${label} webhook returned status ${response.status}.`);
@@ -250,36 +280,22 @@ export async function saveHoliday(
   message: string;
   created: boolean;
 }> {
-  const originalDate = input.originalHolidayDate || input.holidayDate;
-  const existingOnTarget = await getHoliday(input.holidayDate);
-  const existingOnOriginal =
-    originalDate !== input.holidayDate ? await getHoliday(originalDate) : existingOnTarget;
+  const isCreate = !input.id;
+  const previous = input.id ? await getHolidayById(input.id) : null;
 
-  const isCreate = !existingOnOriginal;
-  const dateMoved = Boolean(existingOnOriginal) && originalDate !== input.holidayDate;
-
-  if (dateMoved && existingOnTarget) {
-    throw new Error(`A holiday already exists on ${input.holidayDate}.`);
+  if (!isCreate && !previous) {
+    throw new Error(`Holiday ${input.id} was not found.`);
   }
 
-  const previous: Holiday | null = existingOnOriginal;
-  let saved: Holiday;
-  let deletedOld = false;
-
-  if (isCreate) {
-    saved = await insertHolidayRow(input);
-  } else if (dateMoved) {
-    await deleteHolidayRow(originalDate);
-    deletedOld = true;
-    saved = await insertHolidayRow(input);
-  } else {
-    saved = await updateHolidayRow(input.holidayDate, input);
-  }
+  const saved = isCreate
+    ? await insertHolidayRow(input)
+    : await updateHolidayRow(input.id!, input);
 
   try {
-    const webhookMessage = await postHolidayWebhook(saved, 'create-holiday');
+    await postHolidayWebhook(saved, 'create-holiday', 'UPSERT');
 
     const nextValue = {
+      id: saved.id,
       holidayDate: saved.holidayDate,
       holidayName: saved.holidayName,
       type: saved.type,
@@ -290,7 +306,7 @@ export async function saveHoliday(
         {
           action: AUDIT_ACTIONS.CREATE,
           recordType: AUDIT_RECORD_TYPES.HOLIDAY,
-          recordId: saved.holidayDate,
+          recordId: saved.id,
           newValue: nextValue,
         },
         'Holiday audit'
@@ -301,10 +317,11 @@ export async function saveHoliday(
         {
           action: AUDIT_ACTIONS.UPDATE,
           recordType: AUDIT_RECORD_TYPES.HOLIDAY,
-          recordId: saved.holidayDate,
+          recordId: saved.id,
           ...diffAuditValues(
             {
-              holidayDate: previous?.holidayDate || originalDate,
+              id: previous?.id || input.id,
+              holidayDate: previous?.holidayDate || '',
               holidayName: previous?.holidayName || '',
               type: previous?.type || '',
             },
@@ -318,28 +335,77 @@ export async function saveHoliday(
     return {
       holiday: saved,
       created: isCreate,
-      message:
-        webhookMessage ||
-        (isCreate
-          ? 'Holiday created.'
-          : dateMoved
-            ? 'Holiday moved and updated.'
-            : 'Holiday updated.'),
+      message: isCreate ? 'Holiday created.' : 'Holiday updated.',
     };
   } catch (sheetError) {
     try {
       if (isCreate) {
-        await deleteHolidayRow(saved.holidayDate);
-      } else if (dateMoved && previous) {
-        await deleteHolidayRow(saved.holidayDate);
-        await insertHolidayRow(previous);
+        await deleteHolidayRow(saved.id);
       } else if (previous) {
-        await updateHolidayRow(previous.holidayDate, previous);
-      } else if (deletedOld) {
-        // Best-effort; previous was required for dateMoved path.
+        await updateHolidayRow(previous.id, previous);
       }
     } catch (rollbackError) {
       console.error('Failed to roll back holiday after webhook failure:', rollbackError);
+    }
+    throw sheetError;
+  }
+}
+
+/**
+ * Delete a holiday in Supabase, then sync the delete to the sheet via n8n.
+ * Restores the row if the webhook fails.
+ */
+export async function deleteHoliday(
+  id: string,
+  options?: { actorEmail?: string }
+): Promise<{ holiday: Holiday; message: string }> {
+  const existing = await getHolidayById(id);
+  if (!existing) {
+    throw new Error(`Holiday ${id} was not found.`);
+  }
+
+  await deleteHolidayRow(existing.id);
+
+  try {
+    await postHolidayWebhook(existing, 'delete-holiday', 'DELETE');
+
+    await logAuditBestEffort(
+      options?.actorEmail,
+      {
+        action: AUDIT_ACTIONS.DELETE,
+        recordType: AUDIT_RECORD_TYPES.HOLIDAY,
+        recordId: existing.id,
+        oldValue: {
+          id: existing.id,
+          holidayDate: existing.holidayDate,
+          holidayName: existing.holidayName,
+          type: existing.type,
+        },
+      },
+      'Holiday audit'
+    );
+
+    return {
+      holiday: existing,
+      message: 'Holiday deleted.',
+    };
+  } catch (sheetError) {
+    try {
+      // Restore with the same id when possible.
+      const { error } = await getSupabaseAdmin()
+        .from(TABLE)
+        .insert({
+          id: Number(existing.id),
+          holidaydate: existing.holidayDate,
+          holidayname: existing.holidayName,
+          type: existing.type,
+        });
+      if (error) {
+        // Fallback without forcing id.
+        await insertHolidayRow(existing);
+      }
+    } catch (rollbackError) {
+      console.error('Failed to roll back holiday delete after webhook failure:', rollbackError);
     }
     throw sheetError;
   }

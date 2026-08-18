@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
-import { listHolidays, normalizeHolidayInput, saveHoliday } from '@/lib/db/holidays';
+import {
+  deleteHoliday,
+  listHolidays,
+  normalizeHolidayInput,
+  saveHoliday,
+} from '@/lib/db/holidays';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,9 +56,38 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to save holiday.';
-    const status = /already exists|required|must be|rejected Type|longer than/i.test(message)
+    const status = /not found|required|must be|rejected Type|longer than/i.test(message)
       ? 400
       : 500;
+    return NextResponse.json({ success: false, error: message }, { status });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { user, errorResponse } = await verifyResourceAccess(
+      request,
+      'holiday_calendar',
+      'write'
+    );
+    if (errorResponse) return errorResponse;
+
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const { searchParams } = new URL(request.url);
+    const id = String(body.id ?? body.ID ?? searchParams.get('id') ?? '').trim();
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Holiday ID is required.' }, { status: 400 });
+    }
+
+    const result = await deleteHoliday(id, { actorEmail: user?.email || '' });
+    return NextResponse.json({
+      success: true,
+      data: result.holiday,
+      message: result.message,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to delete holiday.';
+    const status = /not found|required/i.test(message) ? 400 : 500;
     return NextResponse.json({ success: false, error: message }, { status });
   }
 }

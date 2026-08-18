@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   ShieldAlert,
+  Trash2,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,10 +24,10 @@ import { syncSessionCookies } from '@/lib/session-cookies';
 import { HOLIDAY_TYPES, type Holiday } from '@/types/holiday';
 
 type FormState = {
+  id: string;
   holidayDate: string;
   holidayName: string;
   type: string;
-  originalHolidayDate: string;
 };
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -68,10 +69,10 @@ function displayDate(value: string) {
 
 function emptyForm(date = toIsoDate(new Date())): FormState {
   return {
+    id: '',
     holidayDate: date,
     holidayName: '',
     type: HOLIDAY_TYPES[0],
-    originalHolidayDate: date,
   };
 }
 
@@ -90,7 +91,6 @@ function shortType(type: string) {
 
 function buildMonthCells(month: Date) {
   const first = startOfMonth(month);
-  // Convert Sunday=0 calendar to Monday-first grid.
   const mondayIndex = (first.getDay() + 6) % 7;
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   const cells: Array<{ date: string | null; day: number | null }> = [];
@@ -115,9 +115,12 @@ export default function HolidayCalendarPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dayDate, setDayDate] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [confirmDelete, setConfirmDelete] = useState<Holiday | null>(null);
   const today = toIsoDate(new Date());
 
   const year = month.getFullYear();
@@ -176,10 +179,12 @@ export default function HolidayCalendarPage() {
     return () => window.clearTimeout(handle);
   }, [allowed, year, loadHolidays]);
 
-  const holidayByDate = useMemo(() => {
-    const map = new Map<string, Holiday>();
+  const holidaysByDate = useMemo(() => {
+    const map = new Map<string, Holiday[]>();
     for (const holiday of holidays) {
-      map.set(holiday.holidayDate, holiday);
+      const list = map.get(holiday.holidayDate) || [];
+      list.push(holiday);
+      map.set(holiday.holidayDate, list);
     }
     return map;
   }, [holidays]);
@@ -188,35 +193,39 @@ export default function HolidayCalendarPage() {
     const prefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
     return holidays
       .filter((holiday) => holiday.holidayDate.startsWith(prefix))
-      .sort((a, b) => a.holidayDate.localeCompare(b.holidayDate));
+      .sort((a, b) =>
+        a.holidayDate === b.holidayDate
+          ? Number(a.id) - Number(b.id)
+          : a.holidayDate.localeCompare(b.holidayDate)
+      );
   }, [holidays, month]);
+
+  const dayHolidays = useMemo(
+    () => (dayDate ? holidaysByDate.get(dayDate) || [] : []),
+    [dayDate, holidaysByDate]
+  );
 
   const cells = useMemo(() => buildMonthCells(month), [month]);
 
   const openCreate = (date?: string) => {
     setEditing(false);
-    setForm(emptyForm(date || today));
-    setModalOpen(true);
+    setForm(emptyForm(date || dayDate || today));
+    setFormOpen(true);
   };
 
   const openEdit = (holiday: Holiday) => {
     setEditing(true);
     setForm({
+      id: holiday.id,
       holidayDate: holiday.holidayDate,
       holidayName: holiday.holidayName,
       type: holiday.type || HOLIDAY_TYPES[0],
-      originalHolidayDate: holiday.holidayDate,
     });
-    setModalOpen(true);
+    setFormOpen(true);
   };
 
   const openDay = (date: string) => {
-    const existing = holidayByDate.get(date);
-    if (existing) {
-      openEdit(existing);
-      return;
-    }
-    if (canEdit) openCreate(date);
+    setDayDate(date);
   };
 
   const saveHoliday = async () => {
@@ -234,10 +243,10 @@ export default function HolidayCalendarPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          id: editing ? form.id : undefined,
           holidayDate: form.holidayDate,
           holidayName: form.holidayName.trim(),
           type: form.type.trim(),
-          originalHolidayDate: editing ? form.originalHolidayDate : undefined,
         }),
       });
       const result = await response.json();
@@ -245,12 +254,38 @@ export default function HolidayCalendarPage() {
         throw new Error(result.error || 'Failed to save holiday.');
       }
       toast.success(result.message || (editing ? 'Holiday updated.' : 'Holiday created.'));
-      setModalOpen(false);
+      setFormOpen(false);
+      if (result.data?.holidayDate) setDayDate(String(result.data.holidayDate));
       await loadHolidays(year);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to save holiday.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const removeHoliday = async (holiday: Holiday) => {
+    setDeletingId(holiday.id);
+    try {
+      const response = await fetch('/api/holidays', {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: holiday.id }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete holiday.');
+      }
+      toast.success(result.message || 'Holiday deleted.');
+      setConfirmDelete(null);
+      await loadHolidays(year);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete holiday.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -279,17 +314,128 @@ export default function HolidayCalendarPage() {
     );
   }
 
-  const modal =
-    modalOpen && typeof document !== 'undefined'
+  const dayModal =
+    dayDate && typeof document !== 'undefined'
       ? createPortal(
           <div className="fixed inset-0 z-[120] flex items-end justify-center bg-ink/40 p-4 sm:items-center">
             <button
               type="button"
               aria-label="Close dialog backdrop"
               className="absolute inset-0 cursor-default"
+              onClick={() => setDayDate(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                    Date
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-ink">{displayDate(dayDate)}</h2>
+                  <p className="mt-1 text-xs text-muted">
+                    {dayHolidays.length} holiday{dayHolidays.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDayDate(null)}
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="max-h-[60vh] overflow-y-auto">
+                {dayHolidays.length === 0 ? (
+                  <div className="p-5">
+                    <EmptyState
+                      icon={<Plus className="h-5 w-5" />}
+                      title="No holidays on this date"
+                      description={
+                        canEdit
+                          ? 'Add one or more holidays for this day.'
+                          : 'Nothing is scheduled for this date.'
+                      }
+                    />
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {dayHolidays.map((holiday) => (
+                      <li key={holiday.id} className="flex items-start gap-3 px-5 py-4">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-ink">{holiday.holidayName}</p>
+                          <p className="mt-0.5 text-xs text-muted">ID {holiday.id}</p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${typeTone(holiday.type)}`}
+                        >
+                          {holiday.type}
+                        </span>
+                        {canEdit ? (
+                          <div className="flex shrink-0 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(holiday)}
+                              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border text-muted hover:bg-canvas hover:text-ink"
+                              title="Edit holiday"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(holiday)}
+                              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-danger-border text-danger hover:bg-danger-bg"
+                              title="Delete holiday"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setDayDate(null)}
+                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas"
+                >
+                  Close
+                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => openCreate(dayDate)}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-ink px-3.5 text-sm font-medium text-accent-fg hover:opacity-90"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add holiday
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  const formModal =
+    formOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="fixed inset-0 z-[130] flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+            <button
+              type="button"
+              aria-label="Close dialog backdrop"
+              className="absolute inset-0 cursor-default"
               disabled={saving}
               onClick={() => {
-                if (!saving) setModalOpen(false);
+                if (!saving) setFormOpen(false);
               }}
             />
             <div
@@ -309,7 +455,7 @@ export default function HolidayCalendarPage() {
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setFormOpen(false)}
                   className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink disabled:opacity-50"
                 >
                   <X className="h-4 w-4" />
@@ -361,7 +507,7 @@ export default function HolidayCalendarPage() {
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setFormOpen(false)}
                   className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
                 >
                   Cancel
@@ -382,6 +528,58 @@ export default function HolidayCalendarPage() {
         )
       : null;
 
+  const deleteModal =
+    confirmDelete && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="fixed inset-0 z-[140] flex items-center justify-center bg-ink/40 p-4">
+            <button
+              type="button"
+              aria-label="Close dialog backdrop"
+              className="absolute inset-0 cursor-default"
+              disabled={Boolean(deletingId)}
+              onClick={() => {
+                if (!deletingId) setConfirmDelete(null);
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="relative w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-panel animate-scale-up"
+            >
+              <h2 className="text-lg font-semibold text-ink">Delete holiday?</h2>
+              <p className="mt-2 text-sm text-muted">
+                Remove <span className="font-medium text-ink">{confirmDelete.holidayName}</span> on{' '}
+                {displayDate(confirmDelete.holidayDate)}. This cannot be undone from the calendar.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(deletingId)}
+                  onClick={() => setConfirmDelete(null)}
+                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(deletingId)}
+                  onClick={() => void removeHoliday(confirmDelete)}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-danger-border bg-danger-bg px-3.5 text-sm font-semibold text-danger hover:opacity-90 disabled:opacity-50"
+                >
+                  {deletingId === confirmDelete.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
       <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -391,7 +589,7 @@ export default function HolidayCalendarPage() {
             Holiday Calendar
           </h1>
           <p className="mt-1.5 text-sm text-muted">
-            Company holidays by date, name, and type.
+            Multiple holidays can share the same date. Click a day to view, add, or delete.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -457,41 +655,45 @@ export default function HolidayCalendarPage() {
                 return <div key={`empty-${index}`} className="min-h-[4.5rem] rounded-md" />;
               }
 
-              const holiday = holidayByDate.get(cell.date);
+              const dayList = holidaysByDate.get(cell.date) || [];
+              const primary = dayList[0];
               const isToday = cell.date === today;
-              const interactive = Boolean(holiday) || canEdit;
+              const hasHolidays = dayList.length > 0;
 
               return (
                 <button
                   key={cell.date}
                   type="button"
-                  disabled={!interactive}
                   onClick={() => openDay(cell.date!)}
-                  className={`flex min-h-[4.5rem] flex-col items-start rounded-md border px-2 py-1.5 text-left transition-colors ${
-                    holiday
+                  className={`flex min-h-[4.5rem] cursor-pointer flex-col items-start rounded-md border px-2 py-1.5 text-left transition-colors ${
+                    hasHolidays
                       ? 'border-ink/20 bg-canvas hover:bg-canvas/80'
                       : 'border-border bg-surface hover:bg-canvas/60'
-                  } ${isToday ? 'ring-2 ring-[var(--focus-ring)]' : ''} ${
-                    interactive ? 'cursor-pointer' : 'cursor-default'
-                  } disabled:hover:bg-surface`}
+                  } ${isToday ? 'ring-2 ring-[var(--focus-ring)]' : ''}`}
                 >
                   <span
-                    className={`text-xs font-semibold tabular-nums ${
+                    className={`flex w-full items-center justify-between gap-1 text-xs font-semibold tabular-nums ${
                       isToday ? 'text-ink' : 'text-muted'
                     }`}
                   >
                     {cell.day}
+                    {dayList.length > 1 ? (
+                      <span className="rounded bg-ink px-1 py-0.5 text-[10px] font-medium text-accent-fg">
+                        {dayList.length}
+                      </span>
+                    ) : null}
                   </span>
-                  {holiday ? (
+                  {primary ? (
                     <span className="mt-1 line-clamp-2 text-[11px] font-medium leading-snug text-ink">
-                      {holiday.holidayName}
+                      {primary.holidayName}
+                      {dayList.length > 1 ? ` +${dayList.length - 1}` : ''}
                     </span>
                   ) : null}
-                  {holiday ? (
+                  {primary ? (
                     <span
-                      className={`mt-auto inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${typeTone(holiday.type)}`}
+                      className={`mt-auto inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${typeTone(primary.type)}`}
                     >
-                      {shortType(holiday.type)}
+                      {shortType(primary.type)}
                     </span>
                   ) : null}
                 </button>
@@ -503,7 +705,7 @@ export default function HolidayCalendarPage() {
         <section className="rounded-lg border border-border bg-surface shadow-panel">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-sm font-semibold text-ink">This month</h2>
-            <p className="mt-0.5 text-xs text-muted">Click a holiday to update it.</p>
+            <p className="mt-0.5 text-xs text-muted">Click a holiday to open its date.</p>
           </div>
 
           {loading ? (
@@ -527,22 +729,23 @@ export default function HolidayCalendarPage() {
           ) : (
             <ul className="divide-y divide-border">
               {monthHolidays.map((holiday) => (
-                <li key={holiday.holidayDate}>
+                <li key={holiday.id}>
                   <button
                     type="button"
-                    onClick={() => openEdit(holiday)}
-                    className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-canvas/70 cursor-pointer"
+                    onClick={() => openDay(holiday.holidayDate)}
+                    className="flex w-full cursor-pointer items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-canvas/70"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-ink">{holiday.holidayName}</p>
-                      <p className="mt-0.5 text-xs text-muted">{displayDate(holiday.holidayDate)}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {displayDate(holiday.holidayDate)} · ID {holiday.id}
+                      </p>
                     </div>
                     <span
                       className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${typeTone(holiday.type)}`}
                     >
                       {holiday.type}
                     </span>
-                    {canEdit ? <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" /> : null}
                   </button>
                 </li>
               ))}
@@ -551,7 +754,9 @@ export default function HolidayCalendarPage() {
         </section>
       </div>
 
-      {modal}
+      {dayModal}
+      {formModal}
+      {deleteModal}
     </div>
   );
 }
