@@ -17,7 +17,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   try {
-    const { role, errorResponse } = await verifyResourceAccess(request, 'reports', 'read');
+    const { user, role, errorResponse } = await verifyResourceAccess(request, 'reports', 'read');
     if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(request.url);
@@ -50,6 +50,7 @@ export async function GET(request: Request) {
       account,
       period,
     });
+    report.generatedBy = String(user?.email || '').trim() || undefined;
 
     if (format) {
       if (!(REPORT_EXPORT_FORMATS as readonly string[]).includes(format)) {

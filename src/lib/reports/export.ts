@@ -141,11 +141,18 @@ function drawBrandHeader(doc: jsPDF, report: ReportPayload, compact: boolean) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...PDF_THEME.muted);
-  doc.text(`Generated ${formatTimestamp(report.generatedAt)}`, right, top + (compact ? 18 : 20), {
-    align: 'right',
-  });
+  const generatedLines = [`Generated ${formatTimestamp(report.generatedAt)}`];
+  if (report.generatedBy) {
+    generatedLines.push(`By ${report.generatedBy}`);
+  }
+  let metaY = top + (compact ? 18 : 20);
+  for (const line of generatedLines) {
+    doc.text(line, right, metaY, { align: 'right' });
+    metaY += 11;
+  }
 
-  const ruleY = compact ? top + markHeight + 10 : top + markHeight + 14;
+  const contentBottom = Math.max(top + markHeight, metaY - 6);
+  const ruleY = compact ? contentBottom + 10 : contentBottom + 12;
   doc.setDrawColor(...PDF_THEME.ink);
   doc.setLineWidth(compact ? 0.5 : 1);
   doc.line(PAGE_MARGIN, ruleY, right, ruleY);

@@ -228,7 +228,6 @@ async function buildEmployeeReport(params: {
         { key: 'department', label: 'Department' },
         { key: 'designation', label: 'Designation' },
         { key: 'role', label: 'Role' },
-        { key: 'status', label: 'Status' },
       ]
     : [
         { key: 'employeeId', label: 'Employee ID' },
@@ -238,7 +237,6 @@ async function buildEmployeeReport(params: {
         { key: 'designation', label: 'Designation' },
         { key: 'role', label: 'Role' },
         { key: 'joiningDate', label: 'Joining date' },
-        { key: 'status', label: 'Status' },
       ];
 
   const reportRows: ReportRow[] = rows.map((row) =>
@@ -249,7 +247,6 @@ async function buildEmployeeReport(params: {
           department: row.department,
           designation: row.designation,
           role: row.role,
-          status: row.emsstatus,
         }
       : {
           employeeId: row.employeeid,
@@ -259,13 +256,8 @@ async function buildEmployeeReport(params: {
           designation: row.designation,
           role: row.role,
           joiningDate: row.joiningdate,
-          status: row.emsstatus,
         }
   );
-
-  const active = rows.filter(
-    (row) => String(row.emsstatus || '').toLowerCase() === 'active'
-  ).length;
 
   return {
     type: 'employee',
@@ -274,10 +266,7 @@ async function buildEmployeeReport(params: {
     generatedAt: params.generatedAt,
     columns,
     rows: reportRows,
-    summary: [
-      { label: 'Employees', value: String(rows.length) },
-      { label: 'Active', value: String(active) },
-    ],
+    summary: [{ label: 'Employees', value: String(rows.length) }],
   };
 }
 

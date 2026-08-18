@@ -177,6 +177,8 @@ export type ReportPayload = {
   title: string;
   subtitle: string;
   generatedAt: string;
+  /** Email of the user who generated the export (PDF header). */
+  generatedBy?: string;
   columns: ReportColumn[];
   rows: ReportRow[];
   summary?: Array<{ label: string; value: string }>;

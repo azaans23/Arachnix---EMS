@@ -248,6 +248,8 @@ export default function EmployeeForm({
   const formik = useFormik<EmployeeWriteInput>({
     initialValues,
     enableReinitialize: true,
+    validateOnBlur: false,
+    validateOnChange: false,
     validate: async (values) => {
       try {
         const toValidate: EmployeeWriteInput = { ...values };
@@ -356,7 +358,11 @@ export default function EmployeeForm({
   ]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
-    formik.touched[name] && formik.errors[name] ? String(formik.errors[name]) : null;
+    formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
+
+  const handleDateFieldChange = (name: 'dob' | 'joiningDate', value: string) => {
+    void formik.setFieldValue(name, value, false);
+  };
 
   const today = toIsoDate(new Date());
 
@@ -526,10 +532,10 @@ export default function EmployeeForm({
             max={today}
             value={String(formik.values.dob || '')}
             onChange={(next) => {
-              void formik.setFieldValue('dob', next);
+              handleDateFieldChange('dob', next);
             }}
             onBlur={() => {
-              void formik.setFieldTouched('dob', true);
+              void formik.setFieldTouched('dob', true, false);
             }}
             invalid={!!showError('dob')}
             className="pl-10"
@@ -549,10 +555,10 @@ export default function EmployeeForm({
             hideIcon
             value={String(formik.values.joiningDate || '')}
             onChange={(next) => {
-              void formik.setFieldValue('joiningDate', next);
+              handleDateFieldChange('joiningDate', next);
             }}
             onBlur={() => {
-              void formik.setFieldTouched('joiningDate', true);
+              void formik.setFieldTouched('joiningDate', true, false);
             }}
             invalid={!!showError('joiningDate')}
             className="pl-10"
@@ -578,50 +584,6 @@ export default function EmployeeForm({
             className={fieldClass('baseSalary')}
           />
         </Field>
-
-        {!isEditMode && (
-          <>
-            <Field
-              label="Tax (PKR)"
-              htmlFor="tax"
-              error={showError('tax')}
-              icon={<DollarSign className="h-4 w-4" />}
-            >
-              <input
-                id="tax"
-                name="tax"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={formik.values.tax || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={fieldClass('tax')}
-              />
-            </Field>
-
-            <Field
-              label="Allowance (PKR)"
-              htmlFor="allowance"
-              error={showError('allowance')}
-              icon={<DollarSign className="h-4 w-4" />}
-            >
-              <input
-                id="allowance"
-                name="allowance"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={formik.values.allowance || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={fieldClass('allowance')}
-              />
-            </Field>
-          </>
-        )}
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-ink" htmlFor="role">
@@ -801,6 +763,46 @@ export default function EmployeeForm({
                   }
                 }}
                 className={fieldClass('accountName')}
+              />
+            </Field>
+
+            <Field
+              label="Tax (PKR)"
+              htmlFor="tax"
+              error={showError('tax')}
+              icon={<DollarSign className="h-4 w-4" />}
+            >
+              <input
+                id="tax"
+                name="tax"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={formik.values.tax || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('tax')}
+              />
+            </Field>
+
+            <Field
+              label="Allowance (PKR)"
+              htmlFor="allowance"
+              error={showError('allowance')}
+              icon={<DollarSign className="h-4 w-4" />}
+            >
+              <input
+                id="allowance"
+                name="allowance"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={formik.values.allowance || ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className={fieldClass('allowance')}
               />
             </Field>
 
