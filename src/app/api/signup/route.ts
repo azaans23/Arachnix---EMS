@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
 import {
   assertCanAssignRole,
-  canManageEmployeeRole,
+  canEditEmployeeRecord,
   isSuperAdminSelfEdit,
   roleDisplayName,
 } from '@/lib/rbac';
@@ -81,7 +81,17 @@ export async function POST(request: Request) {
     const resolvedEmployeeId =
       previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
 
-    if (previousEmployee?.role && !canManageEmployeeRole(actorRole || '', previousEmployee.role)) {
+    if (
+      previousEmployee?.role &&
+      !canEditEmployeeRecord({
+        actorRole: actorRole || '',
+        actorEmail: actor?.email,
+        actorUserId: actor?.id,
+        targetRole: previousEmployee.role,
+        targetEmail: previousEmployee.email,
+        targetSupabaseUserId: previousEmployee.supabaseUserId,
+      })
+    ) {
       return NextResponse.json(
         {
           success: false,

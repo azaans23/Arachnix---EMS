@@ -29,11 +29,11 @@ import {
   canAccess,
   canAssignRole,
   canDeleteEmployee,
+  canEditEmployeeRecord,
   canManageEmployeeRole,
   emailsMatch,
   getTrustedRole,
   isSuperAdminRole,
-  isSuperAdminSelfEdit,
   normalizeRole,
   ROLE_OPTIONS as ALL_ROLES,
 } from '@/lib/rbac';
@@ -139,19 +139,20 @@ export default function EmployeesPage() {
   const profilePath = (user: SheetUser) =>
     `/dashboard/employees/${encodeURIComponent(user.employeeId || user.email)}`;
 
+  const canEditUser = (user: SheetUser) => {
+    if (!actorRole) return false;
+    return canEditEmployeeRecord({
+      actorRole,
+      actorEmail,
+      actorUserId,
+      targetRole: user.role,
+      targetEmail: user.email,
+      targetSupabaseUserId: supabaseUserIdOf(user),
+    });
+  };
+
   const canDeleteUser = (user: SheetUser) => {
     if (!canDelete || !actorRole) return false;
-    if (
-      isSuperAdminSelfEdit({
-        actorRole,
-        actorEmail,
-        actorUserId,
-        targetEmail: user.email,
-        targetSupabaseUserId: supabaseUserIdOf(user),
-      })
-    ) {
-      return false;
-    }
     if (emailsMatch(actorEmail, user.email)) return false;
     if (isSuperAdminRole(user.role)) return false;
     return canManageEmployeeRole(actorRole, user.role);
@@ -516,23 +517,17 @@ export default function EmployeesPage() {
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
                         const registered = hasEmsLogin(user);
-                        const isSelfSuperAdmin = isSuperAdminSelfEdit({
-                          actorRole: actorRole || '',
-                          actorEmail,
-                          actorUserId,
-                          targetEmail: user.email,
-                          targetSupabaseUserId: supabaseUserIdOf(user),
-                        });
+                        const canEdit = canEditUser(user);
                         return (
                           <tr
                             key={user.employeeId || user.email || idx}
                             onClick={() => {
-                              if (!isSelfSuperAdmin) router.push(profilePath(user));
+                              if (canEdit) router.push(profilePath(user));
                             }}
                             className={`transition-colors duration-150 ${
-                              isSelfSuperAdmin
-                                ? 'bg-canvas/40'
-                                : 'cursor-pointer hover:bg-canvas/70'
+                              canEdit
+                                ? 'cursor-pointer hover:bg-canvas/70'
+                                : 'bg-canvas/40'
                             }`}
                           >
                             <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
@@ -546,14 +541,7 @@ export default function EmployeesPage() {
                             </td>
                             <td className="px-5 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {isSelfSuperAdmin ? (
-                                  <span
-                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
-                                    title="Super Admin cannot edit their own account"
-                                  >
-                                    You
-                                  </span>
-                                ) : registered ? (
+                                {registered ? (
                                   <span
                                     className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
                                     title="Login access is active"
@@ -585,7 +573,7 @@ export default function EmployeesPage() {
                                   </span>
                                 )}
 
-                                {!isSelfSuperAdmin ? (
+                                {canEdit ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {

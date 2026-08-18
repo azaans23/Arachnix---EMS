@@ -97,6 +97,61 @@ function displayDate(value: string) {
     : new Intl.DateTimeFormat('en-PK', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+function parseLeaveDate(value: string): Date | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatLeaveRange(start: Date, end: Date) {
+  const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric' });
+  const month = new Intl.DateTimeFormat('en-GB', { month: 'short' });
+  const year = new Intl.DateTimeFormat('en-GB', { year: 'numeric' });
+  const full = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+  if (sameDay) return full.format(start);
+
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  if (sameMonth) {
+    return `${day.format(start)}-${day.format(end)} ${month.format(start)} ${year.format(start)}`;
+  }
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+  if (sameYear) {
+    return `${day.format(start)} ${month.format(start)} - ${day.format(end)} ${month.format(end)} ${year.format(end)}`;
+  }
+
+  return `${full.format(start)} - ${full.format(end)}`;
+}
+
+function DateRangeCell({ start, end }: { start: string; end: string }) {
+  const startDate = parseLeaveDate(start);
+  const endDate = parseLeaveDate(end);
+
+  if (!startDate && !endDate) {
+    return <span className="text-muted">—</span>;
+  }
+
+  if (!startDate || !endDate) {
+    return <span className="text-ink">{displayDate(start || end)}</span>;
+  }
+
+  return <span className="tabular-nums text-ink">{formatLeaveRange(startDate, endDate)}</span>;
+}
+
 export default function LeaveRequestsPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -988,14 +1043,10 @@ export default function LeaveRequestsPage() {
                           >
                             <td className="px-5 py-3.5">
                               <div className="font-medium">{row.fullName || row.employeeId}</div>
-                              <div className="text-xs text-muted">
-                                #{row.requestId} · {row.employeeId}
-                              </div>
                             </td>
                             <td className="px-5 py-3.5">{row.leaveType}</td>
-                            <td className="px-5 py-3.5 text-muted">
-                              <div>{displayDate(row.startDate)}</div>
-                              <div className="text-xs">to {displayDate(row.endDate)}</div>
+                            <td className="px-5 py-3.5">
+                              <DateRangeCell start={row.startDate} end={row.endDate} />
                             </td>
                             <td className="px-5 py-3.5">{row.daysRequested}</td>
                             <td className="px-5 py-3.5">

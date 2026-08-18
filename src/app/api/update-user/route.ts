@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { deleteAuthUser, findAuthUserIdByEmail, syncEmployeeAuthRole, verifyEmployeeAccess } from '@/lib/auth';
 import {
-  assertCanAssignRole,
-  canManageEmployeeRole,
-  isSuperAdminSelfEdit,
+  assertCanEditEmployee,
+  canEditEmployeeRecord,
   normalizeRole,
   roleDisplayName,
 } from '@/lib/rbac';
@@ -114,57 +113,37 @@ export async function POST(request: Request) {
     const targetSupabaseUserId =
       previous?.supabaseUserId || validation.value.supabaseUserId || '';
 
-    if (
-      isSuperAdminSelfEdit({
+    if (previous) {
+      if (
+        !canEditEmployeeRecord({
+          actorRole: actorRole || '',
+          actorEmail: user?.email,
+          actorUserId: user?.id,
+          targetRole: previousRole,
+          targetEmail,
+          targetSupabaseUserId,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `${roleDisplayName(actorRole || '')} cannot edit employees with role ${roleDisplayName(previousRole)}`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (roleChanging || !previous) {
+      const assignment = assertCanEditEmployee({
         actorRole: actorRole || '',
         actorEmail: user?.email,
         actorUserId: user?.id,
         targetEmail,
         targetSupabaseUserId,
-      })
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Super Admin cannot change their own account.',
-          fieldErrors: { role: 'Super Admin cannot change their own account.' },
-        },
-        { status: 403 }
-      );
-    }
-
-    // Belt-and-suspenders: never allow Super Admin to mutate a record that is themselves
-    // even if role/email fields were tampered in the payload.
-    if (
-      isSuperAdminSelfEdit({
-        actorRole: actorRole || '',
-        actorEmail: user?.email,
-        actorUserId: user?.id,
-        targetEmail: validation.value.email,
-        targetSupabaseUserId: validation.value.supabaseUserId,
-      })
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Super Admin cannot change their own account.',
-        },
-        { status: 403 }
-      );
-    }
-
-    if (previous && !canManageEmployeeRole(actorRole || '', previousRole)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `${roleDisplayName(actorRole || '')} cannot edit employees with role ${roleDisplayName(previousRole)}`,
-        },
-        { status: 403 }
-      );
-    }
-
-    if (roleChanging || !previous) {
-      const assignment = assertCanAssignRole(actorRole || '', nextRole);
+        previousRole: previousRole || null,
+        nextRole,
+      });
       if (!assignment.ok) {
         return NextResponse.json(
           { success: false, error: assignment.error, fieldErrors: { role: assignment.error } },

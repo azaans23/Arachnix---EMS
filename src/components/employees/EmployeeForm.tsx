@@ -33,9 +33,8 @@ import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/util
 import { computeSalaryTotals } from '@/lib/payroll/period';
 import {
   assignableRoleOptions,
-  canManageEmployeeRole,
+  canEditEmployeeRecord,
   getTrustedRole,
-  isSuperAdminSelfEdit,
   ROLE_OPTIONS,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
@@ -179,19 +178,17 @@ export default function EmployeeForm({
   }, [user]);
 
   const editBlockedReason = useMemo(() => {
-    if (!isEditMode || !actorRole) return null;
+    if (!isEditMode || !actorRole || !user) return null;
     if (
-      isSuperAdminSelfEdit({
+      !canEditEmployeeRecord({
         actorRole,
         actorEmail,
         actorUserId,
-        targetEmail: user?.email,
-        targetSupabaseUserId: user ? supabaseUserIdOf(user) : '',
+        targetRole: user.role,
+        targetEmail: user.email,
+        targetSupabaseUserId: supabaseUserIdOf(user),
       })
     ) {
-      return 'Super Admin cannot change their own account.';
-    }
-    if (user?.role && !canManageEmployeeRole(actorRole, user.role)) {
       return `You cannot edit employees with role ${user.role}.`;
     }
     return null;

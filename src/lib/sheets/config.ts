@@ -9,7 +9,7 @@ export const SHEETS_WEBHOOKS = {
   updateUser: `${N8N_BASE_URL}/webhook/update-user`,
   createAudit: `${N8N_BASE_URL}/webhook/create-audit`,
   generateSalarySlip: `${N8N_BASE_URL}/webhook/generate-salary-slip`,
-  generateOfferLetter: `${N8N_BASE_URL}/webhook-test/generate-offer-letter`,
+  generateOfferLetter: `${N8N_BASE_URL}/webhook/generate-offer-letter`,
   updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
   updateLeave: `${N8N_BASE_URL}/webhook/update-leave`,
   createLeaveRequest: `${N8N_BASE_URL}/webhook/create-leave-request`,

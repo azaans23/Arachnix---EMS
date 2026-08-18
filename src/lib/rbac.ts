@@ -2,9 +2,11 @@
  * Role-based access control for Arachnix EMS.
  *
  * Super Admin     — everything; exactly one account; cannot be created/assigned by anyone;
- *                   cannot edit their own employee record
- * Admin           — same system access as Super Admin; cannot create/assign Admin or Super Admin
- * HR Manager      — employees, salary slips, contracts/offer letters, leave (not accounting)
+ *                   only they can edit their own employee record
+ * Admin           — same system access as Super Admin; can edit self + staff (not other Admins
+ *                   or Super Admin); cannot create/assign Admin or Super Admin
+ * HR Manager      — employees, salary slips, contracts/offer letters, leave (not accounting);
+ *                   can edit staff only (not Admin / Super Admin)
  * Finance Manager — accounting upload/records/dashboard (not HR data)
  * Director        — read-only financial + headcount dashboard
  */
@@ -136,8 +138,20 @@ const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
   [ROLES.EMPLOYEE]: [],
 };
 
+/** Every role except Admin and Super Admin. */
+export const STAFF_ROLES: AppRole[] = [
+  ROLES.HR_MANAGER,
+  ROLES.FINANCE_MANAGER,
+  ROLES.DIRECTOR,
+  ROLES.EMPLOYEE,
+];
+
 export function isSuperAdminRole(role: AppRole | string | null | undefined): boolean {
   return normalizeRole(role) === ROLES.SUPER_ADMIN;
+}
+
+export function isAdminRole(role: AppRole | string | null | undefined): boolean {
+  return normalizeRole(role) === ROLES.ADMIN;
 }
 
 export function canAssignRole(actorRole: AppRole | string, targetRole: AppRole | string): boolean {
@@ -149,14 +163,23 @@ export function canAssignRole(actorRole: AppRole | string, targetRole: AppRole |
   return ASSIGNABLE_ROLES[actor]?.includes(target) ?? false;
 }
 
-/** True when actor may create/register/edit an employee who currently holds targetRole. */
+/**
+ * Role-only check (no identity): may this actor manage someone who currently holds targetRole?
+ * Does not cover Admin/Super Admin editing themselves — use canEditEmployeeRecord for that.
+ */
 export function canManageEmployeeRole(
   actorRole: AppRole | string,
   targetRole: AppRole | string
 ): boolean {
-  // Super Admin accounts are not editable through role management (unique, non-assignable).
-  if (isSuperAdminRole(targetRole)) return false;
-  return canAssignRole(actorRole, targetRole);
+  const actor = normalizeRole(actorRole);
+  const target = normalizeRole(targetRole);
+  // Nobody manages Super Admin via role alone (only self-edit, which needs identity).
+  if (target === ROLES.SUPER_ADMIN) return false;
+  if (actor === ROLES.SUPER_ADMIN) return true;
+  if (actor === ROLES.ADMIN || actor === ROLES.HR_MANAGER) {
+    return STAFF_ROLES.includes(target);
+  }
+  return false;
 }
 
 export function emailsMatch(
@@ -172,7 +195,20 @@ export function emailsMatch(
   return Boolean(a && b && a === b);
 }
 
-/** Super Admin cannot change their own employee record. */
+/** True when actor and target resolve to the same person (email and/or auth user id). */
+export function isActorSelf(input: {
+  actorEmail?: string | null;
+  actorUserId?: string | null;
+  targetEmail?: string | null;
+  targetSupabaseUserId?: string | null;
+}): boolean {
+  if (emailsMatch(input.actorEmail, input.targetEmail)) return true;
+  const actorId = String(input.actorUserId || '').trim();
+  const targetId = String(input.targetSupabaseUserId || '').trim();
+  return Boolean(actorId && targetId && actorId === targetId);
+}
+
+/** Super Admin targeting their own employee record. */
 export function isSuperAdminSelfTarget(
   actorRole: AppRole | string,
   actorEmail: string | null | undefined,
@@ -193,10 +229,43 @@ export function isSuperAdminSelfEdit(input: {
   targetSupabaseUserId?: string | null;
 }): boolean {
   if (!isSuperAdminRole(input.actorRole)) return false;
-  if (emailsMatch(input.actorEmail, input.targetEmail)) return true;
-  const actorId = String(input.actorUserId || '').trim();
-  const targetId = String(input.targetSupabaseUserId || '').trim();
-  return Boolean(actorId && targetId && actorId === targetId);
+  return isActorSelf(input);
+}
+
+/**
+ * Who may edit an employee profile:
+ * - Super Admin → everyone, including themselves; only they may edit a Super Admin
+ * - Admin → themselves + staff (not other Admins, not Super Admin)
+ * - HR → staff only (not Admin, not Super Admin)
+ */
+export function canEditEmployeeRecord(input: {
+  actorRole: AppRole | string;
+  actorEmail?: string | null;
+  actorUserId?: string | null;
+  targetRole: AppRole | string | null | undefined;
+  targetEmail?: string | null;
+  targetSupabaseUserId?: string | null;
+}): boolean {
+  const actor = normalizeRole(input.actorRole);
+  const target = normalizeRole(input.targetRole || '');
+  const self = isActorSelf(input);
+
+  if (target === ROLES.SUPER_ADMIN) {
+    return actor === ROLES.SUPER_ADMIN && self;
+  }
+
+  if (actor === ROLES.SUPER_ADMIN) return true;
+
+  if (actor === ROLES.ADMIN) {
+    if (self) return true;
+    return STAFF_ROLES.includes(target);
+  }
+
+  if (actor === ROLES.HR_MANAGER) {
+    return STAFF_ROLES.includes(target);
+  }
+
+  return false;
 }
 
 export function assignableRoleOptions(actorRole: AppRole | string) {
@@ -235,26 +304,48 @@ export function assertCanEditEmployee(input: {
   previousRole?: string | null;
   nextRole: string;
 }): { ok: true; role: AppRole } | { ok: false; error: string } {
-  if (
-    isSuperAdminSelfEdit({
-      actorRole: input.actorRole,
-      actorEmail: input.actorEmail,
-      actorUserId: input.actorUserId,
-      targetEmail: input.targetEmail,
-      targetSupabaseUserId: input.targetSupabaseUserId,
-    })
-  ) {
+  const actor = normalizeRole(input.actorRole);
+  const self = isActorSelf(input);
+  const previous = input.previousRole ? normalizeRole(input.previousRole) : null;
+
+  if (previous) {
+    if (
+      !canEditEmployeeRecord({
+        actorRole: input.actorRole,
+        actorEmail: input.actorEmail,
+        actorUserId: input.actorUserId,
+        targetRole: previous,
+        targetEmail: input.targetEmail,
+        targetSupabaseUserId: input.targetSupabaseUserId,
+      })
+    ) {
+      return {
+        ok: false,
+        error: `${roleDisplayName(input.actorRole)} cannot edit employees with role ${roleDisplayName(previous)}`,
+      };
+    }
+  }
+
+  if (!isKnownRoleValue(input.nextRole)) {
+    return { ok: false, error: `Invalid role: ${input.nextRole}` };
+  }
+
+  const next = normalizeRole(input.nextRole);
+
+  // Super Admin may keep their own Super Admin role when editing themselves.
+  if (next === ROLES.SUPER_ADMIN) {
+    if (actor === ROLES.SUPER_ADMIN && self && (!previous || previous === ROLES.SUPER_ADMIN)) {
+      return { ok: true, role: ROLES.SUPER_ADMIN };
+    }
     return {
       ok: false,
-      error: 'Super Admin cannot change their own account.',
+      error: 'Super Admin cannot be created or assigned. Only one Super Admin exists.',
     };
   }
 
-  if (input.previousRole && !canManageEmployeeRole(input.actorRole, input.previousRole)) {
-    return {
-      ok: false,
-      error: `${roleDisplayName(input.actorRole)} cannot edit employees with role ${roleDisplayName(input.previousRole)}`,
-    };
+  // Admin may keep their own Admin role when editing themselves.
+  if (next === ROLES.ADMIN && actor === ROLES.ADMIN && self && (!previous || previous === ROLES.ADMIN)) {
+    return { ok: true, role: ROLES.ADMIN };
   }
 
   return assertCanAssignRole(input.actorRole, input.nextRole);

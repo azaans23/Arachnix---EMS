@@ -19,11 +19,11 @@ import { supabase } from '@/lib/supabase';
 import {
   canAccess,
   canDeleteEmployee,
+  canEditEmployeeRecord,
   canManageEmployeeRole,
   emailsMatch,
   getTrustedRole,
   isSuperAdminRole,
-  isSuperAdminSelfEdit,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
@@ -173,16 +173,19 @@ export default function EmployeeProfilePage({ params }: PageProps) {
 
   const raw = user.raw || {};
   const registered = hasEmsLogin(user);
-  const isSelfSuperAdmin = isSuperAdminSelfEdit({
-    actorRole: actorRole || '',
-    actorEmail,
-    actorUserId,
-    targetEmail: user.email,
-    targetSupabaseUserId: supabaseUserIdOf(user),
-  });
+  const canEdit = Boolean(
+    actorRole &&
+      canEditEmployeeRecord({
+        actorRole,
+        actorEmail,
+        actorUserId,
+        targetRole: user.role,
+        targetEmail: user.email,
+        targetSupabaseUserId: supabaseUserIdOf(user),
+      })
+  );
   const showDelete =
     canDeleteEmployee(actorRole) &&
-    !isSelfSuperAdmin &&
     !emailsMatch(actorEmail, user.email) &&
     !isSuperAdminRole(user.role) &&
     !!actorRole &&
@@ -220,7 +223,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          {!registered && !isSelfSuperAdmin && (
+          {!registered && canEdit && (
             <button
               type="button"
               onClick={() =>
@@ -281,20 +284,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         </span>
       </header>
 
-      {isSelfSuperAdmin ? (
-        <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
-          <div className="flex items-start gap-3 rounded-lg border border-danger-border bg-danger-bg px-4 py-3 text-sm text-danger">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-semibold">Editing disabled</p>
-              <p className="mt-1 text-danger/90">
-                Super Admin cannot change their own account. Ask another administrator if a change
-                is required outside this system.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {canEdit ? (
         <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
           <EmployeeForm
             user={user}
@@ -304,6 +294,18 @@ export default function EmployeeProfilePage({ params }: PageProps) {
               await loadEmployee();
             }}
           />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">
+          <div className="flex items-start gap-3 rounded-lg border border-danger-border bg-danger-bg px-4 py-3 text-sm text-danger">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold">Editing disabled</p>
+              <p className="mt-1 text-danger/90">
+                You do not have permission to edit this employee.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
