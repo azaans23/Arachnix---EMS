@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import CustomDropdown from '@/components/ui/Dropdown';
+import DatePicker from '@/components/ui/DatePicker';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
@@ -318,14 +319,14 @@ export default function HolidayCalendarPage() {
               <div className="space-y-4 px-5 py-5">
                 <label className="block text-xs font-medium text-muted">
                   Holiday date
-                  <input
-                    type="date"
-                    value={form.holidayDate}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, holidayDate: event.target.value }))
-                    }
-                    className={inputClassName}
-                  />
+                  <div className="mt-1.5">
+                    <DatePicker
+                      ariaLabel="Holiday date"
+                      clearable={false}
+                      value={form.holidayDate}
+                      onChange={(next) => setForm((current) => ({ ...current, holidayDate: next }))}
+                    />
+                  </div>
                 </label>
 
                 <label className="block text-xs font-medium text-muted">
@@ -530,7 +531,7 @@ export default function HolidayCalendarPage() {
                   <button
                     type="button"
                     onClick={() => openEdit(holiday)}
-                    className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-canvas/70"
+                    className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-canvas/70 cursor-pointer"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-ink">{holiday.holidayName}</p>

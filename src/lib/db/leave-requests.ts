@@ -7,7 +7,7 @@ import {
   type LeaveRequestStatus,
 } from '@/types/leave-request';
 
-type LeaveRequestDbRow = {
+export type LeaveRequestDbRow = {
   requestid: number;
   employeeid: string;
   leavetype: string;
@@ -230,4 +230,32 @@ export async function deleteLeaveRequest(requestId: string): Promise<void> {
 
   const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('requestid', id);
   if (error) throw new Error(`Failed to delete leave request: ${error.message}`);
+}
+
+/** Remove leave requests for an employee so the employee row can be deleted. */
+export async function deleteLeaveRequestsByEmployeeId(
+  employeeId: string
+): Promise<LeaveRequestDbRow[]> {
+  const id = employeeId.trim();
+  if (!id) return [];
+
+  const { data, error } = await getSupabaseAdmin().from(TABLE).select('*').eq('employeeid', id);
+  if (error) throw new Error(`Failed to load leave requests for delete: ${error.message}`);
+
+  const rows = (data as LeaveRequestDbRow[]) || [];
+  if (rows.length === 0) return [];
+
+  const { error: deleteError } = await getSupabaseAdmin().from(TABLE).delete().eq('employeeid', id);
+  if (deleteError) {
+    throw new Error(`Failed to delete leave requests: ${deleteError.message}`);
+  }
+  return rows;
+}
+
+export async function restoreLeaveRequestRows(rows: LeaveRequestDbRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await getSupabaseAdmin().from(TABLE).upsert(rows, {
+    onConflict: 'requestid',
+  });
+  if (error) throw new Error(`Failed to restore leave requests: ${error.message}`);
 }

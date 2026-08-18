@@ -6,9 +6,24 @@ import {
   findEmployeeDbRowByIdOrEmail,
   getEmployeeDbRow,
   listEmployeeDbRows,
+  restoreEmployeeDbRow,
   rollbackEmployeeDbWrite,
+  deleteEmployeeDbRow,
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
+import {
+  deleteSalaryDbRow,
+  getSalaryDbRow,
+  restoreSalaryDbRow,
+} from '@/lib/db/salaries';
+import {
+  deleteLeaveBalancesByEmployeeId,
+  restoreLeaveBalanceRows,
+} from '@/lib/db/leave-balances';
+import {
+  deleteLeaveRequestsByEmployeeId,
+  restoreLeaveRequestRows,
+} from '@/lib/db/leave-requests';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 
 function pick(raw: Record<string, unknown>, ...keys: string[]): string {
@@ -407,6 +422,71 @@ export async function upsertEmployee(
   }
 
   return merged;
+}
+
+/**
+ * Permanently delete an employee from Supabase, then from the Sheet via n8n.
+ * Related salary / leave rows are removed first so FKs do not block the delete.
+ * On webhook failure the employee row (and related snapshots) are restored.
+ */
+export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord> {
+  const id = employeeId.trim();
+  if (!id) throw new SheetsError('Employee ID is required.', 400);
+
+  const previousDbRow = await getEmployeeDbRow(id);
+  if (!previousDbRow) {
+    throw new SheetsError(`Employee ${id} was not found.`, 404);
+  }
+
+  const employee = dbRowToEmployeeRecord(previousDbRow);
+  const previousSalary = await getSalaryDbRow(id);
+  let previousBalances: Awaited<ReturnType<typeof deleteLeaveBalancesByEmployeeId>> = [];
+  let previousRequests: Awaited<ReturnType<typeof deleteLeaveRequestsByEmployeeId>> = [];
+
+  // Clear dependents before the employee row so FKs cannot block the delete.
+  if (previousSalary) {
+    await deleteSalaryDbRow(id);
+  }
+  previousBalances = await deleteLeaveBalancesByEmployeeId(id);
+  previousRequests = await deleteLeaveRequestsByEmployeeId(id);
+  await deleteEmployeeDbRow(id);
+
+  try {
+    const response = await fetch(SHEETS_WEBHOOKS.deleteEmployee, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        EmployeeID: employee.employeeId,
+        Email: employee.email,
+        FullName: employee.fullName,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new SheetsError(
+        await parseWebhookError(
+          response,
+          `n8n delete-employee webhook returned status ${response.status}.`
+        ),
+        response.status
+      );
+    }
+  } catch (sheetError) {
+    try {
+      await restoreEmployeeDbRow(previousDbRow);
+      if (previousSalary) await restoreSalaryDbRow(previousSalary);
+      if (previousBalances.length > 0) await restoreLeaveBalanceRows(previousBalances);
+      if (previousRequests.length > 0) await restoreLeaveRequestRows(previousRequests);
+    } catch (rollbackError) {
+      console.error(
+        'Failed to roll back Supabase employee after delete-employee webhook failure:',
+        rollbackError
+      );
+    }
+    throw sheetError;
+  }
+
+  return employee;
 }
 
 export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInput {

@@ -20,12 +20,19 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import {
   canAccess,
   canAssignRole,
+  canDeleteEmployee,
+  canManageEmployeeRole,
+  emailsMatch,
   getTrustedRole,
+  isSuperAdminRole,
   isSuperAdminSelfEdit,
   normalizeRole,
   ROLE_OPTIONS as ALL_ROLES,
@@ -122,11 +129,59 @@ export default function EmployeesPage() {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
+  const [deleteTarget, setDeleteTarget] = useState<SheetUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { openModal } = useModal();
   const router = useRouter();
 
+  const canDelete = canDeleteEmployee(actorRole);
+
   const profilePath = (user: SheetUser) =>
     `/dashboard/employees/${encodeURIComponent(user.employeeId || user.email)}`;
+
+  const canDeleteUser = (user: SheetUser) => {
+    if (!canDelete || !actorRole) return false;
+    if (
+      isSuperAdminSelfEdit({
+        actorRole,
+        actorEmail,
+        actorUserId,
+        targetEmail: user.email,
+        targetSupabaseUserId: supabaseUserIdOf(user),
+      })
+    ) {
+      return false;
+    }
+    if (emailsMatch(actorEmail, user.email)) return false;
+    if (isSuperAdminRole(user.role)) return false;
+    return canManageEmployeeRole(actorRole, user.role);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget?.employeeId) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `/api/employees/${encodeURIComponent(deleteTarget.employeeId)}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete employee.');
+      }
+      toast.success(`Deleted ${deleteTarget.name || deleteTarget.employeeId}`);
+      setDeleteTarget(null);
+      await fetchUsers();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete employee.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -543,6 +598,20 @@ export default function EmployeesPage() {
                                     <Pencil className="h-3.5 w-3.5" />
                                   </button>
                                 ) : null}
+
+                                {canDeleteUser(user) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteTarget(user);
+                                    }}
+                                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-danger-border bg-surface text-danger transition-colors duration-150 hover:bg-danger-bg"
+                                    title="Delete employee"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -598,6 +667,60 @@ export default function EmployeesPage() {
           )}
         </div>
       )}
+
+      {deleteTarget && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
+              <button
+                type="button"
+                aria-label="Close dialog backdrop"
+                className="absolute inset-0 cursor-default"
+                disabled={deleting}
+                onClick={() => {
+                  if (!deleting) setDeleteTarget(null);
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                className="relative w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              >
+                <div className="border-b border-border px-5 py-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                    Delete employee
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-ink">
+                    Remove {deleteTarget.name || deleteTarget.employeeId}?
+                  </h2>
+                  <p className="mt-2 text-sm text-muted">
+                    This permanently deletes the employee record, salary profile, leave data, and
+                    EMS login. This cannot be undone.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setDeleteTarget(null)}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => void confirmDelete()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-danger px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

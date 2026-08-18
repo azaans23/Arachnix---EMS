@@ -1229,16 +1229,6 @@ export default function SalaryPage() {
                           >
                             <td className="px-5 py-3.5">
                               <div className="font-medium">{row.fullName || 'N/A'}</div>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                                <span>{row.employeeId || '—'}</span>
-                                {row.emsStatus ? (
-                                  <span
-                                    className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(row.emsStatus)}`}
-                                  >
-                                    {row.emsStatus}
-                                  </span>
-                                ) : null}
-                              </div>
                             </td>
                             <td className="px-5 py-3.5 text-muted">{row.email || '—'}</td>
                             <td className="px-5 py-3.5 text-muted">{row.designation || '—'}</td>

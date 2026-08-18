@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import {
   AXIS_TICK,
+  CHART_COLORS,
   ChartEmpty,
   ChartLegend,
   compactNumber,
@@ -117,10 +118,10 @@ export function CashflowTrendChart({ data, currency }: { data: TrendPoint[]; cur
             type="monotone"
             dataKey="net"
             name="Net"
-            stroke="var(--ink)"
-            strokeWidth={1.5}
-            dot={{ r: 2.5, fill: 'var(--surface)', stroke: 'var(--ink)', strokeWidth: 1.5 }}
-            activeDot={{ r: 4, fill: 'var(--ink)', stroke: 'var(--surface)', strokeWidth: 2 }}
+            stroke="var(--chart-2)"
+            strokeWidth={1.8}
+            dot={{ r: 2.5, fill: 'var(--surface)', stroke: 'var(--chart-2)', strokeWidth: 1.5 }}
+            activeDot={{ r: 4, fill: 'var(--chart-2)', stroke: 'var(--surface)', strokeWidth: 2 }}
             animationDuration={reduced ? 0 : 240}
           />
         </ComposedChart>
@@ -203,7 +204,7 @@ export function AccountShareChart({ data, currency }: { data: AccountSlice[]; cu
               {pieData.map((slice, index) => (
                 <Cell
                   key={slice.account}
-                  fill={slice.amount < 0 ? 'var(--danger)' : 'var(--ink)'}
+                  fill={slice.amount < 0 ? 'var(--danger)' : CHART_COLORS[index % CHART_COLORS.length]}
                   fillOpacity={slice.amount < 0 ? 0.75 : INK_RAMP[index] ?? 0.1}
                 />
               ))}
@@ -326,12 +327,17 @@ export function CategoryBreakdownChart({
           />
           <Bar
             dataKey="amount"
-            fill="var(--ink)"
-            fillOpacity={0.7}
             radius={[3, 3, 0, 0]}
             maxBarSize={44}
             animationDuration={reduced ? 0 : 240}
           >
+            {bars.map((bar, index) => (
+              <Cell
+                key={bar.category}
+                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                fillOpacity={INK_RAMP[index] ?? 0.8}
+              />
+            ))}
             <LabelList
               dataKey="amount"
               position="top"

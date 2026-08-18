@@ -20,6 +20,7 @@ import {
   Landmark,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
+import DatePicker, { toIsoDate } from '@/components/ui/DatePicker';
 import type { EmployeeWriteInput, SheetUser } from '@/types/employee';
 import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
@@ -320,6 +321,8 @@ export default function EmployeeForm({
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.touched[name] && formik.errors[name] ? String(formik.errors[name]) : null;
 
+  const today = toIsoDate(new Date());
+
   const fieldClass = (name: keyof EmployeeWriteInput) =>
     `pl-10 pr-4 py-2 w-full bg-surface border rounded-lg text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] transition-all duration-200 ${
       showError(name) ? 'border-danger focus:border-danger' : 'border-border focus:border-ink/40'
@@ -472,14 +475,21 @@ export default function EmployeeForm({
           error={showError('dob')}
           icon={<Calendar className="h-4 w-4" />}
         >
-          <input
+          <DatePicker
             id="dob"
             name="dob"
-            type="date"
-            value={formik.values.dob}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('dob')}
+            ariaLabel="Date of birth"
+            hideIcon
+            max={today}
+            value={String(formik.values.dob || '')}
+            onChange={(next) => {
+              void formik.setFieldValue('dob', next);
+            }}
+            onBlur={() => {
+              void formik.setFieldTouched('dob', true);
+            }}
+            invalid={!!showError('dob')}
+            className="pl-10"
           />
         </Field>
 
@@ -489,14 +499,20 @@ export default function EmployeeForm({
           error={showError('joiningDate')}
           icon={<Calendar className="h-4 w-4" />}
         >
-          <input
+          <DatePicker
             id="joiningDate"
             name="joiningDate"
-            type="date"
-            value={formik.values.joiningDate}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('joiningDate')}
+            ariaLabel="Joining date"
+            hideIcon
+            value={String(formik.values.joiningDate || '')}
+            onChange={(next) => {
+              void formik.setFieldValue('joiningDate', next);
+            }}
+            onBlur={() => {
+              void formik.setFieldTouched('joiningDate', true);
+            }}
+            invalid={!!showError('joiningDate')}
+            className="pl-10"
           />
         </Field>
 

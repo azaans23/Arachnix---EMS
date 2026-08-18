@@ -10,7 +10,7 @@ import {
   validateLeaveBalanceRules,
 } from '@/types/leave-balance';
 
-type LeaveBalanceDbRow = {
+export type LeaveBalanceDbRow = {
   leaveid: string;
   employeeid: string;
   year: number;
@@ -222,6 +222,32 @@ async function deleteLeaveBalanceById(leaveId: string): Promise<void> {
   const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('leaveid', leaveId.trim());
   if (error) {
     throw new Error(`Failed to delete leave balance for rollback: ${error.message}`);
+  }
+}
+
+/** Remove every leave-balance row for an employee (used when deleting the employee). */
+export async function deleteLeaveBalancesByEmployeeId(
+  employeeId: string
+): Promise<LeaveBalanceDbRow[]> {
+  const id = employeeId.trim();
+  if (!id) return [];
+
+  const { data, error } = await getSupabaseAdmin().from(TABLE).select('*').eq('employeeid', id);
+  if (error) throw new Error(`Failed to load leave balances for delete: ${error.message}`);
+
+  const rows = (data as LeaveBalanceDbRow[]) || [];
+  if (rows.length === 0) return [];
+
+  const { error: deleteError } = await getSupabaseAdmin().from(TABLE).delete().eq('employeeid', id);
+  if (deleteError) {
+    throw new Error(`Failed to delete leave balances: ${deleteError.message}`);
+  }
+  return rows;
+}
+
+export async function restoreLeaveBalanceRows(rows: LeaveBalanceDbRow[]): Promise<void> {
+  for (const row of rows) {
+    await restoreLeaveBalanceRow(row);
   }
 }
 

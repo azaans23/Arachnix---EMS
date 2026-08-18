@@ -2,10 +2,29 @@
 
 import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, User, ShieldAlert, CheckCircle, UserCheck, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  User,
+  ShieldAlert,
+  CheckCircle,
+  UserCheck,
+  RefreshCw,
+  Trash2,
+  Loader2,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess, getTrustedRole, isSuperAdminSelfEdit } from '@/lib/rbac';
+import {
+  canAccess,
+  canDeleteEmployee,
+  canManageEmployeeRole,
+  emailsMatch,
+  getTrustedRole,
+  isSuperAdminRole,
+  isSuperAdminSelfEdit,
+} from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
@@ -20,6 +39,7 @@ type PageProps = {
 export default function EmployeeProfilePage({ params }: PageProps) {
   const { id } = use(params);
   const { openModal } = useModal();
+  const router = useRouter();
 
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [user, setUser] = useState<SheetUser | null>(null);
@@ -28,6 +48,8 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   const [actorRole, setActorRole] = useState<string | null>(null);
   const [actorEmail, setActorEmail] = useState<string | null>(null);
   const [actorUserId, setActorUserId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadEmployee = useCallback(async () => {
     setLoading(true);
@@ -158,6 +180,35 @@ export default function EmployeeProfilePage({ params }: PageProps) {
     targetEmail: user.email,
     targetSupabaseUserId: supabaseUserIdOf(user),
   });
+  const showDelete =
+    canDeleteEmployee(actorRole) &&
+    !isSelfSuperAdmin &&
+    !emailsMatch(actorEmail, user.email) &&
+    !isSuperAdminRole(user.role) &&
+    !!actorRole &&
+    canManageEmployeeRole(actorRole, user.role);
+
+  const handleDelete = async () => {
+    if (!user.employeeId) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/employees/${encodeURIComponent(user.employeeId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete employee.');
+      }
+      toast.success(`Deleted ${user.name || user.employeeId}`);
+      router.push('/dashboard/employees');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete employee.');
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in-up">
@@ -168,23 +219,34 @@ export default function EmployeeProfilePage({ params }: PageProps) {
         >
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
-        {!registered && !isSelfSuperAdmin && (
-          <button
-            type="button"
-            onClick={() =>
-              openModal('registerEmployee', {
-                user,
-                onSuccess: () => {
-                  loadEmployee();
-                  toast.success('EMS access granted');
-                },
-              })
-            }
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
-          >
-            <UserCheck className="h-3.5 w-3.5" /> Register
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!registered && !isSelfSuperAdmin && (
+            <button
+              type="button"
+              onClick={() =>
+                openModal('registerEmployee', {
+                  user,
+                  onSuccess: () => {
+                    loadEmployee();
+                    toast.success('EMS access granted');
+                  },
+                })
+              }
+              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover"
+            >
+              <UserCheck className="h-3.5 w-3.5" /> Register
+            </button>
+          )}
+          {showDelete ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-danger-border bg-surface px-3 text-sm font-semibold text-danger transition-colors hover:bg-danger-bg"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <header className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
@@ -244,6 +306,60 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           />
         </div>
       )}
+
+      {confirmDelete && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
+              <button
+                type="button"
+                aria-label="Close dialog backdrop"
+                className="absolute inset-0 cursor-default"
+                disabled={deleting}
+                onClick={() => {
+                  if (!deleting) setConfirmDelete(false);
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                className="relative w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              >
+                <div className="border-b border-border px-5 py-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                    Delete employee
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-ink">
+                    Remove {user.name || user.employeeId}?
+                  </h2>
+                  <p className="mt-2 text-sm text-muted">
+                    This permanently deletes the employee record, salary profile, leave data, and
+                    EMS login. This cannot be undone.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setConfirmDelete(false)}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => void handleDelete()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-danger px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

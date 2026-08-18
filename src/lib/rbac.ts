@@ -452,3 +452,11 @@ export function getNavItemsForRole(role: AppRole | string): NavItemConfig[] {
 
 /** Roles allowed to mutate employee APIs (get-users, update-user, signup) */
 export const EMPLOYEE_API_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR_MANAGER];
+
+/** Only Admin / Super Admin may permanently delete an employee. */
+export const EMPLOYEE_DELETE_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+
+export function canDeleteEmployee(actorRole: AppRole | string | null | undefined): boolean {
+  if (!actorRole) return false;
+  return EMPLOYEE_DELETE_ROLES.includes(normalizeRole(actorRole));
+}

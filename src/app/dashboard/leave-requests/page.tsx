@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import CustomDropdown from '@/components/ui/Dropdown';
+import DatePicker from '@/components/ui/DatePicker';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
@@ -59,9 +61,6 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 const LEAVE_TYPE_OPTIONS = LEAVE_TYPES.map((type) => ({ label: type, value: type }));
-
-const inputClassName =
-  'mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink transition-colors placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]';
 
 function token() {
   return localStorage.getItem('token');
@@ -121,7 +120,7 @@ export default function LeaveRequestsPage() {
     leaveType: 'Annual',
     startDate: '',
     endDate: '',
-    daysRequested: '',
+    daysRequested: '0',
     reason: '',
   });
 
@@ -263,7 +262,7 @@ export default function LeaveRequestsPage() {
       leaveType: 'Annual',
       startDate: '',
       endDate: '',
-      daysRequested: '',
+      daysRequested: '0',
       reason: '',
     });
     await loadEmployees();
@@ -285,6 +284,8 @@ export default function LeaveRequestsPage() {
       const next = { ...current, [field]: value };
       if (next.startDate && next.endDate && next.endDate >= next.startDate) {
         next.daysRequested = String(countLeaveDays(next.startDate, next.endDate));
+      } else {
+        next.daysRequested = '0';
       }
       return next;
     });
@@ -508,41 +509,37 @@ export default function LeaveRequestsPage() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="text-xs font-medium text-muted">
                       Start date <span className="text-danger">*</span>
-                      <input
-                        type="date"
-                        required
-                        value={createForm.startDate}
-                        onChange={(event) => updateCreateDates('startDate', event.target.value)}
-                        className={inputClassName}
-                      />
+                      <div className="mt-1.5">
+                        <DatePicker
+                          ariaLabel="Start date"
+                          value={createForm.startDate}
+                          max={createForm.endDate || undefined}
+                          onChange={(next) => updateCreateDates('startDate', next)}
+                        />
+                      </div>
                     </label>
                     <label className="text-xs font-medium text-muted">
                       End date <span className="text-danger">*</span>
-                      <input
-                        type="date"
-                        required
-                        value={createForm.endDate}
-                        onChange={(event) => updateCreateDates('endDate', event.target.value)}
-                        className={inputClassName}
-                      />
+                      <div className="mt-1.5">
+                        <DatePicker
+                          ariaLabel="End date"
+                          value={createForm.endDate}
+                          min={createForm.startDate || undefined}
+                          onChange={(next) => updateCreateDates('endDate', next)}
+                        />
+                      </div>
                     </label>
                   </div>
                   <label className="block text-xs font-medium text-muted">
-                    Days requested <span className="text-danger">*</span>
+                    Days requested
                     <input
                       type="number"
-                      min="0.5"
-                      step="0.5"
-                      required
                       readOnly
+                      tabIndex={-1}
                       value={createForm.daysRequested}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          daysRequested: event.target.value,
-                        }))
-                      }
-                      className={inputClassName}
+                      className="mt-1.5 h-10 w-full cursor-not-allowed rounded-lg border border-border px-3 text-sm text-muted shadow-none focus:outline-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]"
+                      aria-readonly="true"
+                      title="Calculated from start and end dates"
                     />
                   </label>
                   <label className="block text-xs font-medium text-muted">
@@ -759,22 +756,37 @@ export default function LeaveRequestsPage() {
                 </div>
               ) : null}
 
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-3">
-                <DetailField label="Type" value={detailRequest.leaveType || '—'} />
-                <DetailField label="Days" value={String(detailRequest.daysRequested)} />
-                <DetailField
-                  label="Reviewed by"
-                  value={detailRequest.approvedBy?.trim() || '—'}
-                />
-                <DetailField label="From" value={displayDate(detailRequest.startDate)} />
-                <DetailField label="To" value={displayDate(detailRequest.endDate)} />
-                <DetailField
-                  label="Reviewed on"
-                  value={
-                    detailRequest.approvalDate ? displayDate(detailRequest.approvalDate) : '—'
-                  }
-                />
-              </dl>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <div className="flex items-center gap-3 border-b border-border bg-canvas/40 px-4 py-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-muted">
+                    <CalendarDays className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {displayDate(detailRequest.startDate)} — {displayDate(detailRequest.endDate)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {detailRequest.daysRequested}{' '}
+                      {Number(detailRequest.daysRequested) === 1 ? 'day' : 'days'}
+                      {detailRequest.leaveType ? ` · ${detailRequest.leaveType} leave` : ''}
+                    </p>
+                  </div>
+                </div>
+                <dl className="divide-y divide-border">
+                  <DetailRow label="Leave type" value={detailRequest.leaveType || '—'} />
+                  <DetailRow
+                    label="Days requested"
+                    value={String(detailRequest.daysRequested)}
+                  />
+                  <DetailRow label="Reviewed by" value={detailRequest.approvedBy?.trim() || '—'} />
+                  <DetailRow
+                    label="Reviewed on"
+                    value={
+                      detailRequest.approvalDate ? displayDate(detailRequest.approvalDate) : '—'
+                    }
+                  />
+                </dl>
+              </div>
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
@@ -1126,11 +1138,11 @@ export default function LeaveRequestsPage() {
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</dt>
-      <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
+    <div className="flex items-baseline justify-between gap-4 px-4 py-2.5">
+      <dt className="shrink-0 text-xs font-medium text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-sm text-ink">{value}</dd>
     </div>
   );
 }

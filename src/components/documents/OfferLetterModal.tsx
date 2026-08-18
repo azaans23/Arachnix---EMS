@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarDays, FileText, Loader2, Send, X } from 'lucide-react';
+import { FileText, Loader2, Send, X } from 'lucide-react';
 import { toast } from 'sonner';
+import DatePicker from '@/components/ui/DatePicker';
 
 type OfferLetterModalProps = {
   /** How many blank candidate forms to show (1–20). */
@@ -329,44 +330,39 @@ export default function OfferLetterModal({
                     >
                       <label className="text-xs font-medium text-muted">
                         Joining date <span className="text-danger">*</span>
-                        <span className="relative block">
-                          <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                          <input
-                            type="date"
-                            required
+                        <div className="mt-1.5">
+                          <DatePicker
+                            ariaLabel="Joining date"
                             value={form.joiningDate}
-                            onChange={(event) =>
-                              updateField(index, 'joiningDate', event.target.value)
-                            }
-                            className={`${inputClassName} pl-9`}
+                            max={form.partTimeTenure || undefined}
+                            onChange={(next) => updateField(index, 'joiningDate', next)}
                           />
-                        </span>
+                        </div>
                       </label>
                       {form.hasPartTimeTenure && (
                         <>
                           <label className="text-xs font-medium text-muted">
                             Part-time tenure ends <span className="text-danger">*</span>
-                            <input
-                              type="date"
-                              required
-                              value={form.partTimeTenure}
-                              onChange={(event) =>
-                                updateField(index, 'partTimeTenure', event.target.value)
-                              }
-                              className={inputClassName}
-                            />
+                            <div className="mt-1.5">
+                              <DatePicker
+                                ariaLabel="Part-time tenure end"
+                                value={form.partTimeTenure}
+                                min={form.joiningDate || undefined}
+                                max={form.fullTimeStart || undefined}
+                                onChange={(next) => updateField(index, 'partTimeTenure', next)}
+                              />
+                            </div>
                           </label>
                           <label className="text-xs font-medium text-muted">
                             Full-time start <span className="text-danger">*</span>
-                            <input
-                              type="date"
-                              required
-                              value={form.fullTimeStart}
-                              onChange={(event) =>
-                                updateField(index, 'fullTimeStart', event.target.value)
-                              }
-                              className={inputClassName}
-                            />
+                            <div className="mt-1.5">
+                              <DatePicker
+                                ariaLabel="Full-time start"
+                                value={form.fullTimeStart}
+                                min={form.partTimeTenure || form.joiningDate || undefined}
+                                onChange={(next) => updateField(index, 'fullTimeStart', next)}
+                              />
+                            </div>
                           </label>
                         </>
                       )}

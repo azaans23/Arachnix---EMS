@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import {
   AXIS_TICK,
+  CHART_COLORS,
   INK_RAMP,
   TOOLTIP_PROPS,
   TooltipCard,
@@ -28,7 +29,10 @@ import type { CountSlice } from '@/types/dashboard';
 type SliceStyle = { color: string; opacity: number };
 
 function inkRamp(_label: string, index: number): SliceStyle {
-  return { color: 'var(--ink)', opacity: INK_RAMP[index] ?? 0.1 };
+  return {
+    color: CHART_COLORS[index % CHART_COLORS.length],
+    opacity: INK_RAMP[index] ?? 0.1,
+  };
 }
 
 function plural(count: number, singular: string, pluralForm = `${singular}s`) {
@@ -262,12 +266,17 @@ export function CountBarChart({
           />
           <Bar
             dataKey="value"
-            fill="var(--ink)"
-            fillOpacity={0.7}
             radius={[3, 3, 0, 0]}
             maxBarSize={44}
             animationDuration={reduced ? 0 : 240}
           >
+            {bars.map((bar, index) => (
+              <Cell
+                key={bar.label}
+                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                fillOpacity={INK_RAMP[index] ?? 0.8}
+              />
+            ))}
             <LabelList
               dataKey="value"
               position="top"
