@@ -103,12 +103,74 @@ function actionClasses(action: string): string {
     case 'DELETE':
     case 'REJECT':
     case 'REVOKE_ACCESS':
+    case 'FAILED':
+    case 'PARTIAL':
       return 'border-danger-border bg-danger-bg text-danger';
     case 'REQUEST_CHANGES':
       return 'border-border bg-canvas text-ink';
     default:
       return 'border-border bg-canvas text-ink';
   }
+}
+
+/** Detect failed / partial / completed runs from newValue.status. */
+function processOutcome(record: AuditLogRecord): 'Failed' | 'Partial' | 'Completed' | null {
+  const raw = String(record.newValue || '').trim();
+  if (!raw) return null;
+
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parsed = value as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  if (!parsed) return null;
+
+  const status = String(parsed.status || parsed.Status || '')
+    .trim()
+    .toLowerCase();
+  if (status === 'failed' || status === 'fail' || status === 'error') return 'Failed';
+  if (status === 'partial') return 'Partial';
+  if (status === 'completed' || status === 'success' || status === 'succeeded') {
+    return 'Completed';
+  }
+
+  const failCount = Number(parsed.failCount ?? parsed.FailCount);
+  if (Number.isFinite(failCount) && failCount > 0) {
+    const successCount = Number(parsed.successCount ?? parsed.SuccessCount);
+    if (Number.isFinite(successCount) && successCount > 0) return 'Partial';
+    return 'Failed';
+  }
+
+  return null;
+}
+
+function isRunRecordType(recordType: string) {
+  const type = recordType.trim().toLowerCase();
+  return (
+    type === 'salarysliprun' ||
+    type === 'offerletterrun' ||
+    type === 'salary slip run' ||
+    type === 'offer letter run'
+  );
+}
+
+/** Action label shown in the table (completed runs read as CREATE). */
+function displayAction(record: AuditLogRecord): string {
+  const outcome = processOutcome(record);
+  if (outcome === 'Failed' || outcome === 'Partial') return outcome;
+  if (outcome === 'Completed' && isRunRecordType(record.recordType || '')) {
+    return 'CREATE';
+  }
+  return String(record.action || '').replaceAll('_', ' ');
+}
+
+function displayActionClasses(record: AuditLogRecord): string {
+  const label = displayAction(record);
+  return actionClasses(label);
 }
 
 export default function AuditLogPage() {
@@ -410,9 +472,12 @@ export default function AuditLogPage() {
                   {visibleRecords.map((record, index) => {
                     const rowId = record.logId || `${record.timestamp}-${index}`;
                     const expanded = expandedId === rowId;
+                    const outcome = processOutcome(record);
+                    const failed = outcome === 'Failed' || outcome === 'Partial';
+                    const actionText = displayAction(record);
                     return (
                       <Fragment key={rowId}>
-                        <tr className="hover:bg-canvas/50">
+                        <tr className={failed ? 'bg-danger-bg/40 hover:bg-danger-bg/60' : 'hover:bg-canvas/50'}>
                           <td className="whitespace-nowrap px-4 py-3.5 text-muted">
                             {displayDate(record.timestamp)}
                           </td>
@@ -421,9 +486,16 @@ export default function AuditLogPage() {
                           </td>
                           <td className="px-4 py-3.5">
                             <span
-                              className={`inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${actionClasses(record.action)}`}
+                              className={`inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${displayActionClasses(record)}`}
+                              title={
+                                failed
+                                  ? `${String(record.action || '').replaceAll('_', ' ')} · ${outcome}`
+                                  : outcome === 'Completed'
+                                    ? 'Completed run'
+                                    : undefined
+                              }
                             >
-                              {String(record.action || '').replaceAll('_', ' ')}
+                              {actionText}
                             </span>
                           </td>
                           <td className="truncate px-4 py-3.5">{record.recordType || 'N/A'}</td>

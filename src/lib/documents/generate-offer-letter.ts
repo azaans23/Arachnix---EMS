@@ -363,7 +363,7 @@ export async function startOfferLetterRun(
     });
 
     await logOfferLetterRunAudit(actorEmail, {
-      action: AUDIT_ACTIONS.UPDATE,
+      action: runStatus === 'Completed' ? AUDIT_ACTIONS.CREATE : AUDIT_ACTIONS.UPDATE,
       runId: run.runId,
       oldValue: { status: 'Processing' },
       newValue: {

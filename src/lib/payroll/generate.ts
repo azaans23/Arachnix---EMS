@@ -371,7 +371,7 @@ export async function startSalarySlipRun(
     });
 
     await logSalarySlipRunAudit(actorEmail, {
-      action: AUDIT_ACTIONS.UPDATE,
+      action: status === 'Completed' ? AUDIT_ACTIONS.CREATE : AUDIT_ACTIONS.UPDATE,
       runId: run.runId,
       oldValue: { status: 'Processing' },
       newValue: {
