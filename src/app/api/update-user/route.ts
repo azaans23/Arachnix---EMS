@@ -20,26 +20,11 @@ import {
 import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import { updateSalaryDetails } from '@/lib/payroll/salary-details';
-import {
-  computeSalaryTotals,
-  currentSalaryPeriod,
-  formatSalaryPeriod,
-} from '@/lib/payroll/period';
+import { computeSalaryTotals } from '@/lib/payroll/period';
 import type { SalaryDetailInput } from '@/types/salary-slip';
 import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
-
-function periodFromJoiningDate(joiningDate: string): string {
-  const match = String(joiningDate || '')
-    .trim()
-    .match(/^(\d{4})-(\d{2})/);
-  if (!match) return currentSalaryPeriod();
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!year || month < 1 || month > 12) return currentSalaryPeriod();
-  return formatSalaryPeriod(month, year);
-}
 
 function composeBankAccountDetails(input: EmployeeWriteInput): string {
   const parts = [input.bankName, input.accountName, input.accountNumber]
@@ -57,10 +42,6 @@ function buildInitialSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput 
     salary,
     allowance,
     tax,
-    overtimePay: '',
-    performanceBonus: '',
-    contributions: '',
-    others: '',
   });
 
   return {
@@ -71,16 +52,9 @@ function buildInitialSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput 
     accountNumber: String(input.accountNumber || '').trim(),
     accountName: String(input.accountName || input.name || '').trim(),
     bankName: String(input.bankName || '').trim(),
-    // Left blank on hire — filled later from Salary when needed.
-    overtimePay: '',
-    performanceBonus: '',
-    contributions: '',
-    others: '',
     totalEarning: String(totals.totalearning),
     totalDeduction: String(totals.totaldeduction),
     netSalary: String(totals.netsalary),
-    period: periodFromJoiningDate(input.joiningDate),
-    status: 'Pending',
   };
 }
 

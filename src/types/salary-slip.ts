@@ -40,24 +40,38 @@ export interface SalarySlipRunDetail {
   errorReason: string;
 }
 
+/**
+ * Ephemeral slip-only amounts. Asked when generating a salary slip, sent to
+ * n8n for that run, and never written to the salaries table.
+ */
+export interface SalarySlipExtrasInput {
+  employeeId: string;
+  overtimePay?: string;
+  performanceBonus?: string;
+  contributions?: string;
+  others?: string;
+}
+
 export interface GenerateSalarySlipsInput {
   month: number;
   year: number;
-  /** Empty / omitted = all active employees with a base salary. */
+  /** Empty / omitted = all employees who have a salary record. */
   employeeIds?: string[];
   /**
-   * When true, continue generating after salary details were reviewed/saved.
-   * When false/omitted, the API returns needsConfirmation with all run employees.
+   * When true, continue generating after salary details were reviewed.
+   * When false/omitted, the API returns needsConfirmation with run employees.
    */
   confirmIncomplete?: boolean;
   /**
-   * User-provided / just-updated salary rows. Merged over fetched salary details
-   * so generate can use fresh values without waiting for sheet sync.
+   * Optional stored-salary overrides (base/allowance/tax/bank). Merged over
+   * fetched salary rows before generate — still persisted if saved separately.
    */
   salaryDetails?: SalaryDetailInput[];
+  /** Slip-only OT/bonus/others/contributions — workflow only, not stored. */
+  slipExtras?: SalarySlipExtrasInput[];
 }
 
-/** Fields the user can enter / send to update-salary-detail (+ Supabase salaries). */
+/** Persisted salary profile — one row per employee (no period / status). */
 export interface SalaryDetailInput {
   employeeId: string;
   /** Maps to BaseSalary. */
@@ -67,16 +81,7 @@ export interface SalaryDetailInput {
   accountNumber: string;
   accountName: string;
   bankName: string;
-  overtimePay?: string;
-  performanceBonus?: string;
-  contributions?: string;
-  others?: string;
   netSalary?: string;
-  /** Period key, e.g. `August-2026`. Defaults to current month when omitted. */
-  period?: string;
-  /** `EmployeeID-Period`, e.g. `EMP-001-August-2026`. */
-  uniqueKey?: string;
-  status?: string;
   totalEarning?: string;
   totalDeduction?: string;
 }
@@ -95,22 +100,16 @@ export interface SalaryDetailRecord {
   baseSalary: string;
   salary: string;
   netSalary: string;
-  overtimePay: string;
-  performanceBonus: string;
-  contributions: string;
   allowance: string;
   tax: string;
-  others: string;
   totalEarning: string;
   totalDeduction: string;
   accountNumber: string;
   accountName: string;
   bankName: string;
   bankAccountDetails: string;
-  period?: string;
-  /** `EmployeeID-Period`, e.g. `EMP-001-August-2026`. */
+  /** Same as employeeId — one salary row per employee. */
   uniqueKey?: string;
-  status?: string;
   salaryId?: string;
   raw: Record<string, unknown>;
 }
@@ -124,18 +123,24 @@ export interface IncompleteSalaryDetail {
   missingFields: string[];
 }
 
-/** All editable money/bank fields shown in salary forms (empty ones are highlighted). */
+/** Fields stored on the salaries table / salary create+edit forms. */
 export const SALARY_DETAIL_FIELDS = [
   { key: 'salary', label: 'Base Salary', missing: 'Base Salary' },
   { key: 'allowance', label: 'Allowance', missing: 'Allowance' },
-  { key: 'overtimePay', label: 'Overtime Pay', missing: 'Overtime Pay' },
-  { key: 'performanceBonus', label: 'Performance Bonus', missing: 'Performance Bonus' },
-  { key: 'others', label: 'Others', missing: 'Others' },
   { key: 'tax', label: 'Tax', missing: 'Tax' },
-  { key: 'contributions', label: 'Contributions', missing: 'Contributions' },
   { key: 'accountNumber', label: 'Account Number', missing: 'Account Number' },
   { key: 'accountName', label: 'Account Name', missing: 'Account Name' },
   { key: 'bankName', label: 'Bank Name', missing: 'Bank Name' },
 ] as const;
 
 export type SalaryDetailFieldKey = (typeof SALARY_DETAIL_FIELDS)[number]['key'];
+
+/** Asked only while generating a salary slip (not persisted). */
+export const SALARY_SLIP_EXTRA_FIELDS = [
+  { key: 'overtimePay', label: 'Overtime Pay' },
+  { key: 'performanceBonus', label: 'Performance Bonus' },
+  { key: 'others', label: 'Others' },
+  { key: 'contributions', label: 'Contributions' },
+] as const;
+
+export type SalarySlipExtraFieldKey = (typeof SALARY_SLIP_EXTRA_FIELDS)[number]['key'];

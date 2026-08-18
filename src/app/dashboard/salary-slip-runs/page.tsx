@@ -24,7 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
-import { buildSalaryUniqueKey, formatSalaryPeriod } from '@/lib/payroll/period';
+import { formatSalaryPeriod } from '@/lib/payroll/period';
 import {
   hasPayrollSalary,
   parseBaseSalary,
@@ -33,10 +33,13 @@ import {
 import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   SALARY_DETAIL_FIELDS,
+  SALARY_SLIP_EXTRA_FIELDS,
   type IncompleteSalaryDetail,
   type SalaryDetailFieldKey,
   type SalaryDetailInput,
   type SalaryDetailRecord,
+  type SalarySlipExtraFieldKey,
+  type SalarySlipExtrasInput,
   type SalarySlipRun,
 } from '@/types/salary-slip';
 
@@ -119,40 +122,25 @@ function isEmptyValue(value: unknown) {
 
 function buildSalaryForms(
   incomplete: IncompleteSalaryDetail[],
-  details: SalaryDetailRecord[],
-  period?: string
+  details: SalaryDetailRecord[]
 ): SalaryDetailInput[] {
-  const periodKey = (period || '').trim();
   const byId = new Map(
-    details
-      .filter((detail) => {
-        if (!periodKey) return true;
-        return (detail.period || '').trim() === periodKey;
-      })
-      .map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
+    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
   );
 
   return incomplete.map((row) => {
     const key = row.employeeId.trim().toLowerCase();
     const existing = byId.get(key);
-    // Only prefill when EmployeeID + Period match; otherwise empty fields for this period.
     if (existing) {
       return {
         employeeId: row.employeeId,
         salary: existing.salary || '',
         allowance: existing.allowance || '',
         tax: existing.tax || '',
-        overtimePay: existing.overtimePay || '',
-        performanceBonus: existing.performanceBonus || '',
-        contributions: existing.contributions || '',
-        others: existing.others || '',
         netSalary: existing.netSalary || '',
         accountNumber: existing.accountNumber || '',
         accountName: existing.accountName || '',
         bankName: existing.bankName || '',
-        period: existing.period || periodKey,
-        uniqueKey: existing.uniqueKey || '',
-        status: existing.status || 'Pending',
         totalEarning: existing.totalEarning || '',
         totalDeduction: existing.totalDeduction || '',
       };
@@ -163,21 +151,57 @@ function buildSalaryForms(
       salary: '',
       allowance: '',
       tax: '',
-      overtimePay: '',
-      performanceBonus: '',
-      contributions: '',
-      others: '',
       netSalary: '',
       accountNumber: '',
       accountName: '',
       bankName: '',
-      period: periodKey,
-      uniqueKey: '',
-      status: 'Pending',
       totalEarning: '',
       totalDeduction: '',
     };
   });
+}
+
+function emptySlipExtras(employeeId: string): SalarySlipExtrasInput {
+  return {
+    employeeId,
+    overtimePay: '',
+    performanceBonus: '',
+    others: '',
+    contributions: '',
+  };
+}
+
+function buildSlipExtrasForms(employeeIds: string[]): Record<string, SalarySlipExtrasInput> {
+  const map: Record<string, SalarySlipExtrasInput> = {};
+  for (const employeeId of employeeIds) {
+    map[employeeId] = emptySlipExtras(employeeId);
+  }
+  return map;
+}
+
+function toStoredSalaryPayload(row: SalaryDetailInput): SalaryDetailInput {
+  return {
+    employeeId: row.employeeId,
+    salary: row.salary,
+    allowance: isEmptyValue(row.allowance) ? '0' : row.allowance,
+    tax: isEmptyValue(row.tax) ? '0' : row.tax,
+    accountNumber: row.accountNumber,
+    accountName: row.accountName,
+    bankName: row.bankName,
+    netSalary: row.netSalary,
+    totalEarning: row.totalEarning,
+    totalDeduction: row.totalDeduction,
+  };
+}
+
+function toSlipExtrasPayload(extras: SalarySlipExtrasInput): SalarySlipExtrasInput {
+  return {
+    employeeId: extras.employeeId,
+    overtimePay: isEmptyValue(extras.overtimePay) ? '0' : extras.overtimePay,
+    performanceBonus: isEmptyValue(extras.performanceBonus) ? '0' : extras.performanceBonus,
+    others: isEmptyValue(extras.others) ? '0' : extras.others,
+    contributions: isEmptyValue(extras.contributions) ? '0' : extras.contributions,
+  };
 }
 
 function enrichIncompleteRows(
@@ -222,6 +246,9 @@ export default function SalarySlipRunsPage() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [salaryReview, setSalaryReview] = useState<IncompleteSalaryDetail[] | null>(null);
   const [salaryForms, setSalaryForms] = useState<SalaryDetailInput[]>([]);
+  const [slipExtrasForms, setSlipExtrasForms] = useState<Record<string, SalarySlipExtrasInput>>(
+    {}
+  );
   const [savingDetails, setSavingDetails] = useState(false);
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
@@ -377,12 +404,14 @@ export default function SalarySlipRunsPage() {
   const closeSalaryReview = () => {
     setSalaryReview(null);
     setSalaryForms([]);
+    setSlipExtrasForms({});
   };
 
   const handleGenerate = async (
     options: {
       confirmIncomplete?: boolean;
       salaryDetails?: SalaryDetailInput[];
+      slipExtras?: SalarySlipExtrasInput[];
     } = {}
   ) => {
     if (!canGenerate) return;
@@ -405,6 +434,7 @@ export default function SalarySlipRunsPage() {
           employeeIds: mode === 'selected' ? selectedIds : undefined,
           confirmIncomplete: options.confirmIncomplete || undefined,
           salaryDetails: options.salaryDetails,
+          slipExtras: options.slipExtras,
         }),
       });
       const result = await response.json();
@@ -412,7 +442,6 @@ export default function SalarySlipRunsPage() {
       if (response.status === 409 && result.needsConfirmation) {
         const incomplete = (result.data?.incomplete || []) as IncompleteSalaryDetail[];
         const details = (result.data?.details || []) as SalaryDetailRecord[];
-        const runPeriod = formatSalaryPeriod(Number(month), Number(year));
         const forms = buildSalaryForms(
           incomplete.length > 0
             ? incomplete
@@ -420,8 +449,7 @@ export default function SalarySlipRunsPage() {
                 ? selectedIds
                 : eligibleEmployees.map((employee) => employee.employeeId)
               ).map((employeeId) => ({ employeeId, missingFields: [] as string[] })),
-          details,
-          runPeriod
+          details
         );
 
         setShowGenerate(false);
@@ -438,6 +466,7 @@ export default function SalarySlipRunsPage() {
           )
         );
         setSalaryForms(forms);
+        setSlipExtrasForms(buildSlipExtrasForms(forms.map((form) => form.employeeId)));
         toast.message(result.message || 'Review salary details, then generate.');
         return;
       }
@@ -472,6 +501,20 @@ export default function SalarySlipRunsPage() {
     );
   };
 
+  const updateSlipExtraField = (
+    employeeId: string,
+    field: SalarySlipExtraFieldKey,
+    value: string
+  ) => {
+    setSlipExtrasForms((current) => {
+      const existing = current[employeeId] || emptySlipExtras(employeeId);
+      return {
+        ...current,
+        [employeeId]: { ...existing, [field]: value },
+      };
+    });
+  };
+
   const handleSaveDetailsAndGenerate = async () => {
     if (!salaryReview || salaryForms.length === 0) return;
 
@@ -484,20 +527,10 @@ export default function SalarySlipRunsPage() {
       }
     }
 
-    const normalized = salaryForms.map((row) => {
-      const period = row.period || formatSalaryPeriod(Number(month), Number(year));
-      return {
-        ...row,
-        period,
-        uniqueKey: row.uniqueKey || buildSalaryUniqueKey(row.employeeId, period),
-        allowance: isEmptyValue(row.allowance) ? '0' : row.allowance,
-        tax: isEmptyValue(row.tax) ? '0' : row.tax,
-        overtimePay: isEmptyValue(row.overtimePay) ? '0' : row.overtimePay,
-        performanceBonus: isEmptyValue(row.performanceBonus) ? '0' : row.performanceBonus,
-        contributions: isEmptyValue(row.contributions) ? '0' : row.contributions,
-        others: isEmptyValue(row.others) ? '0' : row.others,
-      };
-    });
+    const storedDetails = salaryForms.map(toStoredSalaryPayload);
+    const slipExtras = salaryForms.map((row) =>
+      toSlipExtrasPayload(slipExtrasForms[row.employeeId] || emptySlipExtras(row.employeeId))
+    );
 
     setSavingDetails(true);
     try {
@@ -507,7 +540,7 @@ export default function SalarySlipRunsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({ details: normalized }),
+        body: JSON.stringify({ details: storedDetails }),
       });
       const updateJson = await updateRes.json();
       if (!updateRes.ok || !updateJson.success) {
@@ -517,7 +550,8 @@ export default function SalarySlipRunsPage() {
       toast.success(updateJson.message || 'Salary details saved.');
       await handleGenerate({
         confirmIncomplete: true,
-        salaryDetails: normalized,
+        salaryDetails: storedDetails,
+        slipExtras,
       });
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to update salary details.');
@@ -755,8 +789,9 @@ export default function SalarySlipRunsPage() {
                     Salary details
                   </h2>
                   <p className="mt-1 text-sm text-muted">
-                    Period <span className="font-medium text-ink">{runPeriodLabel}</span>. Empty
-                    fields are highlighted — fill required values, then generate.
+                    Slip period <span className="font-medium text-ink">{runPeriodLabel}</span>.
+                    Stored salary fields can be edited below. Overtime, bonus, others, and
+                    contributions apply to this slip only and are not saved to salary records.
                   </p>
                 </div>
                 <button
@@ -774,6 +809,7 @@ export default function SalarySlipRunsPage() {
                   const meta =
                     salaryReview.find((item) => item.employeeId === row.employeeId) || null;
                   const empty = emptyFieldsForForm(row);
+                  const extras = slipExtrasForms[row.employeeId] || emptySlipExtras(row.employeeId);
                   return (
                     <div
                       key={row.employeeId}
@@ -795,6 +831,9 @@ export default function SalarySlipRunsPage() {
                           <p className="mt-1.5 text-xs text-danger">Empty: {empty.join(', ')}</p>
                         ) : null}
                       </div>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                        Stored salary
+                      </p>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {SALARY_DETAIL_FIELDS.map((field) => {
                           const isEmpty = isEmptyValue(row[field.key]);
@@ -833,6 +872,26 @@ export default function SalarySlipRunsPage() {
                             </label>
                           );
                         })}
+                      </div>
+                      <p className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                        Slip-only extras
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {SALARY_SLIP_EXTRA_FIELDS.map((field) => (
+                          <label key={field.key} className="block text-xs">
+                            <span className="mb-1 block font-medium text-muted">{field.label}</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={extras[field.key] || ''}
+                              onChange={(e) =>
+                                updateSlipExtraField(row.employeeId, field.key, e.target.value)
+                              }
+                              className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                              placeholder={`Enter ${field.label} (optional)`}
+                            />
+                          </label>
+                        ))}
                       </div>
                     </div>
                   );

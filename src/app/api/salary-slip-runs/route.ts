@@ -2,8 +2,43 @@ import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
 import { listSalarySlipRuns } from '@/lib/db/salary-slips';
 import { startSalarySlipRun } from '@/lib/payroll/generate';
+import type { SalaryDetailInput, SalarySlipExtrasInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeSalaryDetail(row: Record<string, unknown>): SalaryDetailInput {
+  return {
+    employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
+    salary: String(row.salary ?? row.Salary ?? row.BaseSalary ?? row.baseSalary ?? '').trim(),
+    allowance: String(row.allowance ?? row.Allowance ?? '').trim(),
+    tax: String(row.tax ?? row.Tax ?? '').trim(),
+    netSalary: String(row.netSalary ?? row.NetSalary ?? '').trim() || undefined,
+    accountNumber: String(
+      row.accountNumber ?? row.AccountNumber ?? row['Account Number'] ?? ''
+    ).trim(),
+    accountName: String(row.accountName ?? row.AccountName ?? row['Account Name'] ?? '').trim(),
+    bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
+    totalEarning:
+      String(row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? '').trim() || undefined,
+    totalDeduction:
+      String(row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? '').trim() ||
+      undefined,
+  };
+}
+
+function normalizeSlipExtras(row: Record<string, unknown>): SalarySlipExtrasInput {
+  return {
+    employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
+    overtimePay: String(row.overtimePay ?? row.OvertimePay ?? row['Overtime Pay'] ?? '').trim(),
+    performanceBonus: String(
+      row.performanceBonus ?? row.PerformanceBonus ?? row['Performance Bonus'] ?? ''
+    ).trim(),
+    contributions: String(
+      row.contributions ?? row.Contributions ?? row.contribution ?? row.Contribution ?? ''
+    ).trim(),
+    others: String(row.others ?? row.Others ?? '').trim(),
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -35,41 +70,14 @@ export async function POST(request: Request) {
       : undefined;
     const confirmIncomplete = Boolean(body.confirmIncomplete);
     const salaryDetails = Array.isArray(body.salaryDetails)
-      ? body.salaryDetails.map((row: Record<string, unknown>) => ({
-          employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
-          salary: String(row.salary ?? row.Salary ?? row.BaseSalary ?? row.baseSalary ?? '').trim(),
-          allowance: String(row.allowance ?? row.Allowance ?? '').trim(),
-          tax: String(row.tax ?? row.Tax ?? '').trim(),
-          overtimePay: String(
-            row.overtimePay ?? row.OvertimePay ?? row['Overtime Pay'] ?? ''
-          ).trim(),
-          performanceBonus: String(
-            row.performanceBonus ?? row.PerformanceBonus ?? row['Performance Bonus'] ?? ''
-          ).trim(),
-          contributions: String(
-            row.contributions ?? row.Contributions ?? row.contribution ?? row.Contribution ?? ''
-          ).trim(),
-          others: String(row.others ?? row.Others ?? '').trim(),
-          netSalary: String(row.netSalary ?? row.NetSalary ?? '').trim() || undefined,
-          accountNumber: String(
-            row.accountNumber ?? row.AccountNumber ?? row['Account Number'] ?? ''
-          ).trim(),
-          accountName: String(
-            row.accountName ?? row.AccountName ?? row['Account Name'] ?? ''
-          ).trim(),
-          bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
-          period: String(row.period ?? row.Period ?? '').trim() || undefined,
-          uniqueKey: String(row.uniqueKey ?? row.UniqueKey ?? '').trim() || undefined,
-          status: String(row.status ?? row.Status ?? '').trim() || undefined,
-          totalEarning:
-            String(row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? '').trim() ||
-            undefined,
-          totalDeduction:
-            String(
-              row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? ''
-            ).trim() || undefined,
-        }))
+      ? body.salaryDetails.map((row: Record<string, unknown>) => normalizeSalaryDetail(row))
       : undefined;
+    const slipExtras = Array.isArray(body.slipExtras)
+      ? body.slipExtras.map((row: Record<string, unknown>) => normalizeSlipExtras(row))
+      : Array.isArray(body.salaryDetails)
+        ? // Back-compat: extras may arrive mixed into salaryDetails from older clients.
+          body.salaryDetails.map((row: Record<string, unknown>) => normalizeSlipExtras(row))
+        : undefined;
 
     const result = await startSalarySlipRun(user?.email || '', {
       month,
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
       employeeIds,
       confirmIncomplete,
       salaryDetails,
+      slipExtras,
     });
 
     if ('needsConfirmation' in result) {

@@ -25,12 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
-import {
-  currentSalaryPeriod,
-  monthInputToPeriod,
-  periodToMonthInput,
-  buildSalaryUniqueKey,
-} from '@/lib/payroll/period';
+import { computeStoredSalaryTotals } from '@/lib/payroll/period';
 import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   SALARY_DETAIL_FIELDS,
@@ -53,12 +48,6 @@ const PAGE_SIZE_OPTIONS = [
 
 const SALARY_FORM_FIELDS = SALARY_DETAIL_FIELDS;
 
-const SALARY_STATUS_OPTIONS = [
-  { label: 'Pending', value: 'Pending' },
-  { label: 'Processed', value: 'Processed' },
-  { label: 'Paid', value: 'Paid' },
-];
-
 type EmployeeOption = SheetUser & {
   department: string;
   designation: string;
@@ -67,71 +56,55 @@ type EmployeeOption = SheetUser & {
   bankAccountDetails: string;
 };
 
+function toStoredPayload(form: SalaryDetailInput): SalaryDetailInput {
+  const totals = computeStoredSalaryTotals(form);
+  return {
+    employeeId: form.employeeId,
+    salary: form.salary,
+    allowance: form.allowance || '0',
+    tax: form.tax || '0',
+    accountNumber: form.accountNumber,
+    accountName: form.accountName,
+    bankName: form.bankName,
+    netSalary: String(totals.netsalary),
+    totalEarning: String(totals.totalearning),
+    totalDeduction: String(totals.totaldeduction),
+  };
+}
+
 function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
   return {
     employeeId: detail.employeeId,
     salary: detail.salary,
     allowance: detail.allowance,
     tax: detail.tax,
-    overtimePay: detail.overtimePay,
-    performanceBonus: detail.performanceBonus,
-    contributions: detail.contributions,
-    others: detail.others,
     netSalary: detail.netSalary,
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
     bankName: detail.bankName,
-    period: detail.period,
-    uniqueKey: detail.uniqueKey,
-    status: detail.status,
     totalEarning: detail.totalEarning,
     totalDeduction: detail.totalDeduction,
   };
 }
 
-function emptyCreateForm(employee: EmployeeOption, period: string): SalaryDetailInput {
+function emptyCreateForm(employee: EmployeeOption): SalaryDetailInput {
   return {
     employeeId: employee.employeeId,
     salary: '',
     allowance: '',
     tax: '',
-    overtimePay: '',
-    performanceBonus: '',
-    contributions: '',
-    others: '',
     accountNumber: '',
     accountName: '',
     bankName: '',
-    period,
-    status: 'Pending',
   };
 }
 
-function findExactSalary(
-  employeeId: string,
-  period: string,
-  rows: SalaryDetailRecord[]
-): SalaryDetailRecord | null {
-  const key = employeeId.trim().toLowerCase();
-  const periodKey = monthInputToPeriod(period.trim());
-  return (
-    rows.find(
-      (row) =>
-        row.employeeId.trim().toLowerCase() === key &&
-        monthInputToPeriod((row.period || '').trim()) === periodKey
-    ) || null
-  );
-}
-
-function findLatestSalary(
+function findSalaryByEmployeeId(
   employeeId: string,
   rows: SalaryDetailRecord[]
 ): SalaryDetailRecord | null {
   const key = employeeId.trim().toLowerCase();
-  const matches = rows
-    .filter((row) => row.employeeId.trim().toLowerCase() === key)
-    .sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
-  return matches[0] || null;
+  return rows.find((row) => row.employeeId.trim().toLowerCase() === key) || null;
 }
 
 function formatCurrency(value: unknown) {
@@ -236,7 +209,6 @@ export default function SalaryPage() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [designationFilter, setDesignationFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState('all');
   const [completenessFilter, setCompletenessFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('fullName');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -255,7 +227,6 @@ export default function SalaryPage() {
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeOption | null>(null);
   const [createForm, setCreateForm] = useState<SalaryDetailInput | null>(null);
-  const [createExisting, setCreateExisting] = useState<SalaryDetailRecord | null>(null);
   const [savingCreate, setSavingCreate] = useState(false);
 
   useEffect(() => {
@@ -299,11 +270,7 @@ export default function SalaryPage() {
     [rows]
   );
   const statusOptions = useMemo(
-    () => uniqueSortedOptions(rows, (row) => row.status || row.emsStatus, 'All statuses'),
-    [rows]
-  );
-  const periodOptions = useMemo(
-    () => uniqueSortedOptions(rows, (row) => row.period || '', 'All periods'),
+    () => uniqueSortedOptions(rows, (row) => row.emsStatus, 'All statuses'),
     [rows]
   );
   const completenessOptions = [
@@ -328,16 +295,12 @@ export default function SalaryPage() {
   if (statusFilter !== 'all' && !statusOptions.some((option) => option.value === statusFilter)) {
     setStatusFilter('all');
   }
-  if (periodFilter !== 'all' && !periodOptions.some((option) => option.value === periodFilter)) {
-    setPeriodFilter('all');
-  }
 
   const hasActiveFilters =
     search.trim() !== '' ||
     departmentFilter !== 'all' ||
     designationFilter !== 'all' ||
     statusFilter !== 'all' ||
-    periodFilter !== 'all' ||
     completenessFilter !== 'all';
 
   const clearFilters = () => {
@@ -345,7 +308,6 @@ export default function SalaryPage() {
     setDepartmentFilter('all');
     setDesignationFilter('all');
     setStatusFilter('all');
-    setPeriodFilter('all');
     setCompletenessFilter('all');
     setPage(1);
   };
@@ -398,15 +360,8 @@ export default function SalaryPage() {
     }
 
     if (statusFilter !== 'all') {
-      list = list.filter((row) => {
-        const value = (row.status || row.emsStatus || '').trim().toLowerCase();
-        return value === statusFilter.toLowerCase();
-      });
-    }
-
-    if (periodFilter !== 'all') {
       list = list.filter(
-        (row) => (row.period || '').trim().toLowerCase() === periodFilter.toLowerCase()
+        (row) => (row.emsStatus || '').trim().toLowerCase() === statusFilter.toLowerCase()
       );
     }
 
@@ -435,7 +390,6 @@ export default function SalaryPage() {
     departmentFilter,
     designationFilter,
     statusFilter,
-    periodFilter,
     completenessFilter,
     sortKey,
     sortDir,
@@ -531,7 +485,6 @@ export default function SalaryPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
-    setCreateExisting(null);
     setEmployeeSearch('');
     setEmployeeDeptFilter('all');
     setEmployeeStatusFilter('all');
@@ -543,65 +496,20 @@ export default function SalaryPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
-    setCreateExisting(null);
   };
 
-  const selectEmployeeForCreate = async (
-    employee: EmployeeOption,
-    period = currentSalaryPeriod()
-  ) => {
-    const periodKey = monthInputToPeriod(period);
+  const selectEmployeeForCreate = (employee: EmployeeOption) => {
+    if (findSalaryByEmployeeId(employee.employeeId, rows)) {
+      toast.error('This employee already has a salary record.');
+      return;
+    }
     setSelectedEmployee(employee);
     setCreateStep('form');
-    setCreateExisting(null);
-    setCreateForm(emptyCreateForm(employee, periodKey));
-
-    try {
-      const uniqueKey = buildSalaryUniqueKey(employee.employeeId, periodKey);
-      const response = await fetch(
-        `/api/salary-details?uniqueKeys=${encodeURIComponent(uniqueKey)}&period=${encodeURIComponent(periodKey)}&employeeIds=${encodeURIComponent(employee.employeeId)}`,
-        { headers: { Authorization: `Bearer ${token()}` } }
-      );
-      const result = await response.json();
-      if (response.ok && result.success) {
-        const list = Array.isArray(result.data) ? result.data : [];
-        const exact =
-          (list[0] as SalaryDetailRecord | undefined) ||
-          findExactSalary(employee.employeeId, periodKey, rows);
-        if (exact) {
-          setCreateExisting(exact);
-          setCreateForm({ ...toEditForm(exact), period: exact.period || periodKey });
-          return;
-        }
-      }
-    } catch {
-      /* fall through to local exact / empty */
-    }
-
-    const exact = findExactSalary(employee.employeeId, periodKey, rows);
-    if (exact) {
-      setCreateExisting(exact);
-      setCreateForm({ ...toEditForm(exact), period: exact.period || periodKey });
-    } else {
-      setCreateExisting(null);
-      setCreateForm(emptyCreateForm(employee, periodKey));
-    }
+    setCreateForm(emptyCreateForm(employee));
   };
 
-  const updateCreateField = (field: keyof SalaryDetailInput, value: string) => {
-    setCreateForm((current) => {
-      if (!current || !selectedEmployee) return current;
-      if (field === 'period') {
-        const period = monthInputToPeriod(value);
-        const exact = findExactSalary(selectedEmployee.employeeId, period, rows);
-        setCreateExisting(exact);
-        if (exact) {
-          return { ...toEditForm(exact), period };
-        }
-        return emptyCreateForm(selectedEmployee, period);
-      }
-      return { ...current, [field]: value };
-    });
+  const updateCreateField = (field: SalaryDetailFieldKey, value: string) => {
+    setCreateForm((current) => (current ? { ...current, [field]: value } : current));
   };
 
   const handleSave = async () => {
@@ -626,15 +534,7 @@ export default function SalaryPage() {
           Authorization: `Bearer ${token()}`,
         },
         body: JSON.stringify({
-          details: [
-            {
-              ...editForm,
-              period: monthInputToPeriod(editForm.period || currentSalaryPeriod()),
-              uniqueKey:
-                editForm.uniqueKey ||
-                buildSalaryUniqueKey(editForm.employeeId, editForm.period || currentSalaryPeriod()),
-            },
-          ],
+          details: [toStoredPayload(editForm)],
         }),
       });
       const result = await response.json();
@@ -655,11 +555,6 @@ export default function SalaryPage() {
   const handleCreateSave = async () => {
     if (!createForm || !selectedEmployee) return;
 
-    if (!String(createForm.period || '').trim()) {
-      toast.error('Enter a period (Month-Year).');
-      return;
-    }
-
     for (const field of SALARY_FORM_FIELDS) {
       if (
         ['salary', 'accountNumber', 'accountName', 'bankName'].includes(field.key) &&
@@ -679,18 +574,7 @@ export default function SalaryPage() {
           Authorization: `Bearer ${token()}`,
         },
         body: JSON.stringify({
-          details: [
-            {
-              ...createForm,
-              period: monthInputToPeriod(createForm.period || currentSalaryPeriod()),
-              uniqueKey:
-                createForm.uniqueKey ||
-                buildSalaryUniqueKey(
-                  createForm.employeeId,
-                  createForm.period || currentSalaryPeriod()
-                ),
-            },
-          ],
+          details: [toStoredPayload(createForm)],
         }),
       });
       const result = await response.json();
@@ -698,11 +582,7 @@ export default function SalaryPage() {
         throw new Error(result.error || 'Failed to save salary details.');
       }
 
-      toast.success(
-        createExisting
-          ? result.message || 'Salary details updated.'
-          : result.message || 'Salary details created.'
-      );
+      toast.success(result.message || 'Salary details created.');
       closeCreate();
       await fetchDetails();
     } catch (error: unknown) {
@@ -732,8 +612,15 @@ export default function SalaryPage() {
     ];
   }, [employees]);
 
+  const employeesWithoutSalary = useMemo(() => {
+    const withSalary = new Set(rows.map((row) => row.employeeId.trim().toLowerCase()));
+    return employees.filter(
+      (employee) => !withSalary.has(employee.employeeId.trim().toLowerCase())
+    );
+  }, [employees, rows]);
+
   const filteredEmployees = useMemo(() => {
-    let list = [...employees];
+    let list = [...employeesWithoutSalary];
     const q = employeeSearch.trim().toLowerCase();
     if (q) {
       list = list.filter((employee) => {
@@ -762,7 +649,10 @@ export default function SalaryPage() {
     }
     list.sort((a, b) => a.name.localeCompare(b.name));
     return list;
-  }, [employees, employeeSearch, employeeDeptFilter, employeeStatusFilter]);
+  }, [employeesWithoutSalary, employeeSearch, employeeDeptFilter, employeeStatusFilter]);
+
+  const editLiveTotals = editForm ? computeStoredSalaryTotals(editForm) : null;
+  const createLiveTotals = createForm ? computeStoredSalaryTotals(createForm) : null;
 
 
 
@@ -825,20 +715,19 @@ export default function SalaryPage() {
                     {editing.fullName || editing.employeeId}
                     {editing.designation ? ` · ${editing.designation}` : ''}
                     {editing.department ? ` · ${editing.department}` : ''}
-                    {editing.period ? ` · ${editing.period}` : ''}
                   </p>
                   {editing.email ? (
                     <p className="mt-0.5 text-xs text-muted">{editing.email}</p>
                   ) : null}
-                  {(editing.baseSalary || editing.totalEarning) && (
+                  {editLiveTotals ? (
                     <p className="mt-1.5 text-xs text-muted">
-                      {editing.baseSalary ? `Base ${formatCurrency(editing.baseSalary)}` : ''}
-                      {editing.baseSalary && editing.totalEarning ? ' · ' : ''}
-                      {editing.totalEarning
-                        ? `Earning ${formatCurrency(editing.totalEarning)}`
-                        : ''}
+                      Net {formatCurrency(editLiveTotals.netsalary)}
+                      {' · '}
+                      Earning {formatCurrency(editLiveTotals.totalearning)}
+                      {' · '}
+                      Deduction {formatCurrency(editLiveTotals.totaldeduction)}
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -925,13 +814,11 @@ export default function SalaryPage() {
                   >
                     {createStep === 'pick'
                       ? 'Select employee'
-                      : createExisting
-                        ? 'Update salary details'
-                        : 'Create salary details'}
+                      : 'Create salary details'}
                   </h2>
                   <p className="mt-1 text-sm text-muted">
                     {createStep === 'pick'
-                      ? 'Search and filter employees, then choose one to create or update salary info.'
+                      ? 'Only employees without a salary record are listed. Choose one to create salary info.'
                       : selectedEmployee
                         ? `${selectedEmployee.name || selectedEmployee.employeeId}${
                             selectedEmployee.designation ? ` · ${selectedEmployee.designation}` : ''
@@ -943,15 +830,13 @@ export default function SalaryPage() {
                   {createStep === 'form' && selectedEmployee?.email ? (
                     <p className="mt-0.5 text-xs text-muted">{selectedEmployee.email}</p>
                   ) : null}
-                  {createStep === 'form' && createExisting ? (
-                    <p className="mt-1.5 text-xs font-medium text-ink">
-                      Existing record for {createExisting.period || 'this period'} — values
-                      prefilled below.
-                    </p>
-                  ) : null}
-                  {createStep === 'form' && !createExisting && createForm?.period ? (
+                  {createStep === 'form' && createLiveTotals ? (
                     <p className="mt-1.5 text-xs text-muted">
-                      No salary row for {createForm.period} yet — saving will create one.
+                      Net {formatCurrency(createLiveTotals.netsalary)}
+                      {' · '}
+                      Earning {formatCurrency(createLiveTotals.totalearning)}
+                      {' · '}
+                      Deduction {formatCurrency(createLiveTotals.totaldeduction)}
                     </p>
                   ) : null}
                 </div>
@@ -1010,6 +895,10 @@ export default function SalaryPage() {
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading employees…
                       </div>
+                    ) : employeesWithoutSalary.length === 0 ? (
+                      <div className="rounded-lg border border-border bg-canvas px-4 py-10 text-center text-sm text-muted">
+                        All employees already have a salary record.
+                      </div>
                     ) : filteredEmployees.length === 0 ? (
                       <div className="rounded-lg border border-border bg-canvas px-4 py-10 text-center text-sm text-muted">
                         No employees match these filters.
@@ -1027,62 +916,50 @@ export default function SalaryPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                              {filteredEmployees.map((employee) => {
-                                const hasSalary = Boolean(
-                                  findLatestSalary(employee.employeeId, rows)
-                                );
-                                return (
-                                  <tr
-                                    key={employee.employeeId || employee.email}
-                                    className="hover:bg-canvas/70"
-                                  >
-                                    <td className="px-4 py-3">
-                                      <div className="font-medium text-ink">
-                                        {employee.name || 'N/A'}
-                                      </div>
+                              {filteredEmployees.map((employee) => (
+                                <tr
+                                  key={employee.employeeId || employee.email}
+                                  className="hover:bg-canvas/70"
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="font-medium text-ink">
+                                      {employee.name || 'N/A'}
+                                    </div>
+                                    <div className="mt-0.5 text-xs text-muted">
+                                      {employee.employeeId || '—'}
+                                      {employee.email ? ` · ${employee.email}` : ''}
+                                    </div>
+                                    {employee.designation ? (
                                       <div className="mt-0.5 text-xs text-muted">
-                                        {employee.employeeId || '—'}
-                                        {employee.email ? ` · ${employee.email}` : ''}
+                                        {employee.designation}
                                       </div>
-                                      {employee.designation ? (
-                                        <div className="mt-0.5 text-xs text-muted">
-                                          {employee.designation}
-                                        </div>
-                                      ) : null}
-                                    </td>
-                                    <td className="px-4 py-3 text-muted">
-                                      {employee.department || '—'}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {employee.emsStatus ? (
-                                          <span
-                                            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(employee.emsStatus)}`}
-                                          >
-                                            {employee.emsStatus}
-                                          </span>
-                                        ) : (
-                                          <span className="text-muted">—</span>
-                                        )}
-                                        {hasSalary ? (
-                                          <span className="inline-flex items-center rounded-md border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                                            Has salary
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                      <button
-                                        type="button"
-                                        onClick={() => void selectEmployeeForCreate(employee)}
-                                        className="inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-canvas"
+                                    ) : null}
+                                  </td>
+                                  <td className="px-4 py-3 text-muted">
+                                    {employee.department || '—'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {employee.emsStatus ? (
+                                      <span
+                                        className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(employee.emsStatus)}`}
                                       >
-                                        Select
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
+                                        {employee.emsStatus}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => selectEmployeeForCreate(employee)}
+                                      className="inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-canvas"
+                                    >
+                                      Select
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -1092,36 +969,6 @@ export default function SalaryPage() {
                 ) : createForm ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block text-xs">
-                        <span className="mb-1 block font-medium text-muted">
-                          Period (Month-Year)
-                        </span>
-                        <input
-                          type="month"
-                          value={periodToMonthInput(createForm.period || '')}
-                          onChange={(e) =>
-                            updateCreateField('period', monthInputToPeriod(e.target.value))
-                          }
-                          className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                        />
-                        {createForm.period ? (
-                          <span className="mt-1 block text-[11px] text-muted">
-                            Stored as {createForm.period}
-                          </span>
-                        ) : null}
-                      </label>
-                      <div className="block text-xs">
-                        <span className="mb-1 block font-medium text-muted">Status</span>
-                        <CustomDropdown
-                          id="create-salary-status"
-                          name="createSalaryStatus"
-                          options={SALARY_STATUS_OPTIONS}
-                          value={createForm.status || 'Pending'}
-                          onChange={(value) => updateCreateField('status', value)}
-                          onBlur={() => {}}
-                          placeholder="Status"
-                        />
-                      </div>
                       {SALARY_FORM_FIELDS.map((field) => {
                         const empty = !String(createForm[field.key] || '').trim();
                         return (
@@ -1162,7 +1009,6 @@ export default function SalaryPage() {
                         setCreateStep('pick');
                         setSelectedEmployee(null);
                         setCreateForm(null);
-                        setCreateExisting(null);
                       }}
                       className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
                     >
@@ -1190,8 +1036,6 @@ export default function SalaryPage() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Saving…
                         </>
-                      ) : createExisting ? (
-                        'Update salary'
                       ) : (
                         'Create salary'
                       )}
@@ -1319,20 +1163,6 @@ export default function SalaryPage() {
                   placeholder="All statuses"
                 />
               </div>
-              <div className="lg:w-40">
-                <CustomDropdown
-                  id="period-filter"
-                  name="periodFilter"
-                  options={periodOptions}
-                  value={periodFilter}
-                  onChange={(val) => {
-                    setPeriodFilter(val);
-                    setPage(1);
-                  }}
-                  onBlur={() => {}}
-                  placeholder="All periods"
-                />
-              </div>
               <div className="lg:w-44">
                 <CustomDropdown
                   id="completeness-filter"
@@ -1384,12 +1214,14 @@ export default function SalaryPage() {
                         <th className="px-5 py-3.5 font-semibold text-muted">Allowance</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Tax</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Bank</th>
+                        <th className="px-5 py-3.5 font-semibold text-muted">Net</th>
                         <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedRows.map((row, idx) => {
-                        const status = row.status || row.emsStatus || '';
+                        const totals = computeStoredSalaryTotals(row);
+                        const netDisplay = row.netSalary || String(totals.netsalary);
                         return (
                           <tr
                             key={row.employeeId || row.email || idx}
@@ -1399,16 +1231,11 @@ export default function SalaryPage() {
                               <div className="font-medium">{row.fullName || 'N/A'}</div>
                               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                                 <span>{row.employeeId || '—'}</span>
-                                {row.period ? (
-                                  <span className="inline-flex items-center rounded-md border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                                    {row.period}
-                                  </span>
-                                ) : null}
-                                {status ? (
+                                {row.emsStatus ? (
                                   <span
-                                    className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(status)}`}
+                                    className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClasses(row.emsStatus)}`}
                                   >
-                                    {status}
+                                    {row.emsStatus}
                                   </span>
                                 ) : null}
                               </div>
@@ -1416,13 +1243,8 @@ export default function SalaryPage() {
                             <td className="px-5 py-3.5 text-muted">{row.email || '—'}</td>
                             <td className="px-5 py-3.5 text-muted">{row.designation || '—'}</td>
                             <td className="px-5 py-3.5 text-muted">{row.department || '—'}</td>
-                            <td className="px-5 py-3.5">
-                              <div className="font-medium">{formatCurrency(row.salary)}</div>
-                              {row.totalEarning ? (
-                                <div className="mt-0.5 text-xs text-muted">
-                                  Net {formatCurrency(row.totalEarning)}
-                                </div>
-                              ) : null}
+                            <td className="px-5 py-3.5 font-medium">
+                              {formatCurrency(row.salary)}
                             </td>
                             <td className="px-5 py-3.5 text-muted">
                               {formatCurrency(row.allowance)}
@@ -1440,6 +1262,9 @@ export default function SalaryPage() {
                                   {row.accountNumber}
                                 </div>
                               ) : null}
+                            </td>
+                            <td className="px-5 py-3.5 font-medium">
+                              {formatCurrency(netDisplay)}
                             </td>
                             <td className="px-5 py-3.5 text-right">
                               {canEdit ? (

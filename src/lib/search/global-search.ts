@@ -168,30 +168,22 @@ async function searchSalaries(query: string, role: AppRole | string): Promise<Se
   for (const row of rows) {
     const matchedOn = matchFields(query, [
       { label: 'Employee ID', value: row.employeeid },
-      { label: 'Period', value: row.period },
-      { label: 'Month', value: row.period },
       { label: 'Amount', value: row.netsalary },
       { label: 'Base salary', value: row.basesalary },
       { label: 'Account name', value: row.accountname },
       { label: 'Account number', value: row.accountnumber },
       { label: 'Bank', value: row.bankname },
-      { label: 'Status', value: row.status },
-      { label: 'Unique key', value: row.uniquekey },
     ]);
     if (matchedOn.length === 0) continue;
 
     hits.push({
-      id: `salary:${row.uniquekey || row.salaryid}`,
+      id: `salary:${row.employeeid || row.salaryid}`,
       source: 'salary',
       title: `Salary · ${row.employeeid}`,
-      subtitle: [
-        row.period,
-        `Net ${Number(row.netsalary).toLocaleString()}`,
-        row.accountname,
-      ]
+      subtitle: [`Net ${Number(row.netsalary).toLocaleString()}`, row.accountname]
         .filter(Boolean)
         .join(' · '),
-      meta: row.status || '—',
+      meta: row.bankname || '—',
       href: hrefForSearchHit(role, 'salary'),
       matchedOn,
     });

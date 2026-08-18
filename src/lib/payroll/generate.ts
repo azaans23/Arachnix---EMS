@@ -6,7 +6,7 @@ import {
   upsertSalarySlipRunDetail,
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
-import { formatSalaryPeriod, buildSalaryUniqueKey } from '@/lib/payroll/period';
+import { formatSalaryPeriod } from '@/lib/payroll/period';
 import { createAuditLog } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
@@ -14,6 +14,7 @@ import type {
   GenerateSalarySlipsInput,
   IncompleteSalaryDetail,
   SalaryDetailRecord,
+  SalarySlipExtrasInput,
   SalarySlipRun,
 } from '@/types/salary-slip';
 import {
@@ -53,20 +54,27 @@ export function parseBaseSalary(value: unknown): number {
   return Number.isFinite(salary) ? salary : NaN;
 }
 
-export function hasPayrollSalary(employee: EmployeeRecord): boolean {
+export function hasPayrollSalary(employee: EmployeeRecord, salaryIds?: Set<string>): boolean {
+  if (salaryIds) {
+    return salaryIds.has(employee.employeeId.trim().toLowerCase());
+  }
   return parseBaseSalary(employee.baseSalary) > 0;
 }
 
-export function payrollEligibilityReason(employee: EmployeeRecord): string | null {
-  if (!hasPayrollSalary(employee)) {
-    return 'Base salary is missing or zero — set it on the employee profile';
+export function payrollEligibilityReason(
+  employee: EmployeeRecord,
+  salaryIds?: Set<string>
+): string | null {
+  if (!hasPayrollSalary(employee, salaryIds)) {
+    return 'No salary record — create one on the Salary page first';
   }
   return null;
 }
 
 export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<EmployeeRecord[]> {
-  const all = await fetchEmployees();
-  const eligible = all.filter(hasPayrollSalary);
+  const [all, salaryRows] = await Promise.all([fetchEmployees(), fetchSalaryDetails()]);
+  const salaryIds = new Set(salaryRows.map((row) => row.employeeId.trim().toLowerCase()));
+  const eligible = all.filter((employee) => hasPayrollSalary(employee, salaryIds));
 
   if (!employeeIds || employeeIds.length === 0) return eligible;
 
@@ -76,7 +84,7 @@ export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<E
   );
 
   if (selected.length === 0) {
-    throw new Error('No eligible employees matched the selection (need a base salary > 0).');
+    throw new Error('No eligible employees matched the selection (need a salary record).');
   }
 
   return selected;
@@ -152,14 +160,22 @@ async function logSalarySlipRunAudit(
   }
 }
 
+function extrasByEmployeeId(extras?: SalarySlipExtrasInput[]) {
+  const map = new Map<string, SalarySlipExtrasInput>();
+  for (const row of extras || []) {
+    const key = row.employeeId.trim().toLowerCase();
+    if (key) map.set(key, row);
+  }
+  return map;
+}
+
 /**
  * Creates a Supabase run, fires the n8n generate-salary-slip webhook, and
  * updates run/detail rows when the workflow returns per-employee results.
- * If n8n responds immediately (ack only), the run stays "Processing".
  *
- * Prefetches salary details. When confirmIncomplete is not set, returns
- * needsConfirmation so the UI can show one salary-details form (with empty
- * fields highlighted) before creating the run.
+ * Prefetches the one salary record per employee. Slip-only extras (OT / bonus /
+ * others / contributions) are taken from the request and sent to n8n only —
+ * they are never written to the salaries table.
  */
 export async function startSalarySlipRun(
   actorEmail: string,
@@ -167,11 +183,11 @@ export async function startSalarySlipRun(
 ): Promise<
   | { run: SalarySlipRun; message: string }
   | {
-    needsConfirmation: true;
-    incomplete: IncompleteSalaryDetail[];
-    details: SalaryDetailRecord[];
-    message: string;
-  }
+      needsConfirmation: true;
+      incomplete: IncompleteSalaryDetail[];
+      details: SalaryDetailRecord[];
+      message: string;
+    }
 > {
   const month = Number(input.month);
   const year = Number(input.year);
@@ -186,15 +202,12 @@ export async function startSalarySlipRun(
   const period = formatSalaryPeriod(month, year);
   const employees = await resolvePayrollEmployees(input.employeeIds);
   const employeeIds = employees.map((employee) => employee.employeeId);
-  const uniqueKeys = employeeIds.map((id) => buildSalaryUniqueKey(id, period));
 
-  // Fetch by UniqueKey (EmployeeID-Period). Missing keys → empty fields in review modal.
-  let salaryDetails = await fetchSalaryDetails(employeeIds, period, uniqueKeys);
+  let salaryDetails = await fetchSalaryDetails(employeeIds);
   if (input.salaryDetails && input.salaryDetails.length > 0) {
     salaryDetails = mergeSalaryDetails(salaryDetails, input.salaryDetails);
   }
 
-  // Always collect / review salary details in one modal before creating the run.
   if (!input.confirmIncomplete) {
     const incomplete = findIncompleteSalaryDetails(employeeIds, salaryDetails);
     return {
@@ -202,7 +215,7 @@ export async function startSalarySlipRun(
       incomplete,
       details: salaryDetails,
       message:
-        'Review salary details for each employee. Empty fields are highlighted — fill required values, then generate.',
+        'Review salary details and enter overtime, bonus, others, and contributions for this slip. Those extras are sent to the workflow only and are not stored.',
     };
   }
 
@@ -225,6 +238,7 @@ export async function startSalarySlipRun(
   const detailsById = new Map(
     salaryDetails.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
   );
+  const extrasMap = extrasByEmployeeId(input.slipExtras);
 
   const run = await createSalarySlipRun({
     triggeredBy: actorEmail,
@@ -257,7 +271,9 @@ export async function startSalarySlipRun(
     triggeredBy: actorEmail,
     employeeIds,
     employees: employees.map((employee) => {
-      const detail = detailsById.get(employee.employeeId.trim().toLowerCase());
+      const key = employee.employeeId.trim().toLowerCase();
+      const detail = detailsById.get(key);
+      const extras = extrasMap.get(key);
       return {
         RunDetailID: buildRunDetailId(run.runId, employee.employeeId),
         EmployeeID: employee.employeeId,
@@ -266,7 +282,7 @@ export async function startSalarySlipRun(
         Department: detail?.department || employee.department,
         Designation: detail?.designation || employee.designation,
         BankAccountDetails: employee.bankAccountDetails,
-        ...toSalaryDetailWebhookFields(detail),
+        ...toSalaryDetailWebhookFields(detail, extras, period),
         BaseSalary: detail?.salary || employee.baseSalary,
         Status: 'Pending',
       };

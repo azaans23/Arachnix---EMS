@@ -120,30 +120,28 @@ async function buildPayrollReport(params: {
 }): Promise<ReportPayload> {
   const employees = await listEmployeeDbRows();
   const nameById = new Map(employees.map((row) => [row.employeeid, row.fullname]));
-  const rows = await listSalaryDbRows(params.period ? { period: params.period } : undefined);
-
-  const filtered = params.period ? rows.filter((row) => row.period === params.period) : rows;
+  const rows = await listSalaryDbRows();
 
   const columns: ReportColumn[] = [
     { key: 'employeeId', label: 'Employee ID' },
     { key: 'name', label: 'Name' },
-    { key: 'period', label: 'Period' },
     { key: 'baseSalary', label: 'Base salary' },
+    { key: 'allowance', label: 'Allowance' },
+    { key: 'tax', label: 'Tax' },
     { key: 'totalEarning', label: 'Total earning' },
     { key: 'totalDeduction', label: 'Total deduction' },
     { key: 'netSalary', label: 'Net salary' },
-    { key: 'status', label: 'Status' },
   ];
 
-  const reportRows: ReportRow[] = filtered.map((row) => ({
+  const reportRows: ReportRow[] = rows.map((row) => ({
     employeeId: row.employeeid,
     name: nameById.get(row.employeeid) || '',
-    period: row.period,
     baseSalary: money(row.basesalary),
+    allowance: money(row.allowance ?? 0),
+    tax: money(row.tax ?? 0),
     totalEarning: money(row.totalearning),
     totalDeduction: money(row.totaldeduction),
     netSalary: money(row.netsalary),
-    status: row.status,
   }));
 
   const netTotal = reportRows.reduce((sum, row) => sum + Number(row.netSalary || 0), 0);
@@ -151,7 +149,9 @@ async function buildPayrollReport(params: {
   return {
     type: 'payroll',
     title: 'Payroll report',
-    subtitle: params.period ? `Period ${params.period}` : 'All periods',
+    subtitle: params.period
+      ? `Salary profiles (slip period ${params.period})`
+      : 'Current salary profiles',
     generatedAt: params.generatedAt,
     columns,
     rows: reportRows,
