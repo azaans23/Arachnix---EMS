@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
 import { listSalarySlipRuns } from '@/lib/db/salary-slips';
-import { startSalarySlipRun } from '@/lib/payroll/generate';
+import { dispatchSalarySlipWebhook, startSalarySlipRun } from '@/lib/payroll/generate';
 import type { SalarySlipExtrasInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
@@ -79,9 +79,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Non-blocking: respond immediately; n8n is triggered in after() and owns
+    // updating run/detail success/failure in Supabase when the workflow finishes.
+    after(async () => {
+      try {
+        await dispatchSalarySlipWebhook(result.prepared);
+      } catch (error) {
+        console.error('Salary slip webhook dispatch failed:', error);
+      }
+    });
+
     return NextResponse.json({
       success: true,
-      data: result.run,
+      data: result.prepared.run,
       message: result.message,
     });
   } catch (error: unknown) {

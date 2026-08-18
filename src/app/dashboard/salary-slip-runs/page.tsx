@@ -256,8 +256,8 @@ export default function SalarySlipRunsPage() {
 
   const token = () => localStorage.getItem('token');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${token()}` };
       const [runsRes, usersRes] = await Promise.all([
@@ -293,9 +293,11 @@ export default function SalarySlipRunsPage() {
         );
       }
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load payroll data.');
+      if (!options.silent) {
+        toast.error(error instanceof Error ? error.message : 'Failed to load payroll data.');
+      }
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, []);
 
@@ -325,6 +327,17 @@ export default function SalarySlipRunsPage() {
     };
     void boot();
   }, [load]);
+
+  const hasProcessingRuns = useMemo(
+    () => runs.some((run) => run.status.toLowerCase() === 'processing'),
+    [runs]
+  );
+
+  useEffect(() => {
+    if (!allowed || !hasProcessingRuns) return;
+    const timer = window.setInterval(() => void load({ silent: true }), 5000);
+    return () => window.clearInterval(timer);
+  }, [allowed, hasProcessingRuns, load]);
 
   const eligibleEmployees = useMemo(
     () => employees.filter((employee) => employee.eligible),
@@ -467,9 +480,6 @@ export default function SalarySlipRunsPage() {
       setSelectedIds([]);
       setMode('all');
       await load();
-      if (result.data?.runId) {
-        router.push(`/dashboard/salary-slip-run-details?runId=${result.data.runId}`);
-      }
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate salary slips.');
     } finally {

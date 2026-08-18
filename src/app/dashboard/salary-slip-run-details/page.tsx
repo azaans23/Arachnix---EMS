@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -94,17 +94,19 @@ export default function SalarySlipRunDetailsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
   const [prevRunId, setPrevRunId] = useState(runId);
+  const lastStatusRef = useRef('');
   if (runId !== prevRunId) {
     setPrevRunId(runId);
     setPage(1);
+    lastStatusRef.current = '';
   }
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!runId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!options.silent) setLoading(true);
     try {
       const response = await fetch(`/api/salary-slip-runs/${encodeURIComponent(runId)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -114,14 +116,34 @@ export default function SalarySlipRunDetailsPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load run details.');
       }
-      setRun(result.data.run);
+      const nextRun = result.data.run as SalarySlipRun;
+      const prevStatus = lastStatusRef.current;
+      const nextStatus = String(nextRun.status || '').toLowerCase();
+      lastStatusRef.current = nextStatus;
+      setRun(nextRun);
       setDetails(result.data.details || []);
+
+      if (options.silent && prevStatus === 'processing' && nextStatus && nextStatus !== 'processing') {
+        if (nextStatus === 'completed') {
+          toast.success(
+            `Salary slip run completed: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
+          );
+        } else if (nextStatus === 'partial') {
+          toast.message(
+            `Salary slip run partial: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
+          );
+        } else if (nextStatus === 'failed') {
+          toast.error(`Salary slip run failed: ${nextRun.failCount || 0} failed.`);
+        }
+      }
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
-      setRun(null);
-      setDetails([]);
+      if (!options.silent) {
+        toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
+        setRun(null);
+        setDetails([]);
+      }
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, [runId]);
 
@@ -153,7 +175,7 @@ export default function SalarySlipRunDetailsPage() {
 
   useEffect(() => {
     if (!run || run.status.toLowerCase() !== 'processing') return;
-    const timer = window.setInterval(() => load(), 8000);
+    const timer = window.setInterval(() => void load({ silent: true }), 5000);
     return () => window.clearInterval(timer);
   }, [run, load]);
 

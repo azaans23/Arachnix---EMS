@@ -89,48 +89,14 @@ export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<E
   return selected;
 }
 
-type WebhookResultItem = {
-  employeeId?: string;
-  EmployeeID?: string;
-  status?: string;
-  success?: boolean;
-  pdfLink?: string;
-  PdfLink?: string;
-  emailStatus?: string;
-  EmailStatus?: string;
-  error?: string;
-  errorReason?: string;
-  ErrorReason?: string;
+export type PreparedSalarySlipRun = {
+  run: SalarySlipRun;
+  actorEmail: string;
+  month: number;
+  year: number;
+  employeeIds: string[];
+  payload: Record<string, unknown>;
 };
-
-function parseWebhookBody(text: string): {
-  ackOnly: boolean;
-  results: WebhookResultItem[];
-  message?: string;
-} {
-  if (!text.trim()) return { ackOnly: true, results: [] };
-
-  try {
-    const json = JSON.parse(text);
-    if (json && typeof json === 'object' && !Array.isArray(json)) {
-      const message = String(json.message || '');
-      if (message.toLowerCase().includes('workflow was started')) {
-        return { ackOnly: true, results: [], message };
-      }
-      const results = Array.isArray(json.results)
-        ? json.results
-        : Array.isArray(json.data)
-          ? json.data
-          : [];
-      return { ackOnly: false, results, message: json.error || json.message };
-    }
-    if (Array.isArray(json)) return { ackOnly: false, results: json };
-  } catch {
-    /* non-JSON body */
-  }
-
-  return { ackOnly: true, results: [] };
-}
 
 /** Dual-writes to Supabase + Sheets; never fails the payroll run. */
 async function logSalarySlipRunAudit(
@@ -165,18 +131,19 @@ function extrasByEmployeeId(extras?: SalarySlipExtrasInput[]) {
 }
 
 /**
- * Creates a Supabase run, fires the n8n generate-salary-slip webhook, and
- * updates run/detail rows when the workflow returns per-employee results.
+ * Creates a Supabase run (Processing) with Pending detail rows and builds the
+ * n8n payload. Does not wait for the workflow — call `dispatchSalarySlipWebhook`
+ * from `after()` so the API can return immediately. n8n updates run/detail
+ * status in Supabase when generation finishes.
  *
- * Prefetches the one salary record per employee. Slip-only extras (OT / bonus /
- * others / contributions) are taken from the request and sent to n8n only —
- * they are never written to the salaries table.
+ * Slip-only extras (OT / bonus / others / contributions) are sent to n8n only
+ * and are never written to the salaries table.
  */
 export async function startSalarySlipRun(
   actorEmail: string,
   input: GenerateSalarySlipsInput
 ): Promise<
-  | { run: SalarySlipRun; message: string }
+  | { prepared: PreparedSalarySlipRun; message: string }
   | {
       needsConfirmation: true;
       incomplete: IncompleteSalaryDetail[];
@@ -283,8 +250,25 @@ export async function startSalarySlipRun(
     }),
   };
 
-  let webhookOk = false;
-  let webhookText = '';
+  return {
+    prepared: {
+      run,
+      actorEmail,
+      month,
+      year,
+      employeeIds,
+      payload,
+    },
+    message: 'Salary slip generation started. Status will update when the workflow finishes.',
+  };
+}
+
+/**
+ * Fires the n8n webhook. On trigger failure, marks the run Failed.
+ * Success/Partial/Failed completion is owned by the workflow (Supabase updates).
+ */
+export async function dispatchSalarySlipWebhook(prepared: PreparedSalarySlipRun): Promise<void> {
+  const { run, actorEmail, month, year, employeeIds, payload } = prepared;
 
   try {
     const response = await fetch(SHEETS_WEBHOOKS.generateSalarySlip, {
@@ -293,8 +277,7 @@ export async function startSalarySlipRun(
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
-    webhookText = await response.text();
-    webhookOk = response.ok;
+    const webhookText = await response.text();
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(
@@ -336,64 +319,4 @@ export async function startSalarySlipRun(
     });
     throw new Error(message);
   }
-
-  const parsed = parseWebhookBody(webhookText);
-
-  if (!parsed.ackOnly && parsed.results.length > 0) {
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const item of parsed.results) {
-      const employeeId = String(item.employeeId || item.EmployeeID || '').trim();
-      if (!employeeId) continue;
-      const ok =
-        item.success === true ||
-        String(item.status || '').toLowerCase() === 'success' ||
-        String(item.status || '').toLowerCase() === 'completed';
-      if (ok) successCount += 1;
-      else failCount += 1;
-
-      await upsertSalarySlipRunDetail({
-        runId: run.runId,
-        employeeId,
-        status: ok ? 'Success' : 'Failed',
-        pdfLink: item.pdfLink || item.PdfLink || '',
-        emailStatus: item.emailStatus || item.EmailStatus || (ok ? 'Sent' : 'Failed'),
-        errorReason: item.errorReason || item.ErrorReason || item.error || '',
-      });
-    }
-
-    const status = failCount === 0 ? 'Completed' : successCount === 0 ? 'Failed' : 'Partial';
-    const updated = await updateSalarySlipRun(run.runId, {
-      status,
-      successCount,
-      failCount,
-    });
-
-    await logSalarySlipRunAudit(actorEmail, {
-      action: status === 'Completed' ? AUDIT_ACTIONS.CREATE : AUDIT_ACTIONS.UPDATE,
-      runId: run.runId,
-      oldValue: { status: 'Processing' },
-      newValue: {
-        month,
-        year,
-        status,
-        successCount,
-        failCount,
-        employeeCount: employeeIds.length,
-      },
-    });
-
-    return {
-      run: updated,
-      message: `Salary slip run ${status.toLowerCase()}: ${successCount} succeeded, ${failCount} failed.`,
-    };
-  }
-
-  return {
-    run,
-    message: webhookOk
-      ? 'Salary slip workflow started. Refresh this page to see progress as results come in.'
-      : 'Run created.',
-  };
 }
