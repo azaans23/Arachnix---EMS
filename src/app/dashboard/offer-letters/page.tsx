@@ -243,7 +243,7 @@ export default function OfferLettersPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Only Super Admin and HR Manager can manage offer letter runs.
+          Only Super Admin, Admin, and HR Manager can manage offer letter runs.
         </p>
       </div>
     );

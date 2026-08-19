@@ -350,12 +350,7 @@ export default function EmployeeForm({
       contributions: '',
       others: '',
     });
-  }, [
-    formik.values.allowance,
-    formik.values.baseSalary,
-    formik.values.tax,
-    isEditMode,
-  ]);
+  }, [formik.values.allowance, formik.values.baseSalary, formik.values.tax, isEditMode]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
@@ -385,473 +380,477 @@ export default function EmployeeForm({
       ) : null}
 
       <fieldset disabled={Boolean(editBlockedReason)} className="contents">
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
-        <Field
-          label="Employee ID (Auto-generated)"
-          htmlFor="employeeId"
-          error={showError('employeeId')}
-          icon={<Hash className="h-4 w-4" />}
-        >
-          <input
-            id="employeeId"
-            name="employeeId"
-            type="text"
-            placeholder="EMP-001"
-            value={formik.values.employeeId}
-            readOnly
-            aria-readonly="true"
-            className={`${fieldClass('employeeId')} cursor-not-allowed bg-canvas text-muted`}
-          />
-        </Field>
-
-        <Field
-          label="Full Name"
-          htmlFor="name"
-          error={showError('name')}
-          icon={<User className="h-4 w-4" />}
-        >
-          <input
-            id="name"
-            name="name"
-            type="text"
-            placeholder="Muhammad Ahmed"
-            value={formik.values.name}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('name')}
-          />
-        </Field>
-
-        <Field
-          label="Email Address"
-          htmlFor="email"
-          error={showError('email')}
-          icon={<Mail className="h-4 w-4" />}
-        >
-          <input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="name@company.com"
-            value={formik.values.email}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('email')}
-          />
-        </Field>
-
-        <Field
-          label="Designation"
-          htmlFor="designation"
-          error={showError('designation')}
-          icon={<Briefcase className="h-4 w-4" />}
-        >
-          <input
-            id="designation"
-            name="designation"
-            type="text"
-            placeholder="Software Engineer"
-            value={formik.values.designation}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('designation')}
-          />
-        </Field>
-
-        <div className="flex flex-col gap-1">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide text-ink"
-            htmlFor="department"
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+          <Field
+            label="Employee ID (Auto-generated)"
+            htmlFor="employeeId"
+            error={showError('employeeId')}
+            icon={<Hash className="h-4 w-4" />}
           >
-            Department
-          </label>
-          <CustomDropdown
-            id="department"
-            name="department"
-            placeholder="Select department"
-            value={formik.values.department}
-            onChange={(val) => void formik.setFieldValue('department', val)}
-            onBlur={() => void formik.setFieldTouched('department', true)}
-            options={departmentFieldOptions}
-            icon={<Briefcase className="h-4 w-4" />}
-            error={showError('department') || undefined}
-            touched={!!formik.touched.department}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide text-ink"
-            htmlFor="employmentType"
-          >
-            Employment Type
-          </label>
-          <CustomDropdown
-            id="employmentType"
-            name="employmentType"
-            placeholder="Select employment type"
-            value={formik.values.employmentType}
-            onChange={(val) => void formik.setFieldValue('employmentType', val)}
-            onBlur={() => void formik.setFieldTouched('employmentType', true)}
-            options={employmentTypeFieldOptions}
-            icon={<Clock className="h-4 w-4" />}
-            error={showError('employmentType') || undefined}
-            touched={!!formik.touched.employmentType}
-          />
-        </div>
-
-        <Field
-          label="Phone Number"
-          htmlFor="phone"
-          error={showError('phone')}
-          icon={<Phone className="h-4 w-4" />}
-        >
-          <input
-            id="phone"
-            name="phone"
-            type="text"
-            placeholder="+92 300 1234567"
-            value={formik.values.phone}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('phone')}
-          />
-        </Field>
-
-        <Field
-          label="Date of Birth"
-          htmlFor="dob"
-          error={showError('dob')}
-          icon={<Calendar className="h-4 w-4" />}
-        >
-          <DatePicker
-            id="dob"
-            name="dob"
-            ariaLabel="Date of birth"
-            hideIcon
-            max={today}
-            value={String(formik.values.dob || '')}
-            onChange={(next) => {
-              handleDateFieldChange('dob', next);
-            }}
-            onBlur={() => {
-              void formik.setFieldTouched('dob', true, false);
-            }}
-            invalid={!!showError('dob')}
-            className="pl-10"
-          />
-        </Field>
-
-        <Field
-          label="Joining Date"
-          htmlFor="joiningDate"
-          error={showError('joiningDate')}
-          icon={<Calendar className="h-4 w-4" />}
-        >
-          <DatePicker
-            id="joiningDate"
-            name="joiningDate"
-            ariaLabel="Joining date"
-            hideIcon
-            value={String(formik.values.joiningDate || '')}
-            onChange={(next) => {
-              handleDateFieldChange('joiningDate', next);
-            }}
-            onBlur={() => {
-              void formik.setFieldTouched('joiningDate', true, false);
-            }}
-            invalid={!!showError('joiningDate')}
-            className="pl-10"
-          />
-        </Field>
-
-        <Field
-          label="Base Salary (PKR)"
-          htmlFor="baseSalary"
-          error={showError('baseSalary')}
-          icon={<DollarSign className="h-4 w-4" />}
-        >
-          <input
-            id="baseSalary"
-            name="baseSalary"
-            type="number"
-            min="0"
-            step="1"
-            placeholder="85000"
-            value={formik.values.baseSalary}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={fieldClass('baseSalary')}
-          />
-        </Field>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold uppercase tracking-wide text-ink" htmlFor="role">
-            System Assigned Role
-          </label>
-          <CustomDropdown
-            id="role"
-            name="role"
-            value={formik.values.role}
-            onChange={(val) => formik.setFieldValue('role', val)}
-            onBlur={() => formik.setFieldTouched('role', true)}
-            options={roleOptions}
-            icon={<Shield className="h-4 w-4" />}
-            error={showError('role') || undefined}
-            touched={!!formik.touched.role}
-          />
-          {showError('role') && <p className="text-xs text-danger">{showError('role')}</p>}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide text-ink"
-            htmlFor="emsStatus"
-          >
-            EMS Status
-          </label>
-          {hasLogin ? (
-            <CustomDropdown
-              id="emsStatus"
-              name="emsStatus"
-              value={formik.values.emsStatus}
-              onChange={(val) => formik.setFieldValue('emsStatus', val)}
-              onBlur={() => formik.setFieldTouched('emsStatus', true)}
-              options={emsStatusOptions}
-              icon={<Database className="h-4 w-4" />}
-              error={showError('emsStatus') || undefined}
-              touched={!!formik.touched.emsStatus}
+            <input
+              id="employeeId"
+              name="employeeId"
+              type="text"
+              placeholder="EMP-001"
+              value={formik.values.employeeId}
+              readOnly
+              aria-readonly="true"
+              className={`${fieldClass('employeeId')} cursor-not-allowed bg-canvas text-muted`}
             />
-          ) : (
-            <div className="relative">
-              <Database className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
+          </Field>
+
+          <Field
+            label="Full Name"
+            htmlFor="name"
+            error={showError('name')}
+            icon={<User className="h-4 w-4" />}
+          >
+            <input
+              id="name"
+              name="name"
+              type="text"
+              placeholder="Muhammad Ahmed"
+              value={formik.values.name}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={fieldClass('name')}
+            />
+          </Field>
+
+          <Field
+            label="Email Address"
+            htmlFor="email"
+            error={showError('email')}
+            icon={<Mail className="h-4 w-4" />}
+          >
+            <input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="name@company.com"
+              value={formik.values.email}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={fieldClass('email')}
+            />
+          </Field>
+
+          <Field
+            label="Designation"
+            htmlFor="designation"
+            error={showError('designation')}
+            icon={<Briefcase className="h-4 w-4" />}
+          >
+            <input
+              id="designation"
+              name="designation"
+              type="text"
+              placeholder="Software Engineer"
+              value={formik.values.designation}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={fieldClass('designation')}
+            />
+          </Field>
+
+          <div className="flex flex-col gap-1">
+            <label
+              className="text-xs font-semibold uppercase tracking-wide text-ink"
+              htmlFor="department"
+            >
+              Department
+            </label>
+            <CustomDropdown
+              id="department"
+              name="department"
+              placeholder="Select department"
+              value={formik.values.department}
+              onChange={(val) => void formik.setFieldValue('department', val)}
+              onBlur={() => void formik.setFieldTouched('department', true)}
+              options={departmentFieldOptions}
+              icon={<Briefcase className="h-4 w-4" />}
+              error={showError('department') || undefined}
+              touched={!!formik.touched.department}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              className="text-xs font-semibold uppercase tracking-wide text-ink"
+              htmlFor="employmentType"
+            >
+              Employment Type
+            </label>
+            <CustomDropdown
+              id="employmentType"
+              name="employmentType"
+              placeholder="Select employment type"
+              value={formik.values.employmentType}
+              onChange={(val) => void formik.setFieldValue('employmentType', val)}
+              onBlur={() => void formik.setFieldTouched('employmentType', true)}
+              options={employmentTypeFieldOptions}
+              icon={<Clock className="h-4 w-4" />}
+              error={showError('employmentType') || undefined}
+              touched={!!formik.touched.employmentType}
+            />
+          </div>
+
+          <Field
+            label="Phone Number"
+            htmlFor="phone"
+            error={showError('phone')}
+            icon={<Phone className="h-4 w-4" />}
+          >
+            <input
+              id="phone"
+              name="phone"
+              type="text"
+              placeholder="+92 300 1234567"
+              value={formik.values.phone}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={fieldClass('phone')}
+            />
+          </Field>
+
+          <Field
+            label="Date of Birth"
+            htmlFor="dob"
+            error={showError('dob')}
+            icon={<Calendar className="h-4 w-4" />}
+          >
+            <DatePicker
+              id="dob"
+              name="dob"
+              ariaLabel="Date of birth"
+              hideIcon
+              max={today}
+              value={String(formik.values.dob || '')}
+              onChange={(next) => {
+                handleDateFieldChange('dob', next);
+              }}
+              onBlur={() => {
+                void formik.setFieldTouched('dob', true, false);
+              }}
+              invalid={!!showError('dob')}
+              className="pl-10"
+            />
+          </Field>
+
+          <Field
+            label="Joining Date"
+            htmlFor="joiningDate"
+            error={showError('joiningDate')}
+            icon={<Calendar className="h-4 w-4" />}
+          >
+            <DatePicker
+              id="joiningDate"
+              name="joiningDate"
+              ariaLabel="Joining date"
+              hideIcon
+              value={String(formik.values.joiningDate || '')}
+              onChange={(next) => {
+                handleDateFieldChange('joiningDate', next);
+              }}
+              onBlur={() => {
+                void formik.setFieldTouched('joiningDate', true, false);
+              }}
+              invalid={!!showError('joiningDate')}
+              className="pl-10"
+            />
+          </Field>
+
+          <Field
+            label="Base Salary (PKR)"
+            htmlFor="baseSalary"
+            error={showError('baseSalary')}
+            icon={<DollarSign className="h-4 w-4" />}
+          >
+            <input
+              id="baseSalary"
+              name="baseSalary"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="85000"
+              value={formik.values.baseSalary}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className={fieldClass('baseSalary')}
+            />
+          </Field>
+
+          <div className="flex flex-col gap-1">
+            <label
+              className="text-xs font-semibold uppercase tracking-wide text-ink"
+              htmlFor="role"
+            >
+              System Assigned Role
+            </label>
+            <CustomDropdown
+              id="role"
+              name="role"
+              value={formik.values.role}
+              onChange={(val) => formik.setFieldValue('role', val)}
+              onBlur={() => formik.setFieldTouched('role', true)}
+              options={roleOptions}
+              icon={<Shield className="h-4 w-4" />}
+              error={showError('role') || undefined}
+              touched={!!formik.touched.role}
+            />
+            {showError('role') && <p className="text-xs text-danger">{showError('role')}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              className="text-xs font-semibold uppercase tracking-wide text-ink"
+              htmlFor="emsStatus"
+            >
+              EMS Status
+            </label>
+            {hasLogin ? (
+              <CustomDropdown
                 id="emsStatus"
                 name="emsStatus"
-                type="text"
-                value="Register"
-                readOnly
-                aria-readonly="true"
-                className="w-full cursor-not-allowed rounded-lg border border-border bg-canvas py-2 pl-10 pr-4 text-sm text-muted"
+                value={formik.values.emsStatus}
+                onChange={(val) => formik.setFieldValue('emsStatus', val)}
+                onBlur={() => formik.setFieldTouched('emsStatus', true)}
+                options={emsStatusOptions}
+                icon={<Database className="h-4 w-4" />}
+                error={showError('emsStatus') || undefined}
+                touched={!!formik.touched.emsStatus}
               />
-            </div>
-          )}
-          {!hasLogin && isEditMode && (
-            <p className="text-xs text-muted">
-              No login yet. Use Register on the employees list or profile to grant EMS access.
-            </p>
-          )}
-          {hasLogin && formik.values.emsStatus === 'Inactive' && (
-            <p className="text-xs text-muted">
-              Saving with revoke access deletes their login so they can be registered again.
-            </p>
-          )}
-          {showError('emsStatus') && (
-            <p className="text-xs text-danger">{showError('emsStatus')}</p>
-          )}
-        </div>
+            ) : (
+              <div className="relative">
+                <Database className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  id="emsStatus"
+                  name="emsStatus"
+                  type="text"
+                  value="Register"
+                  readOnly
+                  aria-readonly="true"
+                  className="w-full cursor-not-allowed rounded-lg border border-border bg-canvas py-2 pl-10 pr-4 text-sm text-muted"
+                />
+              </div>
+            )}
+            {!hasLogin && isEditMode && (
+              <p className="text-xs text-muted">
+                No login yet. Use Register on the employees list or profile to grant EMS access.
+              </p>
+            )}
+            {hasLogin && formik.values.emsStatus === 'Inactive' && (
+              <p className="text-xs text-muted">
+                Saving with revoke access deletes their login so they can be registered again.
+              </p>
+            )}
+            {showError('emsStatus') && (
+              <p className="text-xs text-danger">{showError('emsStatus')}</p>
+            )}
+          </div>
 
-        <Field
-          label="Residential Address"
-          htmlFor="address"
-          error={showError('address')}
-          icon={<MapPin className="h-4 w-4" />}
-          className="md:col-span-2"
-          iconTop
-        >
-          <textarea
-            id="address"
-            name="address"
-            rows={2}
-            placeholder="123 Main Street, Sector G-11, Islamabad"
-            value={formik.values.address}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className={`${fieldClass('address')} resize-none`}
-          />
-        </Field>
-
-        {isEditMode ? (
           <Field
-            label="Bank Account Details"
-            htmlFor="bankAccountDetails"
-            error={showError('bankAccountDetails')}
-            icon={<CreditCard className="h-4 w-4" />}
+            label="Residential Address"
+            htmlFor="address"
+            error={showError('address')}
+            icon={<MapPin className="h-4 w-4" />}
             className="md:col-span-2"
             iconTop
           >
             <textarea
-              id="bankAccountDetails"
-              name="bankAccountDetails"
+              id="address"
+              name="address"
               rows={2}
-              placeholder="Alfalah Bank, Account No: 1234-56789-001, IBAN: PK00ALFA..."
-              value={formik.values.bankAccountDetails}
+              placeholder="123 Main Street, Sector G-11, Islamabad"
+              value={formik.values.address}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              className={`${fieldClass('bankAccountDetails')} resize-none`}
+              className={`${fieldClass('address')} resize-none`}
             />
           </Field>
-        ) : (
-          <>
-            <div className="md:col-span-2 rounded-lg border border-border bg-canvas/50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                Initial salary
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                Enter Base salary, Allowance and Tax to see the total salary breakdown. These values can be updated later in the payroll section.
-              </p>
-              {salaryPreview && (
-                <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <p className="text-muted">Total earning</p>
-                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                      PKR {formatMoney(salaryPreview.totalearning)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted">Total deduction</p>
-                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                      PKR {formatMoney(salaryPreview.totaldeduction)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted">Net salary</p>
-                    <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                      PKR {formatMoney(salaryPreview.netsalary)}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
 
+          {isEditMode ? (
             <Field
-              label="Bank Name"
-              htmlFor="bankName"
-              error={showError('bankName')}
-              icon={<Landmark className="h-4 w-4" />}
-            >
-              <input
-                id="bankName"
-                name="bankName"
-                type="text"
-                placeholder="Bank Alfalah"
-                value={formik.values.bankName || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={fieldClass('bankName')}
-              />
-            </Field>
-
-            <Field
-              label="Account Name"
-              htmlFor="accountName"
-              error={showError('accountName')}
-              icon={<User className="h-4 w-4" />}
-            >
-              <input
-                id="accountName"
-                name="accountName"
-                type="text"
-                placeholder={formik.values.name || 'Account holder name'}
-                value={formik.values.accountName || ''}
-                onChange={formik.handleChange}
-                onBlur={(event) => {
-                  formik.handleBlur(event);
-                  if (!formik.values.accountName?.trim() && formik.values.name.trim()) {
-                    formik.setFieldValue('accountName', formik.values.name.trim());
-                  }
-                }}
-                className={fieldClass('accountName')}
-              />
-            </Field>
-
-            <Field
-              label="Tax (PKR)"
-              htmlFor="tax"
-              error={showError('tax')}
-              icon={<DollarSign className="h-4 w-4" />}
-            >
-              <input
-                id="tax"
-                name="tax"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={formik.values.tax || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={fieldClass('tax')}
-              />
-            </Field>
-
-            <Field
-              label="Allowance (PKR)"
-              htmlFor="allowance"
-              error={showError('allowance')}
-              icon={<DollarSign className="h-4 w-4" />}
-            >
-              <input
-                id="allowance"
-                name="allowance"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={formik.values.allowance || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={fieldClass('allowance')}
-              />
-            </Field>
-
-            <Field
-              label="Account Number"
-              htmlFor="accountNumber"
-              error={showError('accountNumber')}
+              label="Bank Account Details"
+              htmlFor="bankAccountDetails"
+              error={showError('bankAccountDetails')}
               icon={<CreditCard className="h-4 w-4" />}
               className="md:col-span-2"
+              iconTop
             >
-              <input
-                id="accountNumber"
-                name="accountNumber"
-                type="text"
-                placeholder="1234-56789-001"
-                value={formik.values.accountNumber || ''}
+              <textarea
+                id="bankAccountDetails"
+                name="bankAccountDetails"
+                rows={2}
+                placeholder="Alfalah Bank, Account No: 1234-56789-001, IBAN: PK00ALFA..."
+                value={formik.values.bankAccountDetails}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                className={fieldClass('accountNumber')}
+                className={`${fieldClass('bankAccountDetails')} resize-none`}
               />
             </Field>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <div className="md:col-span-2 rounded-lg border border-border bg-canvas/50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Initial salary
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Enter Base salary, Allowance and Tax to see the total salary breakdown. These
+                  values can be updated later in the payroll section.
+                </p>
+                {salaryPreview && (
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted">Total earning</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {formatMoney(salaryPreview.totalearning)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Total deduction</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {formatMoney(salaryPreview.totaldeduction)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Net salary</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {formatMoney(salaryPreview.netsalary)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-      <div
-        className={`flex justify-end gap-4 ${embedded ? 'pt-2' : 'border-t border-border pt-6'}`}
-      >
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={submitting}
-            className="cursor-pointer rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-canvas/40 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-        )}
-        <button
-          type="submit"
-          disabled={submitting || Boolean(editBlockedReason)}
-          className="cursor-pointer rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg shadow-sm transition-all duration-200 hover:bg-accent-hover disabled:opacity-50"
+              <Field
+                label="Bank Name"
+                htmlFor="bankName"
+                error={showError('bankName')}
+                icon={<Landmark className="h-4 w-4" />}
+              >
+                <input
+                  id="bankName"
+                  name="bankName"
+                  type="text"
+                  placeholder="Bank Alfalah"
+                  value={formik.values.bankName || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('bankName')}
+                />
+              </Field>
+
+              <Field
+                label="Account Name"
+                htmlFor="accountName"
+                error={showError('accountName')}
+                icon={<User className="h-4 w-4" />}
+              >
+                <input
+                  id="accountName"
+                  name="accountName"
+                  type="text"
+                  placeholder={formik.values.name || 'Account holder name'}
+                  value={formik.values.accountName || ''}
+                  onChange={formik.handleChange}
+                  onBlur={(event) => {
+                    formik.handleBlur(event);
+                    if (!formik.values.accountName?.trim() && formik.values.name.trim()) {
+                      formik.setFieldValue('accountName', formik.values.name.trim());
+                    }
+                  }}
+                  className={fieldClass('accountName')}
+                />
+              </Field>
+
+              <Field
+                label="Tax (PKR)"
+                htmlFor="tax"
+                error={showError('tax')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="tax"
+                  name="tax"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={formik.values.tax || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('tax')}
+                />
+              </Field>
+
+              <Field
+                label="Allowance (PKR)"
+                htmlFor="allowance"
+                error={showError('allowance')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="allowance"
+                  name="allowance"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={formik.values.allowance || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('allowance')}
+                />
+              </Field>
+
+              <Field
+                label="Account Number"
+                htmlFor="accountNumber"
+                error={showError('accountNumber')}
+                icon={<CreditCard className="h-4 w-4" />}
+                className="md:col-span-2"
+              >
+                <input
+                  id="accountNumber"
+                  name="accountNumber"
+                  type="text"
+                  placeholder="1234-56789-001"
+                  value={formik.values.accountNumber || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('accountNumber')}
+                />
+              </Field>
+            </>
+          )}
+        </div>
+
+        <div
+          className={`flex justify-end gap-4 ${embedded ? 'pt-2' : 'border-t border-border pt-6'}`}
         >
-          {submitting
-            ? isEditMode
-              ? 'Saving…'
-              : 'Creating…'
-            : submitLabel || (isEditMode ? 'Save' : 'Create Profile')}
-        </button>
-      </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={submitting}
+              className="cursor-pointer rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-canvas/40 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={submitting || Boolean(editBlockedReason)}
+            className="cursor-pointer rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg shadow-sm transition-all duration-200 hover:bg-accent-hover disabled:opacity-50"
+          >
+            {submitting
+              ? isEditMode
+                ? 'Saving…'
+                : 'Creating…'
+              : submitLabel || (isEditMode ? 'Save' : 'Create Profile')}
+          </button>
+        </div>
       </fieldset>
     </form>
   );

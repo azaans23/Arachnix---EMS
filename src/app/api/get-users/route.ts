@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { verifyEmployeeAccess } from '@/lib/auth';
+import { verifyAuth } from '@/lib/auth';
+import { canAccess } from '@/lib/rbac';
 import { fetchEmployees, SheetsError } from '@/lib/sheets/employees';
 
 export const dynamic = 'force-dynamic';
@@ -7,11 +8,23 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const { errorResponse } = await verifyEmployeeAccess(request);
+    const { role, errorResponse } = await verifyAuth(request);
     if (errorResponse) return errorResponse;
 
+    const canListEmployees =
+      Boolean(role) && (canAccess(role, 'employees') || canAccess(role, 'salary'));
+    if (!canListEmployees) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: employees directory is not available for this role.' },
+        { status: 403 }
+      );
+    }
+
     const employees = await fetchEmployees();
-    return NextResponse.json({ success: true, data: employees.map((e) => e.raw) });
+    return NextResponse.json({
+      success: true,
+      data: employees.map((employee) => employee.raw),
+    });
   } catch (error: unknown) {
     if (error instanceof SheetsError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });

@@ -536,86 +536,86 @@ export default function LeaveBalancesPage() {
     };
 
     return (
-    <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="text-xs font-medium text-muted">
-          Leave ID
-          <input
-            value={form.leaveId || buildLeaveId(form.employeeId, form.year)}
-            readOnly
-            className={`${inputClassName} bg-canvas text-muted`}
-          />
-        </label>
-        <label className="text-xs font-medium text-muted">
-          Employee ID
-          <input
-            value={form.employeeId}
-            readOnly={options?.lockEmployee}
-            onChange={(event) => onChange('employeeId', event.target.value)}
-            className={`${inputClassName} ${options?.lockEmployee ? 'bg-canvas text-muted' : ''}`}
-          />
-        </label>
-        <label className="text-xs font-medium text-muted sm:col-span-2">
-          Year <span className="text-danger">*</span>
-          {options?.lockYear ? (
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-xs font-medium text-muted">
+            Leave ID
             <input
-              value={form.year}
+              value={form.leaveId || buildLeaveId(form.employeeId, form.year)}
               readOnly
               className={`${inputClassName} bg-canvas text-muted`}
             />
-          ) : (
-            <div className="mt-1.5">
-              <CustomDropdown
-                id="leave-balance-year"
-                name="year"
-                options={yearOptions()}
-                value={form.year}
-                onChange={(value) => onChange('year', value)}
-                onBlur={() => {}}
-              />
-            </div>
-          )}
-        </label>
-      </div>
-
-      <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
-        Total Leaves (Annual) is the overall pool. Sick and Casual quotas sit inside it. Changing any
-        value auto-adjusts the others so Sick + Casual stay within Total Leaves, and used days stay
-        within their quotas.
-      </p>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {LEAVE_BALANCE_FIELDS.map((field) => {
-          const wasAdjusted = adjusted.includes(field.key);
-          return (
-            <label key={field.key} className="text-xs font-medium text-muted">
-              <span className="flex items-center justify-between gap-2">
-                <span>
-                  {field.label} <span className="text-danger">*</span>
-                </span>
-                {wasAdjusted && (
-                  <span className="rounded border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
-                    Auto-adjusted
-                  </span>
-                )}
-              </span>
+          </label>
+          <label className="text-xs font-medium text-muted">
+            Employee ID
+            <input
+              value={form.employeeId}
+              readOnly={options?.lockEmployee}
+              onChange={(event) => onChange('employeeId', event.target.value)}
+              className={`${inputClassName} ${options?.lockEmployee ? 'bg-canvas text-muted' : ''}`}
+            />
+          </label>
+          <label className="text-xs font-medium text-muted sm:col-span-2">
+            Year <span className="text-danger">*</span>
+            {options?.lockYear ? (
               <input
-                type="number"
-                min="0"
-                step="0.5"
-                required
-                value={form[field.key]}
-                onChange={(event) => onChange(field.key, event.target.value)}
-                className={`${inputClassName} ${wasAdjusted ? 'border-ink/40 bg-canvas' : ''}`}
+                value={form.year}
+                readOnly
+                className={`${inputClassName} bg-canvas text-muted`}
               />
-              <span className="mt-1 block text-[11px] font-normal text-muted/80">
-                {hint[field.key]}
-              </span>
-            </label>
-          );
-        })}
+            ) : (
+              <div className="mt-1.5">
+                <CustomDropdown
+                  id="leave-balance-year"
+                  name="year"
+                  options={yearOptions()}
+                  value={form.year}
+                  onChange={(value) => onChange('year', value)}
+                  onBlur={() => {}}
+                />
+              </div>
+            )}
+          </label>
+        </div>
+
+        <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
+          Total Leaves (Annual) is the overall pool. Sick and Casual quotas sit inside it. Changing
+          any value auto-adjusts the others so Sick + Casual stay within Total Leaves, and used days
+          stay within their quotas.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {LEAVE_BALANCE_FIELDS.map((field) => {
+            const wasAdjusted = adjusted.includes(field.key);
+            return (
+              <label key={field.key} className="text-xs font-medium text-muted">
+                <span className="flex items-center justify-between gap-2">
+                  <span>
+                    {field.label} <span className="text-danger">*</span>
+                  </span>
+                  {wasAdjusted && (
+                    <span className="rounded border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
+                      Auto-adjusted
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  required
+                  value={form[field.key]}
+                  onChange={(event) => onChange(field.key, event.target.value)}
+                  className={`${inputClassName} ${wasAdjusted ? 'border-ink/40 bg-canvas' : ''}`}
+                />
+                <span className="mt-1 block text-[11px] font-normal text-muted/80">
+                  {hint[field.key]}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </div>
-    </div>
     );
   };
 
@@ -640,7 +640,7 @@ export default function LeaveBalancesPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can manage leave balances.
+          Only Super Admin, Admin, and HR Manager can manage leave balances.
         </p>
       </div>
     );

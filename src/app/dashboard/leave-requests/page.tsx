@@ -454,7 +454,7 @@ export default function LeaveRequestsPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can manage leave requests.
+          Only Super Admin, Admin, and HR Manager can manage leave requests.
         </p>
       </div>
     );
@@ -829,10 +829,7 @@ export default function LeaveRequestsPage() {
                 </div>
                 <dl className="divide-y divide-border">
                   <DetailRow label="Leave type" value={detailRequest.leaveType || '—'} />
-                  <DetailRow
-                    label="Days requested"
-                    value={String(detailRequest.daysRequested)}
-                  />
+                  <DetailRow label="Days requested" value={String(detailRequest.daysRequested)} />
                   <DetailRow label="Reviewed by" value={detailRequest.approvedBy?.trim() || '—'} />
                   <DetailRow
                     label="Reviewed on"

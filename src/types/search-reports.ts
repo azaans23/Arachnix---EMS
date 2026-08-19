@@ -50,7 +50,7 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     type: 'payroll',
     label: 'Payroll',
     description: 'Salary rows for a period — base, earnings, deductions, net.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'leave',
@@ -113,10 +113,9 @@ export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
     case ROLES.ADMIN:
       return [...SEARCH_SOURCES];
     case ROLES.HR_MANAGER:
-      return ['employee', 'salary', 'leave_request', 'leave_balance'];
+      return ['employee', 'leave_request', 'leave_balance', 'salary'];
     case ROLES.FINANCE_MANAGER:
-      // Finance cannot open the employees module — keep search on accounting only.
-      return ['accounting'];
+      return ['accounting', 'salary'];
     case ROLES.DIRECTOR:
       // Directors may search people/payroll/leave for overview, but detail pages are
       // blocked; hits link to Reports instead (see hrefForSearchHit).
@@ -147,7 +146,7 @@ export function hrefForSearchHit(
         ? '/dashboard/accounting-records'
         : '/dashboard';
     case 'salary':
-      return canAccess(normalized, 'salary_slip_runs')
+      return canAccess(normalized, 'salary')
         ? '/dashboard/salary'
         : canAccess(normalized, 'reports')
           ? '/dashboard/reports'

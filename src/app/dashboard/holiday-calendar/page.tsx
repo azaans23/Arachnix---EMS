@@ -308,7 +308,7 @@ export default function HolidayCalendarPage() {
         <EmptyState
           icon={<ShieldAlert className="h-5 w-5" />}
           title="Access restricted"
-          description="Holiday Calendar is available to Super Admin and HR Manager."
+          description="Holiday Calendar is writable by Super Admin, Admin, and HR Manager; Finance Manager has read-only access."
         />
       </div>
     );

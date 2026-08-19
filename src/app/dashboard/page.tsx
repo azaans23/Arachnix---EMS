@@ -391,6 +391,8 @@ function descriptionForResource(resource: string): string {
       return 'Quotas and usage by employee.';
     case 'holiday_calendar':
       return 'Company holidays for leave calculations.';
+    case 'salary':
+      return 'Base salary, tax, allowance, and bank details.';
     case 'salary_slip_runs':
       return 'Batch salary slip processing runs.';
     case 'salary_slip_run_details':

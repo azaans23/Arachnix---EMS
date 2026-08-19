@@ -178,13 +178,7 @@ interface SortableHeaderProps {
   onSort: (column: SortKey) => void;
 }
 
-const SortableHeader = ({
-  column,
-  label,
-  sortKey,
-  sortDir,
-  onSort,
-}: SortableHeaderProps) => (
+const SortableHeader = ({ column, label, sortKey, sortDir, onSort }: SortableHeaderProps) => (
   <th className="px-5 py-3.5 font-semibold">
     <button
       type="button"
@@ -404,8 +398,6 @@ export default function SalaryPage() {
     return filteredRows.slice(start, start + pageSizeNum);
   }, [filteredRows, currentPage, pageSizeNum]);
 
-
-
   useEffect(() => {
     const checkRole = async () => {
       const {
@@ -420,9 +412,9 @@ export default function SalaryPage() {
         } catch {
           /* keep JWT fallback */
         }
-        const canView = canAccess(role, 'salary_slip_runs');
+        const canView = canAccess(role, 'salary');
         setAllowed(canView);
-        setCanEdit(canWrite(role, 'salary_slip_runs'));
+        setCanEdit(canWrite(role, 'salary'));
         if (canView) {
           fetchDetails();
         }
@@ -654,8 +646,6 @@ export default function SalaryPage() {
   const editLiveTotals = editForm ? computeStoredSalaryTotals(editForm) : null;
   const createLiveTotals = createForm ? computeStoredSalaryTotals(createForm) : null;
 
-
-
   if (allowed === null) {
     return (
       <div className="mx-auto max-w-6xl animate-fade-in-up">
@@ -677,7 +667,7 @@ export default function SalaryPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Only Super Admin and HR Manager can view salary details.
+          Only Super Admin, Admin, HR Manager, and Finance Manager can view salary details.
         </p>
       </div>
     );
@@ -812,9 +802,7 @@ export default function SalaryPage() {
                     id="create-salary-title"
                     className="text-lg font-semibold tracking-tight text-ink"
                   >
-                    {createStep === 'pick'
-                      ? 'Select employee'
-                      : 'Create salary details'}
+                    {createStep === 'pick' ? 'Select employee' : 'Create salary details'}
                   </h2>
                   <p className="mt-1 text-sm text-muted">
                     {createStep === 'pick'
@@ -1206,11 +1194,41 @@ export default function SalaryPage() {
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                        <SortableHeader column="fullName" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="email" label="Email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="designation" label="Designation" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="department" label="Department" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="salary" label="Salary" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader
+                          column="fullName"
+                          label="Name"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="email"
+                          label="Email"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="designation"
+                          label="Designation"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="department"
+                          label="Department"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="salary"
+                          label="Salary"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
                         <th className="px-5 py-3.5 font-semibold text-muted">Allowance</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Tax</th>
                         <th className="px-5 py-3.5 font-semibold text-muted">Bank</th>

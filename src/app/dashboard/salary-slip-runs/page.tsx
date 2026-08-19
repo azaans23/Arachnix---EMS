@@ -123,9 +123,7 @@ function buildSalaryForms(
   incomplete: IncompleteSalaryDetail[],
   details: SalaryDetailRecord[]
 ): SalaryDetailInput[] {
-  const byId = new Map(
-    details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail])
-  );
+  const byId = new Map(details.map((detail) => [detail.employeeId.trim().toLowerCase(), detail]));
 
   return incomplete.map((row) => {
     const key = row.employeeId.trim().toLowerCase();
@@ -234,9 +232,7 @@ export default function SalarySlipRunsPage() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [salaryReview, setSalaryReview] = useState<IncompleteSalaryDetail[] | null>(null);
   const [salaryForms, setSalaryForms] = useState<SalaryDetailInput[]>([]);
-  const [slipExtrasForms, setSlipExtrasForms] = useState<Record<string, SalarySlipExtrasInput>>(
-    {}
-  );
+  const [slipExtrasForms, setSlipExtrasForms] = useState<Record<string, SalarySlipExtrasInput>>({});
   const [savingDetails, setSavingDetails] = useState(false);
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
@@ -260,12 +256,14 @@ export default function SalarySlipRunsPage() {
     if (!options.silent) setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${token()}` };
-      const [runsRes, usersRes] = await Promise.all([
+      const [runsRes, usersRes, salariesRes] = await Promise.all([
         fetch('/api/salary-slip-runs', { headers, cache: 'no-store' }),
         fetch('/api/get-users', { headers, cache: 'no-store' }),
+        fetch('/api/salary-details', { headers, cache: 'no-store' }),
       ]);
       const runsJson = await runsRes.json();
       const usersJson = await usersRes.json();
+      const salariesJson = await salariesRes.json();
 
       if (!runsRes.ok || !runsJson.success) {
         throw new Error(runsJson.error || 'Failed to load salary slip runs.');
@@ -273,6 +271,14 @@ export default function SalarySlipRunsPage() {
       setRuns(runsJson.data || []);
 
       if (usersRes.ok && usersJson.success) {
+        const salaryRows =
+          salariesRes.ok && salariesJson.success
+            ? ((salariesJson.data || []) as SalaryDetailRecord[])
+            : [];
+        const salaryById = new Map(
+          salaryRows.map((row) => [row.employeeId.trim().toLowerCase(), row])
+        );
+        const salaryIds = new Set(salaryById.keys());
         const raw = Array.isArray(usersJson.data)
           ? usersJson.data
           : usersJson.data
@@ -282,11 +288,12 @@ export default function SalarySlipRunsPage() {
           raw.map((row: unknown) => {
             const record = mapRawToEmployee(row);
             const sheetUser = toSheetUser(record);
-            const salary = parseBaseSalary(record.baseSalary);
+            const salaryDetail = salaryById.get(record.employeeId.trim().toLowerCase());
+            const salary = parseBaseSalary(salaryDetail?.salary || record.baseSalary);
             return {
               ...sheetUser,
-              eligible: hasPayrollSalary(record),
-              reason: payrollEligibilityReason(record),
+              eligible: hasPayrollSalary(record, salaryIds),
+              reason: payrollEligibilityReason(record, salaryIds),
               salaryLabel: salary > 0 ? String(salary) : '—',
             };
           })
@@ -555,7 +562,7 @@ export default function SalarySlipRunsPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can manage salary slips.
+          Only Super Admin, Admin, and Finance Manager can manage salary slips.
         </p>
       </div>
     );
@@ -769,8 +776,8 @@ export default function SalarySlipRunsPage() {
                     <Link href="/dashboard/salary" className="font-medium text-ink underline">
                       Salary
                     </Link>{' '}
-                    page. Overtime, bonus, others, and contributions apply to this slip only and
-                    are not saved.
+                    page. Overtime, bonus, others, and contributions apply to this slip only and are
+                    not saved.
                   </p>
                 </div>
                 <button

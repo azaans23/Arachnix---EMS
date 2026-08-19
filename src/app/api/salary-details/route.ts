@@ -34,7 +34,7 @@ function normalizeDetail(row: unknown): SalaryDetailInput | null {
 /** GET — one salary row per employee from Supabase. */
 export async function GET(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'salary_slip_runs', 'read');
+    const { errorResponse } = await verifyResourceAccess(request, 'salary', 'read');
     if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(request.url);
@@ -62,11 +62,7 @@ export async function GET(request: Request) {
 /** POST — write salary profile rows (no period / status / slip extras). */
 export async function POST(request: Request) {
   try {
-    const { user, errorResponse } = await verifyResourceAccess(
-      request,
-      'salary_slip_runs',
-      'write'
-    );
+    const { user, errorResponse } = await verifyResourceAccess(request, 'salary', 'write');
     if (errorResponse) return errorResponse;
 
     const body = await request.json();

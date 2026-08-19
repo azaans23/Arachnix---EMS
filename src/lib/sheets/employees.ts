@@ -1,5 +1,4 @@
-import type { EmployeeRecord, EmployeeWriteInput, SheetUser } from '@/types/employee';
-import { toSheetUser } from '@/types/employee';
+import type { EmployeeRecord, EmployeeWriteInput } from '@/types/employee';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
   dbRowToEmployeeRecord,
@@ -11,19 +10,9 @@ import {
   deleteEmployeeDbRow,
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
-import {
-  deleteSalaryDbRow,
-  getSalaryDbRow,
-  restoreSalaryDbRow,
-} from '@/lib/db/salaries';
-import {
-  deleteLeaveBalancesByEmployeeId,
-  restoreLeaveBalanceRows,
-} from '@/lib/db/leave-balances';
-import {
-  deleteLeaveRequestsByEmployeeId,
-  restoreLeaveRequestRows,
-} from '@/lib/db/leave-requests';
+import { deleteSalaryDbRow, getSalaryDbRow, restoreSalaryDbRow } from '@/lib/db/salaries';
+import { deleteLeaveBalancesByEmployeeId, restoreLeaveBalanceRows } from '@/lib/db/leave-balances';
+import { deleteLeaveRequestsByEmployeeId, restoreLeaveRequestRows } from '@/lib/db/leave-requests';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 
 function pick(raw: Record<string, unknown>, ...keys: string[]): string {

@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
 import {
   assertCanAssignRole,
+  canAssignRole,
   canEditEmployeeRecord,
   isSuperAdminSelfEdit,
+  normalizeRole,
   roleDisplayName,
 } from '@/lib/rbac';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -81,17 +83,22 @@ export async function POST(request: Request) {
     const resolvedEmployeeId =
       previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
 
-    if (
+    const canEditPrevious =
       previousEmployee?.role &&
-      !canEditEmployeeRecord({
+      canEditEmployeeRecord({
         actorRole: actorRole || '',
         actorEmail: actor?.email,
         actorUserId: actor?.id,
         targetRole: previousEmployee.role,
         targetEmail: previousEmployee.email,
         targetSupabaseUserId: previousEmployee.supabaseUserId,
-      })
-    ) {
+      });
+    const canGrantSameRole =
+      previousEmployee?.role &&
+      normalizeRole(previousEmployee.role) === assignment.role &&
+      canAssignRole(actorRole || '', previousEmployee.role);
+
+    if (previousEmployee?.role && !canEditPrevious && !canGrantSameRole) {
       return NextResponse.json(
         {
           success: false,

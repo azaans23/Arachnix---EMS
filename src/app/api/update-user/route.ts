@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { deleteAuthUser, findAuthUserIdByEmail, syncEmployeeAuthRole, verifyEmployeeAccess } from '@/lib/auth';
+import {
+  deleteAuthUser,
+  findAuthUserIdByEmail,
+  syncEmployeeAuthRole,
+  verifyEmployeeAccess,
+} from '@/lib/auth';
 import {
   assertCanEditEmployee,
   canEditEmployeeRecord,
@@ -110,8 +115,7 @@ export async function POST(request: Request) {
     const nextRole = validation.value.role || '';
     const roleChanging = !previous || normalizeRole(previousRole) !== normalizeRole(nextRole);
     const targetEmail = previous?.email || validation.value.email || originalEmail;
-    const targetSupabaseUserId =
-      previous?.supabaseUserId || validation.value.supabaseUserId || '';
+    const targetSupabaseUserId = previous?.supabaseUserId || validation.value.supabaseUserId || '';
 
     if (previous) {
       if (

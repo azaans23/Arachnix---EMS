@@ -3,11 +3,12 @@
  *
  * Super Admin     — everything; exactly one account; cannot be created/assigned by anyone;
  *                   only they can edit their own employee record
- * Admin           — same system access as Super Admin; can edit self + staff (not other Admins
- *                   or Super Admin); cannot create/assign Admin or Super Admin
- * HR Manager      — employees, salary slips, contracts/offer letters, leave (not accounting);
+ * Admin           — broad operational access; can create Admin/HR/Finance/Employee roles,
+ *                   edit self + staff, but cannot manage Super Admin
+ * HR Manager      — employee management, leave, salary profiles, offer letters, holidays;
  *                   can edit staff only (not Admin / Super Admin)
- * Finance Manager — accounting upload/records/dashboard (not HR data)
+ * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
+ *                   no employee directory
  * Director        — read-only financial + headcount dashboard
  */
 
@@ -26,6 +27,7 @@ export type ResourceKey =
   | 'dashboard'
   | 'employees'
   | 'audit_log'
+  | 'salary'
   | 'salary_slip_runs'
   | 'salary_slip_run_details'
   | 'generated_documents'
@@ -131,7 +133,7 @@ const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
     ROLES.DIRECTOR,
     ROLES.EMPLOYEE,
   ],
-  [ROLES.ADMIN]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
+  [ROLES.ADMIN]: [ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.EMPLOYEE],
   [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
   [ROLES.FINANCE_MANAGER]: [],
   [ROLES.DIRECTOR]: [],
@@ -344,7 +346,12 @@ export function assertCanEditEmployee(input: {
   }
 
   // Admin may keep their own Admin role when editing themselves.
-  if (next === ROLES.ADMIN && actor === ROLES.ADMIN && self && (!previous || previous === ROLES.ADMIN)) {
+  if (
+    next === ROLES.ADMIN &&
+    actor === ROLES.ADMIN &&
+    self &&
+    (!previous || previous === ROLES.ADMIN)
+  ) {
     return { ok: true, role: ROLES.ADMIN };
   }
 
@@ -359,7 +366,6 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
     [ROLES.HR_MANAGER]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
     [ROLES.DIRECTOR]: 'read',
-    [ROLES.EMPLOYEE]: 'read',
   },
   employees: {
     [ROLES.SUPER_ADMIN]: 'write',
@@ -368,17 +374,22 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
   audit_log: {
     [ROLES.SUPER_ADMIN]: 'write',
+  },
+  salary: {
+    [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.ADMIN]: 'write',
+    [ROLES.HR_MANAGER]: 'write',
+    [ROLES.FINANCE_MANAGER]: 'write',
   },
   salary_slip_runs: {
     [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.ADMIN]: 'write',
-    [ROLES.HR_MANAGER]: 'write',
+    [ROLES.FINANCE_MANAGER]: 'write',
   },
   salary_slip_run_details: {
     [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.ADMIN]: 'write',
-    [ROLES.HR_MANAGER]: 'write',
+    [ROLES.FINANCE_MANAGER]: 'write',
   },
   generated_documents: {
     [ROLES.SUPER_ADMIN]: 'write',
@@ -399,6 +410,7 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
     [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.ADMIN]: 'write',
     [ROLES.HR_MANAGER]: 'write',
+    [ROLES.FINANCE_MANAGER]: 'read',
   },
   accounting_records: {
     [ROLES.SUPER_ADMIN]: 'write',
@@ -421,9 +433,9 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
   settings: {
     [ROLES.SUPER_ADMIN]: 'write',
-    [ROLES.ADMIN]: 'write',
-    [ROLES.HR_MANAGER]: 'write',
-    [ROLES.FINANCE_MANAGER]: 'write',
+    [ROLES.ADMIN]: 'read',
+    [ROLES.HR_MANAGER]: 'read',
+    [ROLES.FINANCE_MANAGER]: 'read',
     [ROLES.DIRECTOR]: 'read',
     [ROLES.EMPLOYEE]: 'read',
   },
@@ -446,7 +458,7 @@ export function canWrite(role: AppRole | string, resource: ResourceKey): boolean
 export const ROUTE_RESOURCES: { prefix: string; resource: ResourceKey }[] = [
   { prefix: '/dashboard/employees', resource: 'employees' },
   { prefix: '/dashboard/audit-log', resource: 'audit_log' },
-  { prefix: '/dashboard/salary', resource: 'salary_slip_runs' },
+  { prefix: '/dashboard/salary', resource: 'salary' },
   { prefix: '/dashboard/salary-slip-runs', resource: 'salary_slip_runs' },
   { prefix: '/dashboard/salary-slip-run-details', resource: 'salary_slip_run_details' },
   { prefix: '/dashboard/payroll', resource: 'salary_slip_runs' },
@@ -511,14 +523,14 @@ export const NAV_ITEMS: NavItemConfig[] = [
   {
     href: '/dashboard/salary',
     label: 'Salary',
-    resource: 'salary_slip_runs',
+    resource: 'salary',
     section: 'hr',
   },
   {
     href: '/dashboard/salary-slip-runs',
     label: 'Salary Slip Runs',
     resource: 'salary_slip_runs',
-    section: 'hr',
+    section: 'finance',
   },
   {
     href: '/dashboard/offer-letters',
@@ -539,6 +551,11 @@ export const NAV_ITEMS: NavItemConfig[] = [
 
 export function getNavItemsForRole(role: AppRole | string): NavItemConfig[] {
   return NAV_ITEMS.filter((item) => canAccess(role, item.resource));
+}
+
+/** Safe landing page for roles that cannot access the dashboard overview. */
+export function defaultDashboardPathForRole(role: AppRole | string): string {
+  return getNavItemsForRole(role)[0]?.href || '/login';
 }
 
 /** Roles allowed to mutate employee APIs (get-users, update-user, signup) */

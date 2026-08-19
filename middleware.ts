@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { canAccessPath } from '@/lib/rbac';
+import { canAccessPath, defaultDashboardPathForRole } from '@/lib/rbac';
 import {
   GATE_COOKIE,
   LEGACY_ROLE_COOKIE,
@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
   if (!gate) return response;
 
   if (!canAccessPath(gate.role, pathname)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(defaultDashboardPathForRole(gate.role), request.url));
   }
 
   return response;

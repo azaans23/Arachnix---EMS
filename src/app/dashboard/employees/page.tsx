@@ -93,13 +93,7 @@ interface SortableHeaderProps {
   onSort: (column: SortKey) => void;
 }
 
-const SortableHeader = ({
-  column,
-  label,
-  sortKey,
-  sortDir,
-  onSort,
-}: SortableHeaderProps) => (
+const SortableHeader = ({ column, label, sortKey, sortDir, onSort }: SortableHeaderProps) => (
   <th className="px-5 py-3.5 font-semibold">
     <button
       type="button"
@@ -508,9 +502,27 @@ export default function EmployeesPage() {
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                        <SortableHeader column="name" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="email" label="Email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        <SortableHeader column="role" label="Role" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortableHeader
+                          column="name"
+                          label="Name"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="email"
+                          label="Email"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="role"
+                          label="Role"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
                         <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
@@ -525,9 +537,7 @@ export default function EmployeesPage() {
                               if (canEdit) router.push(profilePath(user));
                             }}
                             className={`transition-colors duration-150 ${
-                              canEdit
-                                ? 'cursor-pointer hover:bg-canvas/70'
-                                : 'bg-canvas/40'
+                              canEdit ? 'cursor-pointer hover:bg-canvas/70' : 'bg-canvas/40'
                             }`}
                           >
                             <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
@@ -700,7 +710,11 @@ export default function EmployeesPage() {
                     onClick={() => void confirmDelete()}
                     className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-danger px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                   >
-                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    {deleting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
                     Delete
                   </button>
                 </div>

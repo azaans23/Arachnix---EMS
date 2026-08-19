@@ -94,55 +94,57 @@ export default function OfferLetterRunDetailsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
-  const [prevRunId, setPrevRunId] = useState(runId);
   const lastStatusRef = useRef('');
-  if (runId !== prevRunId) {
-    setPrevRunId(runId);
-    setPage(1);
-    lastStatusRef.current = '';
-  }
 
-  const load = useCallback(async (options: { silent?: boolean } = {}) => {
-    if (!runId) {
-      setLoading(false);
-      return;
-    }
-    if (!options.silent) setLoading(true);
-    try {
-      const response = await fetch(`/api/offer-letters/${encodeURIComponent(runId)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        cache: 'no-store',
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to load run details.');
+  const load = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      if (!runId) {
+        setLoading(false);
+        return;
       }
-      const nextRun = result.data.run as OfferLetterRun;
-      const prevStatus = lastStatusRef.current;
-      const nextStatus = String(nextRun.status || '').toLowerCase();
-      lastStatusRef.current = nextStatus;
-      setRun(nextRun);
-      setDetails(result.data.details || []);
-
-      if (options.silent && prevStatus === 'processing' && nextStatus && nextStatus !== 'processing') {
-        if (nextStatus === 'completed') {
-          toast.success(
-            `Offer letter run completed: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
-          );
-        } else if (nextStatus === 'failed') {
-          toast.error(`Offer letter run failed: ${nextRun.failCount || 0} failed.`);
+      if (!options.silent) setLoading(true);
+      try {
+        const response = await fetch(`/api/offer-letters/${encodeURIComponent(runId)}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          cache: 'no-store',
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Failed to load run details.');
         }
+        const nextRun = result.data.run as OfferLetterRun;
+        const prevStatus = lastStatusRef.current;
+        const nextStatus = String(nextRun.status || '').toLowerCase();
+        lastStatusRef.current = nextStatus;
+        setRun(nextRun);
+        setDetails(result.data.details || []);
+
+        if (
+          options.silent &&
+          prevStatus === 'processing' &&
+          nextStatus &&
+          nextStatus !== 'processing'
+        ) {
+          if (nextStatus === 'completed') {
+            toast.success(
+              `Offer letter run completed: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
+            );
+          } else if (nextStatus === 'failed') {
+            toast.error(`Offer letter run failed: ${nextRun.failCount || 0} failed.`);
+          }
+        }
+      } catch (error: unknown) {
+        if (!options.silent) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
+          setRun(null);
+          setDetails([]);
+        }
+      } finally {
+        if (!options.silent) setLoading(false);
       }
-    } catch (error: unknown) {
-      if (!options.silent) {
-        toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
-        setRun(null);
-        setDetails([]);
-      }
-    } finally {
-      if (!options.silent) setLoading(false);
-    }
-  }, [runId]);
+    },
+    [runId]
+  );
 
   useEffect(() => {
     const boot = async () => {
@@ -236,7 +238,7 @@ export default function OfferLetterRunDetailsPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can view offer letter details.
+          Only Super Admin, Admin, and HR Manager can view offer letter details.
         </p>
       </div>
     );

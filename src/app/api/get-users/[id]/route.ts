@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyEmployeeAccess } from '@/lib/auth';
+import { verifyResourceAccess } from '@/lib/auth';
 import { getEmployeeById, SheetsError } from '@/lib/sheets/employees';
 import { toSheetUser } from '@/types/employee';
 
@@ -12,7 +12,7 @@ type RouteContext = {
 
 export async function GET(request: Request, context: RouteContext) {
   try {
-    const { errorResponse } = await verifyEmployeeAccess(request);
+    const { errorResponse } = await verifyResourceAccess(request, 'employees', 'read');
     if (errorResponse) return errorResponse;
 
     const { id } = await context.params;
@@ -22,11 +22,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: toSheetUser(employee),
-      employee,
-    });
+    return NextResponse.json({ success: true, data: toSheetUser(employee), employee });
   } catch (error: unknown) {
     if (error instanceof SheetsError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });
