@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     if (errorResponse) return errorResponse;
 
     const canListEmployees =
-      Boolean(role) && (canAccess(role, 'employees') || canAccess(role, 'salary'));
+      role !== undefined && (canAccess(role, 'employees') || canAccess(role, 'salary'));
     if (!canListEmployees) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: employees directory is not available for this role.' },
