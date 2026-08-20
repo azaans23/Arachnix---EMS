@@ -5,10 +5,10 @@ import {
   updateOfferLetterRun,
   upsertOfferLetterRunDetail,
 } from '@/lib/db/offer-letters';
-import { formatMonthName } from '@/lib/payroll/period';
+import { formatAmountWithCommas, formatMonthName } from '@/lib/payroll/period';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
-import { createAuditLog } from '@/lib/sheets/audit';
-import { AUDIT_ACTIONS } from '@/types/audit';
+import { logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type {
   GenerateOfferLettersInput,
   OfferLetterInput,
@@ -35,6 +35,17 @@ function wholeNumber(value: unknown, label: string) {
     throw new Error(`${label} must be a whole number of zero or more.`);
   }
   return number;
+}
+
+function asBoolean(value: unknown, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(text)) return true;
+  if (['false', '0', 'no', 'n'].includes(text)) return false;
+  return fallback;
 }
 
 function displayDate(value: unknown, label: string) {
@@ -65,102 +76,66 @@ function normalizeOffer(raw: OfferLetterInput): OfferLetterInput {
     throw new Error('Email must be valid.');
   }
 
+  const hasPartTimeTenure = asBoolean(raw.hasPartTimeTenure, false);
+
   return {
     employeeId: String(raw.employeeId || '').trim() || undefined,
     fullName: requiredText(raw.fullName, 'Full name'),
     email,
     designation: requiredText(raw.designation, 'Designation'),
     joiningDate: requiredText(raw.joiningDate, 'Joining date'),
-    partTimeTenure: requiredText(raw.partTimeTenure, 'Part-time tenure'),
-    fullTimeTenure: requiredText(raw.fullTimeTenure, 'Full-time tenure'),
-    partTimeSalary: positiveNumber(raw.partTimeSalary, 'Part-time salary'),
+    hasPartTimeTenure,
+    partTimeTenure: hasPartTimeTenure
+      ? requiredText(raw.partTimeTenure, 'Part-time tenure')
+      : '',
+    fullTimeStart: hasPartTimeTenure
+      ? requiredText(raw.fullTimeStart, 'Full-time start')
+      : '',
+    partTimeSalary: hasPartTimeTenure
+      ? positiveNumber(raw.partTimeSalary, 'Part-time salary')
+      : 0,
     fullTimeSalary: positiveNumber(raw.fullTimeSalary, 'Full-time salary'),
     numberOfLeaves: wholeNumber(raw.numberOfLeaves, 'Number of leaves'),
   };
 }
 
-type WebhookResultItem = {
-  runDetailId?: string;
-  RunDetailID?: string;
-  employeeId?: string;
-  EmployeeID?: string;
-  email?: string;
-  Email?: string;
-  status?: string;
-  success?: boolean;
-  pdfLink?: string;
-  PdfLink?: string;
-  PDFLink?: string;
-  pdfStatus?: string;
-  PDFStatus?: string;
-  emailStatus?: string;
-  EmailStatus?: string;
-  error?: string;
-  errorReason?: string;
-  ErrorReason?: string;
+export type PreparedOfferLetterRun = {
+  run: OfferLetterRun;
+  actorEmail: string;
+  month: number;
+  year: number;
+  employeeKeys: string[];
+  payload: Record<string, unknown>;
 };
-
-function parseWebhookBody(text: string): {
-  ackOnly: boolean;
-  results: WebhookResultItem[];
-  message?: string;
-} {
-  if (!text.trim()) return { ackOnly: true, results: [] };
-
-  try {
-    const json = JSON.parse(text);
-    if (json && typeof json === 'object' && !Array.isArray(json)) {
-      const message = String(json.message || '');
-      if (message.toLowerCase().includes('workflow was started')) {
-        return { ackOnly: true, results: [], message };
-      }
-      const results = Array.isArray(json.results)
-        ? json.results
-        : Array.isArray(json.data)
-          ? json.data
-          : [];
-      return { ackOnly: false, results, message: json.error || json.message };
-    }
-    if (Array.isArray(json)) return { ackOnly: false, results: json };
-  } catch {
-    /* non-JSON body */
-  }
-
-  return { ackOnly: true, results: [] };
-}
 
 /** Dual-writes to Supabase + Sheets; never fails the offer letter run. */
 async function logOfferLetterRunAudit(
   actorEmail: string,
   input: { action: string; runId: string; oldValue?: unknown; newValue: unknown }
 ): Promise<void> {
-  const email = actorEmail.trim() || 'system@arachnix.io';
-  try {
-    await createAuditLog(
-      { email },
-      {
-        action: input.action,
-        recordType: 'OfferLetterRun',
-        recordId: input.runId,
-        oldValue: input.oldValue,
-        newValue: input.newValue,
-      }
-    );
-  } catch (auditError) {
-    console.error('Offer letter run audit failed:', auditError);
-  }
+  await logAuditBestEffort(
+    actorEmail,
+    {
+      action: input.action,
+      recordType: AUDIT_RECORD_TYPES.OFFER_LETTER_RUN,
+      recordId: input.runId,
+      oldValue: input.oldValue,
+      newValue: input.newValue,
+    },
+    'Offer letter run audit'
+  );
 }
 
 /**
- * Creates an OfferLetterRun (plus a Pending OfferLetterRunDetail row per offer),
- * fires the n8n generate-offer-letter webhook once with the whole batch, then
- * updates run/detail rows when the workflow returns per-candidate results.
- * If n8n only acknowledges the trigger, the run stays "Processing".
+ * Creates an OfferLetterRun (Processing) with Pending detail rows and builds the
+ * n8n payload. Does not wait for the workflow — call `dispatchOfferLetterWebhook`
+ * from `after()` so the API can return immediately. n8n updates run/detail
+ * status in Supabase when generation finishes.
  */
 export async function startOfferLetterRun(
   actorEmail: string,
   input: GenerateOfferLettersInput
-): Promise<{ run: OfferLetterRun; message: string }> {
+): Promise<{ prepared: PreparedOfferLetterRun; message: string }> {
   const month = Number(input.month);
   const year = Number(input.year);
 
@@ -223,16 +198,40 @@ export async function startOfferLetterRun(
       Designation: offer.designation,
       OfferDate: offerDate,
       JoiningDate: displayDate(offer.joiningDate, 'Joining date'),
-      PartTimeTenure: displayDate(offer.partTimeTenure, 'Part-time tenure'),
-      FullTimeTenure: displayDate(offer.fullTimeTenure, 'Full-time tenure'),
-      PartTimeSalary: offer.partTimeSalary,
-      FullTimeSalary: offer.fullTimeSalary,
+      HasPartTimeTenure: offer.hasPartTimeTenure,
+      PartTimeTenure: offer.hasPartTimeTenure
+        ? displayDate(offer.partTimeTenure, 'Part-time tenure')
+        : '',
+      FullTimeStart: offer.hasPartTimeTenure
+        ? displayDate(offer.fullTimeStart, 'Full-time start')
+        : '',
+      PartTimeSalary: offer.hasPartTimeTenure
+        ? formatAmountWithCommas(offer.partTimeSalary)
+        : '',
+      FullTimeSalary: formatAmountWithCommas(offer.fullTimeSalary),
       NumberOfLeaves: offer.numberOfLeaves,
     })),
   };
 
-  let webhookOk = false;
-  let webhookText = '';
+  return {
+    prepared: {
+      run,
+      actorEmail,
+      month,
+      year,
+      employeeKeys,
+      payload,
+    },
+    message: 'Offer letter generation started. Status will update when the workflow finishes.',
+  };
+}
+
+/**
+ * Fires the n8n webhook. On trigger failure, marks the run Failed.
+ * Success/Failed completion is owned by the workflow (Supabase updates).
+ */
+export async function dispatchOfferLetterWebhook(prepared: PreparedOfferLetterRun): Promise<void> {
+  const { run, actorEmail, month, year, employeeKeys, payload } = prepared;
 
   try {
     const response = await fetch(SHEETS_WEBHOOKS.generateOfferLetter, {
@@ -241,8 +240,7 @@ export async function startOfferLetterRun(
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
-    webhookText = await response.text();
-    webhookOk = response.ok;
+    const webhookText = await response.text();
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(
@@ -286,89 +284,4 @@ export async function startOfferLetterRun(
     });
     throw new Error(message);
   }
-
-  const parsed = parseWebhookBody(webhookText);
-
-  if (!parsed.ackOnly && parsed.results.length > 0) {
-    const keyByLookup = new Map<string, string>();
-    offers.forEach((offer, index) => {
-      const key = employeeKeys[index];
-      keyByLookup.set(key.toLowerCase(), key);
-      keyByLookup.set(offer.email.toLowerCase(), key);
-      if (offer.employeeId) keyByLookup.set(offer.employeeId.toLowerCase(), key);
-      keyByLookup.set(buildOfferLetterRunDetailId(run.runId, key).toLowerCase(), key);
-    });
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const item of parsed.results) {
-      const lookup = String(
-        item.runDetailId ||
-          item.RunDetailID ||
-          item.employeeId ||
-          item.EmployeeID ||
-          item.email ||
-          item.Email ||
-          ''
-      )
-        .trim()
-        .toLowerCase();
-      const employeeKey = keyByLookup.get(lookup);
-      if (!employeeKey) continue;
-
-      const status = String(item.status || '').toLowerCase();
-      const ok = item.success === true || status === 'success' || status === 'completed';
-      if (ok) successCount += 1;
-      else failCount += 1;
-
-      const pdfLink = item.pdfLink || item.PdfLink || item.PDFLink || '';
-      await upsertOfferLetterRunDetail({
-        runId: run.runId,
-        employeeKey,
-        status: ok ? 'Completed' : 'Failed',
-        pdfLink,
-        pdfStatus: item.pdfStatus || item.PDFStatus || (ok ? 'Generated' : 'Failed'),
-        emailStatus: item.emailStatus || item.EmailStatus || (ok ? 'Sent' : 'Failed'),
-        errorReason: item.errorReason || item.ErrorReason || item.error || '',
-      });
-    }
-
-    const runStatus = successCount > 0 ? 'Completed' : 'Failed';
-    const updated = await updateOfferLetterRun(run.runId, {
-      status: runStatus,
-      successCount,
-      failCount,
-    });
-
-    await logOfferLetterRunAudit(actorEmail, {
-      action: AUDIT_ACTIONS.UPDATE,
-      runId: run.runId,
-      oldValue: { status: 'Processing' },
-      newValue: {
-        month,
-        year,
-        status: runStatus,
-        successCount,
-        failCount,
-        offerLetterCount: offers.length,
-      },
-    });
-
-    if (successCount === 0) {
-      throw new Error(parsed.message || 'Failed to generate offer letters.');
-    }
-
-    return {
-      run: updated,
-      message: `Offer letter run ${runStatus.toLowerCase()}: ${successCount} succeeded, ${failCount} failed.`,
-    };
-  }
-
-  return {
-    run,
-    message: webhookOk
-      ? 'Offer letter workflow started. Refresh this page to see progress as results come in.'
-      : 'Run created.',
-  };
 }

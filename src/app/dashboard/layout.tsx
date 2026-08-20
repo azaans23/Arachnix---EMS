@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Sidebar from '@/components/layouts/Sidebar';
+import SearchPalette from '@/components/search/SearchPalette';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -50,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex-1 p-6 md:p-8">{children}</main>
       </div>
+      <SearchPalette />
     </div>
   );
 }

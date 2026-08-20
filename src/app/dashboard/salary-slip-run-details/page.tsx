@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -23,7 +23,7 @@ import CustomDropdown from '@/components/ui/Dropdown';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
-import { getTrustedRole } from '@/lib/rbac';
+import { canAccess, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import type { SalarySlipRun, SalarySlipRunDetail } from '@/types/salary-slip';
 
@@ -93,32 +93,61 @@ export default function SalarySlipRunDetailsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
+  const lastStatusRef = useRef('');
 
-  const load = useCallback(async () => {
-    if (!runId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/salary-slip-runs/${encodeURIComponent(runId)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        cache: 'no-store',
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to load run details.');
+  const load = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      if (!runId) {
+        setLoading(false);
+        return;
       }
-      setRun(result.data.run);
-      setDetails(result.data.details || []);
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
-      setRun(null);
-      setDetails([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [runId]);
+      if (!options.silent) setLoading(true);
+      try {
+        const response = await fetch(`/api/salary-slip-runs/${encodeURIComponent(runId)}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          cache: 'no-store',
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Failed to load run details.');
+        }
+        const nextRun = result.data.run as SalarySlipRun;
+        const prevStatus = lastStatusRef.current;
+        const nextStatus = String(nextRun.status || '').toLowerCase();
+        lastStatusRef.current = nextStatus;
+        setRun(nextRun);
+        setDetails(result.data.details || []);
+
+        if (
+          options.silent &&
+          prevStatus === 'processing' &&
+          nextStatus &&
+          nextStatus !== 'processing'
+        ) {
+          if (nextStatus === 'completed') {
+            toast.success(
+              `Salary slip run completed: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
+            );
+          } else if (nextStatus === 'partial') {
+            toast.message(
+              `Salary slip run partial: ${nextRun.successCount} succeeded, ${nextRun.failCount} failed.`
+            );
+          } else if (nextStatus === 'failed') {
+            toast.error(`Salary slip run failed: ${nextRun.failCount || 0} failed.`);
+          }
+        }
+      } catch (error: unknown) {
+        if (!options.silent) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load run details.');
+          setRun(null);
+          setDetails([]);
+        }
+      } finally {
+        if (!options.silent) setLoading(false);
+      }
+    },
+    [runId]
+  );
 
   useEffect(() => {
     const boot = async () => {
@@ -138,7 +167,7 @@ export default function SalarySlipRunDetailsPage() {
       } catch {
         /* keep JWT */
       }
-      const canRead = role === 'super_admin' || role === 'hr_manager';
+      const canRead = canAccess(role, 'salary_slip_run_details');
       setAllowed(canRead);
       if (canRead) await load();
       else setLoading(false);
@@ -148,7 +177,7 @@ export default function SalarySlipRunDetailsPage() {
 
   useEffect(() => {
     if (!run || run.status.toLowerCase() !== 'processing') return;
-    const timer = window.setInterval(() => load(), 8000);
+    const timer = window.setInterval(() => void load({ silent: true }), 5000);
     return () => window.clearInterval(timer);
   }, [run, load]);
 
@@ -181,17 +210,8 @@ export default function SalarySlipRunDetailsPage() {
     const start = (currentPage - 1) * pageSizeNum;
     return filteredDetails.slice(start, start + pageSizeNum);
   }, [filteredDetails, currentPage, pageSizeNum]);
-  const rangeStart =
-    filteredDetails.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredDetails.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredDetails.length);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter, pageSize, runId]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const clearFilters = () => {
     setSearch('');
@@ -220,7 +240,7 @@ export default function SalarySlipRunDetailsPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can view salary slip details.
+          Only Super Admin, Admin, and Finance Manager can view salary slip details.
         </p>
       </div>
     );
@@ -318,7 +338,7 @@ export default function SalarySlipRunDetailsPage() {
           )}
           <button
             type="button"
-            onClick={load}
+            onClick={() => void load()}
             disabled={loading}
             className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors duration-200 hover:border-ink/25 hover:bg-canvas disabled:opacity-50"
           >
@@ -354,7 +374,10 @@ export default function SalarySlipRunDetailsPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search name, ID, email, status…"
                 className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               />
@@ -365,7 +388,10 @@ export default function SalarySlipRunDetailsPage() {
                 name="detailStatusFilter"
                 options={STATUS_FILTER_OPTIONS}
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setPage(1);
+                }}
                 onBlur={() => {}}
                 placeholder="All statuses"
               />
@@ -472,13 +498,16 @@ export default function SalarySlipRunDetailsPage() {
                       name="pageSize"
                       options={PAGE_SIZE_OPTIONS}
                       value={pageSize}
-                      onChange={setPageSize}
+                      onChange={(val) => {
+                        setPageSize(val);
+                        setPage(1);
+                      }}
                       onBlur={() => {}}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage <= 1}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -490,7 +519,7 @@ export default function SalarySlipRunDetailsPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage >= totalPages}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >

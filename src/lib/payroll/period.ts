@@ -114,6 +114,8 @@ export function computeSalaryTotals(input: {
   const tax = toMoney(input.tax);
   const contributions = toMoney(input.contributions);
 
+  // Stored salary profile uses base + allowance − tax. OT / bonus / others /
+  // contributions are slip-only extras when callers pass them for a workflow run.
   const totalearning = basesalary + allowance + overtimepay + performancebonus + others;
   const totaldeduction = tax + contributions;
   const netsalary = Math.max(0, totalearning - totaldeduction);
@@ -130,4 +132,28 @@ export function computeSalaryTotals(input: {
     totaldeduction,
     netsalary,
   };
+}
+
+/** Formats amounts for n8n document payloads, e.g. `100000` → `100,000`. */
+export function formatAmountWithCommas(value: string | number | null | undefined): string {
+  if (value === undefined || value === null || String(value).trim() === '') return '';
+  const n = Number(String(value).replace(/,/g, '').trim());
+  if (!Number.isFinite(n)) return String(value).trim();
+  if (Number.isInteger(n)) {
+    return n.toLocaleString('en-US');
+  }
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/** Totals for the persisted salary profile (no slip extras). */
+export function computeStoredSalaryTotals(input: {
+  salary?: string | number | null;
+  allowance?: string | number | null;
+  tax?: string | number | null;
+}) {
+  return computeSalaryTotals({
+    salary: input.salary,
+    allowance: input.allowance,
+    tax: input.tax,
+  });
 }

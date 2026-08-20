@@ -14,12 +14,13 @@ import {
   ScrollText,
   Banknote,
   DollarSign,
-  FolderOpen,
   FileText,
   CalendarDays,
   CalendarRange,
   TreePalm,
   Calculator,
+  Search,
+  FileBarChart2,
   type LucideIcon,
 } from 'lucide-react';
 import { useLogout } from '@/hooks/useAuth';
@@ -34,9 +35,13 @@ import {
   roleDisplayName,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
+import { useSearchPalette } from '@/hooks/useSearchPalette';
+
+const SEARCH_HREF = '/dashboard/search';
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
+  '/dashboard/search': Search,
   '/dashboard/employees': Users,
   '/dashboard/leave-requests': TreePalm,
   '/dashboard/leave-balances': CalendarRange,
@@ -44,8 +49,8 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/dashboard/salary': DollarSign,
   '/dashboard/salary-slip-runs': Banknote,
   '/dashboard/offer-letters': FileText,
-  '/dashboard/generated-documents': FolderOpen,
   '/dashboard/accounting-records': Calculator,
+  '/dashboard/reports': FileBarChart2,
   '/dashboard/audit-log': ScrollText,
   '/dashboard/settings': Settings,
 };
@@ -66,6 +71,7 @@ export default function Sidebar() {
   const [tip, setTip] = useState<TipState>(null);
   const pathname = usePathname();
   const logoutMutation = useLogout();
+  const { openSearch } = useSearchPalette();
 
   useEffect(() => {
     const checkRole = async () => {
@@ -84,10 +90,6 @@ export default function Sidebar() {
     };
     checkRole();
   }, []);
-
-  useEffect(() => {
-    if (isOpen) setTip(null);
-  }, [isOpen]);
 
   const showTip = (label: string, el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
@@ -129,7 +131,15 @@ export default function Sidebar() {
       }`}
     >
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          setIsOpen((current) => {
+            const next = !current;
+            if (next) {
+              setTip(null);
+            }
+            return next;
+          });
+        }}
         className="absolute -right-3 top-6 z-40 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors duration-200 hover:text-ink"
         aria-label="Toggle sidebar"
       >
@@ -174,11 +184,28 @@ export default function Sidebar() {
               )}
               {items.map((item) => {
                 const Icon = NAV_ICONS[item.href] || LayoutDashboard;
+                const icon = <Icon className="h-4 w-4 shrink-0" />;
+
+                // Search opens a floating palette over the current page instead of routing.
+                if (item.href === SEARCH_HREF) {
+                  return (
+                    <NavItem
+                      key={item.href}
+                      icon={icon}
+                      label={item.label}
+                      isOpen={isOpen}
+                      onClick={openSearch}
+                      onShowTip={showTip}
+                      onHideTip={hideTip}
+                    />
+                  );
+                }
+
                 return (
                   <NavItem
                     key={item.href}
                     href={item.href}
-                    icon={<Icon className="h-4 w-4 shrink-0" />}
+                    icon={icon}
                     label={item.label}
                     isOpen={isOpen}
                     active={isActive(item.href)}
@@ -248,34 +275,60 @@ function NavItem({
   label,
   isOpen,
   active = false,
+  onClick,
   onShowTip,
   onHideTip,
 }: {
-  href: string;
+  href?: string;
   icon: React.ReactNode;
   label: string;
   isOpen: boolean;
   active?: boolean;
+  onClick?: () => void;
   onShowTip: (label: string, el: HTMLElement) => void;
   onHideTip: () => void;
 }) {
-  return (
-    <Link
-      href={href}
-      onMouseEnter={(e) => {
-        if (!isOpen) onShowTip(label, e.currentTarget);
-      }}
-      onMouseLeave={onHideTip}
-      onFocus={(e) => {
-        if (!isOpen) onShowTip(label, e.currentTarget);
-      }}
-      onBlur={onHideTip}
-      className={`flex shrink-0 items-center text-sm font-medium transition-colors duration-200 ${
-        isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
-      } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`}
-    >
+  const className = `flex shrink-0 cursor-pointer items-center text-sm font-medium transition-colors duration-200 ${
+    isOpen ? 'w-full gap-3 rounded-md px-3 py-2.5' : 'h-10 w-10 justify-center rounded-full'
+  } ${active ? 'bg-ink text-accent-fg' : 'text-muted hover:bg-canvas hover:text-ink'}`;
+
+  const hoverProps = {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      if (!isOpen) onShowTip(label, e.currentTarget);
+    },
+    onMouseLeave: onHideTip,
+    onFocus: (e: React.FocusEvent<HTMLElement>) => {
+      if (!isOpen) onShowTip(label, e.currentTarget);
+    },
+    onBlur: onHideTip,
+  };
+
+  const content = (
+    <>
       {icon}
       {isOpen && <span className="overflow-hidden whitespace-nowrap">{label}</span>}
+    </>
+  );
+
+  if (!href) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onHideTip();
+          onClick?.();
+        }}
+        {...hoverProps}
+        className={className}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href} {...hoverProps} className={className}>
+      {content}
     </Link>
   );
 }

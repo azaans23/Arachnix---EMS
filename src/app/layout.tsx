@@ -20,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -28,7 +28,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${geistSans.variable} font-sans antialiased min-h-screen flex flex-col bg-canvas text-ink`}>
+      <body
+        className={`${geistSans.variable} font-sans antialiased min-h-screen flex flex-col bg-canvas text-ink`}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

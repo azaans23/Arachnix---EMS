@@ -7,10 +7,29 @@ export const AUDIT_ACTIONS = {
   UPLOAD: 'UPLOAD',
   APPROVE: 'APPROVE',
   REJECT: 'REJECT',
+  REQUEST_CHANGES: 'REQUEST_CHANGES',
   GENERATE: 'GENERATE',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | string;
+
+/** Canonical recordType values written to the audit log. */
+export const AUDIT_RECORD_TYPES = {
+  EMPLOYEE: 'Employee',
+  SALARY_DETAIL: 'SalaryDetail',
+  SALARY_SLIP_RUN: 'SalarySlipRun',
+  OFFER_LETTER_RUN: 'OfferLetterRun',
+  LEAVE_REQUEST: 'LeaveRequest',
+  LEAVE_BALANCE: 'LeaveBalance',
+  HOLIDAY: 'Holiday',
+  ACCOUNTING_RECORD: 'AccountingRecord',
+} as const;
+
+export type AuditRecordType =
+  (typeof AUDIT_RECORD_TYPES)[keyof typeof AUDIT_RECORD_TYPES] | string;
+
+/** Fallback actor when a background job or callback has no user email. */
+export const SYSTEM_AUDIT_EMAIL = 'system@arachnix.io';
 
 /** Canonical AuditLog sheet row from the PRD schema. */
 export interface AuditLogRecord {

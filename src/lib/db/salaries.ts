@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   buildSalaryUniqueKey,
   computeSalaryTotals,
+  computeStoredSalaryTotals,
   currentSalaryPeriod,
   formatSalaryPeriod,
   monthInputToPeriod,
@@ -13,6 +14,7 @@ import type { SalaryDetailInput, SalaryDetailRecord } from '@/types/salary-slip'
 export {
   buildSalaryUniqueKey,
   computeSalaryTotals,
+  computeStoredSalaryTotals,
   currentSalaryPeriod,
   formatSalaryPeriod,
   monthInputToPeriod,
@@ -20,34 +22,54 @@ export {
   periodToMonthInput,
 };
 
-/** Matches public.salaries columns (Postgres lowercases unquoted identifiers). */
+/**
+ * Matches public.salaries columns after the one-row-per-employee model.
+ * OT / bonus / contributions / others no longer exist in the table. Period and
+ * status may still exist in older DBs but are never written or read.
+ */
 export type SalaryDbRow = {
   salaryid: number;
   employeeid: string;
   basesalary: number;
   netsalary: number;
-  overtimepay: number | null;
-  performancebonus: number | null;
-  contributions: number | null;
   allowance: number | null;
   tax: number | null;
-  others: number | null;
   accountnumber: string;
   accountname: string;
   bankname: string;
   totaldeduction: number;
   totalearning: number;
-  period: string;
-  status: string;
-  /** Generated: EmployeeID || '-' || Period */
-  uniquekey?: string;
+  uniquekey?: string | null;
   createdat?: string;
   updatedat?: string;
 };
 
+export type SalaryDbWriteRow = Omit<SalaryDbRow, 'salaryid' | 'createdat' | 'uniquekey'>;
+
+/** Columns the app is allowed to write. Anything else is dropped. */
+const WRITE_COLUMNS = [
+  'employeeid',
+  'basesalary',
+  'netsalary',
+  'allowance',
+  'tax',
+  'accountnumber',
+  'accountname',
+  'bankname',
+  'totaldeduction',
+  'totalearning',
+  'updatedat',
+] as const;
+
+function pickWritableColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const column of WRITE_COLUMNS) {
+    if (row[column] !== undefined) out[column] = row[column];
+  }
+  return out;
+}
+
 export type SalaryDbWriteInput = SalaryDetailInput & {
-  period: string;
-  status?: string;
   totalEarning?: string;
   totalDeduction?: string;
   netSalary?: string;
@@ -71,13 +93,9 @@ function moneyToString(value: number | null | undefined): string {
   return String(value);
 }
 
-export function toSalaryDbRow(
-  input: SalaryDbWriteInput
-): Omit<SalaryDbRow, 'salaryid' | 'createdat' | 'uniquekey'> {
+export function toSalaryDbRow(input: SalaryDbWriteInput): SalaryDbWriteRow {
   const employeeid = input.employeeId.trim();
-  const period = monthInputToPeriod(input.period.trim());
   if (!employeeid) throw new Error('EmployeeID is required for salaries write.');
-  if (!period) throw new Error('Period is required for salaries write.');
 
   const accountnumber = String(input.accountNumber ?? '').trim();
   const accountname = String(input.accountName ?? '').trim();
@@ -87,7 +105,7 @@ export function toSalaryDbRow(
   if (!accountname) throw new Error(`Account Name is required for ${employeeid}.`);
   if (!bankname) throw new Error(`Bank Name is required for ${employeeid}.`);
 
-  const computed = computeSalaryTotals(input);
+  const computed = computeStoredSalaryTotals(input);
   const basesalary = computed.basesalary;
   if (basesalary <= 0 && String(input.salary ?? '').trim() === '') {
     throw new Error(`Base Salary is required for ${employeeid}.`);
@@ -106,28 +124,17 @@ export function toSalaryDbRow(
       ? toMoney(input.netSalary, 'NetSalary')
       : computed.netsalary;
 
-  const status = (input.status || 'Pending').trim() || 'Pending';
-  if (!['Pending', 'Processed', 'Paid'].includes(status)) {
-    throw new Error(`Invalid salary status: ${status}`);
-  }
-
   return {
     employeeid,
     basesalary,
     netsalary,
-    overtimepay: computed.overtimepay,
-    performancebonus: computed.performancebonus,
-    contributions: computed.contributions,
     allowance: computed.allowance,
     tax: computed.tax,
-    others: computed.others,
     accountnumber,
     accountname,
     bankname,
     totaldeduction,
     totalearning,
-    period,
-    status,
     updatedat: new Date().toISOString(),
   };
 }
@@ -147,8 +154,7 @@ export function salaryDbRowToDetail(
     bankAccountDetails?: string;
   } | null
 ): SalaryDetailRecord {
-  const uniqueKey =
-    row.uniquekey || buildSalaryUniqueKey(row.employeeid, row.period);
+  const uniqueKey = row.uniquekey || row.employeeid;
   return {
     employeeId: row.employeeid,
     fullName: employee?.fullName || '',
@@ -162,130 +168,76 @@ export function salaryDbRowToDetail(
     baseSalary: employee?.baseSalary || moneyToString(row.basesalary),
     salary: moneyToString(row.basesalary),
     netSalary: moneyToString(row.netsalary),
-    overtimePay: moneyToString(row.overtimepay),
-    performanceBonus: moneyToString(row.performancebonus),
-    contributions: moneyToString(row.contributions),
     allowance: moneyToString(row.allowance),
     tax: moneyToString(row.tax),
-    others: moneyToString(row.others),
     totalEarning: moneyToString(row.totalearning),
     totalDeduction: moneyToString(row.totaldeduction),
     accountNumber: row.accountnumber,
     accountName: row.accountname,
     bankName: row.bankname,
     bankAccountDetails: employee?.bankAccountDetails || '',
-    period: row.period,
     uniqueKey,
-    status: row.status,
     salaryId: String(row.salaryid),
     raw: {
       SalaryID: row.salaryid,
       EmployeeID: row.employeeid,
       BaseSalary: row.basesalary,
       NetSalary: row.netsalary,
-      OvertimePay: row.overtimepay,
-      PerformanceBonus: row.performancebonus,
-      Contributions: row.contributions,
       Allowance: row.allowance,
       Tax: row.tax,
-      Others: row.others,
       AccountNumber: row.accountnumber,
       AccountName: row.accountname,
       BankName: row.bankname,
       TotalDeduction: row.totaldeduction,
       TotalEarning: row.totalearning,
-      Period: row.period,
       UniqueKey: uniqueKey,
-      Status: row.status,
     },
   };
 }
 
 export async function listSalaryDbRows(options?: {
   employeeIds?: string[];
-  period?: string;
-  uniqueKeys?: string[];
 }): Promise<SalaryDbRow[]> {
   let query = getSupabaseAdmin().from(TABLE).select('*');
 
-  const uniqueKeys = (options?.uniqueKeys || [])
-    .map((key) => key.trim())
-    .filter(Boolean);
-
-  const derivedKeys =
-    uniqueKeys.length === 0 &&
-    options?.period?.trim() &&
-    options?.employeeIds &&
-    options.employeeIds.length > 0
-      ? options.employeeIds
-          .map((id) => buildSalaryUniqueKey(id, options.period!))
-          .filter(Boolean)
-      : [];
-
-  const keys = uniqueKeys.length > 0 ? uniqueKeys : derivedKeys;
-
-  if (keys.length > 0) {
-    // Prefer UniqueKey lookup (EmployeeID-Period) when available.
-    query = query.in('uniquekey', keys);
-  } else {
-    if (options?.period?.trim()) {
-      query = query.eq('period', monthInputToPeriod(options.period.trim()));
-    }
-    if (options?.employeeIds && options.employeeIds.length > 0) {
-      query = query.in(
-        'employeeid',
-        options.employeeIds.map((id) => id.trim()).filter(Boolean)
-      );
-    }
+  if (options?.employeeIds && options.employeeIds.length > 0) {
+    query = query.in(
+      'employeeid',
+      options.employeeIds.map((id) => id.trim()).filter(Boolean)
+    );
   }
 
-  const { data, error } = await query
-    .order('period', { ascending: false })
-    .order('employeeid', { ascending: true });
+  const { data, error } = await query.order('employeeid', { ascending: true });
 
   if (error) {
     throw new Error(`Supabase salaries list failed: ${error.message}`);
   }
 
-  return (data as SalaryDbRow[]) || [];
-}
-
-export async function getSalaryDbRowByUniqueKey(
-  uniqueKey: string
-): Promise<SalaryDbRow | null> {
-  const key = uniqueKey.trim();
-  if (!key) return null;
-
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .select('*')
-    .eq('uniquekey', key)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Supabase salaries read by UniqueKey failed: ${error.message}`);
+  // Deduplicate legacy multi-period rows — keep the newest salaryid per employee.
+  const rows = (data as SalaryDbRow[]) || [];
+  const byEmployee = new Map<string, SalaryDbRow>();
+  for (const row of rows) {
+    const key = row.employeeid.trim().toLowerCase();
+    const existing = byEmployee.get(key);
+    if (!existing || Number(row.salaryid) > Number(existing.salaryid)) {
+      byEmployee.set(key, row);
+    }
   }
-
-  return (data as SalaryDbRow | null) ?? null;
+  return Array.from(byEmployee.values()).sort((a, b) =>
+    a.employeeid.localeCompare(b.employeeid)
+  );
 }
 
-export async function getSalaryDbRow(
-  employeeId: string,
-  period: string
-): Promise<SalaryDbRow | null> {
+export async function getSalaryDbRow(employeeId: string): Promise<SalaryDbRow | null> {
   const id = employeeId.trim();
-  const periodKey = monthInputToPeriod(period.trim());
-  if (!id || !periodKey) return null;
+  if (!id) return null;
 
-  const byKey = await getSalaryDbRowByUniqueKey(buildSalaryUniqueKey(id, periodKey));
-  if (byKey) return byKey;
-
-  // Fallback if UniqueKey column is missing/unavailable.
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)
     .select('*')
     .eq('employeeid', id)
-    .eq('period', periodKey)
+    .order('salaryid', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -296,30 +248,30 @@ export async function getSalaryDbRow(
 }
 
 export async function upsertSalaryDbRow(input: SalaryDbWriteInput): Promise<SalaryDbRow> {
-  const row = toSalaryDbRow(input);
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .upsert(row, { onConflict: 'employeeid,period' })
-    .select('*')
-    .single();
+  const row = pickWritableColumns(toSalaryDbRow(input));
+  const existing = await getSalaryDbRow(String(row.employeeid));
 
-  if (error) {
-    throw new Error(`Supabase salaries upsert failed: ${error.message}`);
+  if (existing) {
+    const { data, error } = await getSupabaseAdmin()
+      .from(TABLE)
+      .update(row)
+      .eq('salaryid', existing.salaryid)
+      .select('*')
+      .single();
+    if (error) throw new Error(`Supabase salaries update failed: ${error.message}`);
+    return data as SalaryDbRow;
   }
 
+  const { data, error } = await getSupabaseAdmin().from(TABLE).insert(row).select('*').single();
+  if (error) throw new Error(`Supabase salaries insert failed: ${error.message}`);
   return data as SalaryDbRow;
 }
 
-export async function deleteSalaryDbRow(employeeId: string, period: string): Promise<void> {
+export async function deleteSalaryDbRow(employeeId: string): Promise<void> {
   const id = employeeId.trim();
-  const periodKey = monthInputToPeriod(period.trim());
-  if (!id || !periodKey) return;
+  if (!id) return;
 
-  const { error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .delete()
-    .eq('employeeid', id)
-    .eq('period', periodKey);
+  const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('employeeid', id);
 
   if (error) {
     throw new Error(`Supabase salaries delete failed: ${error.message}`);
@@ -331,10 +283,10 @@ export async function restoreSalaryDbRow(row: SalaryDbRow): Promise<void> {
     .from(TABLE)
     .upsert(
       {
-        ...row,
-        updatedat: new Date().toISOString(),
+        salaryid: row.salaryid,
+        ...pickWritableColumns({ ...row, updatedat: new Date().toISOString() }),
       },
-      { onConflict: 'employeeid,period' }
+      { onConflict: 'salaryid' }
     );
 
   if (error) {
@@ -350,18 +302,17 @@ export async function restoreSalaryDbRow(row: SalaryDbRow): Promise<void> {
 export async function rollbackSalaryDbWrite(options: {
   previous: SalaryDbRow | null;
   employeeId: string;
-  period: string;
 }): Promise<void> {
-  const { previous, employeeId, period } = options;
+  const { previous, employeeId } = options;
   if (!previous) {
-    await deleteSalaryDbRow(employeeId, period);
+    await deleteSalaryDbRow(employeeId);
     return;
   }
   await restoreSalaryDbRow(previous);
 }
 
 export async function rollbackSalaryDbWrites(
-  snapshots: Array<{ previous: SalaryDbRow | null; employeeId: string; period: string }>
+  snapshots: Array<{ previous: SalaryDbRow | null; employeeId: string }>
 ): Promise<void> {
   const errors: string[] = [];
   for (const snapshot of snapshots) {

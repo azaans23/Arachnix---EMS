@@ -1,18 +1,19 @@
-import type { EmployeeRecord, EmployeeWriteInput, SheetUser } from '@/types/employee';
-import { toSheetUser } from '@/types/employee';
+import type { EmployeeRecord, EmployeeWriteInput } from '@/types/employee';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
   dbRowToEmployeeRecord,
   findEmployeeDbRowByIdOrEmail,
   getEmployeeDbRow,
   listEmployeeDbRows,
+  restoreEmployeeDbRow,
   rollbackEmployeeDbWrite,
+  deleteEmployeeDbRow,
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
-import {
-  buildEmployeeUniquenessContext,
-  employeeValidationSchema,
-} from '@/utils/validation';
+import { deleteSalaryDbRow, getSalaryDbRow, restoreSalaryDbRow } from '@/lib/db/salaries';
+import { deleteLeaveBalancesByEmployeeId, restoreLeaveBalanceRows } from '@/lib/db/leave-balances';
+import { deleteLeaveRequestsByEmployeeId, restoreLeaveRequestRows } from '@/lib/db/leave-requests';
+import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 
 function pick(raw: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -90,9 +91,7 @@ const EMPLOYEE_ID_PATTERN = /^EMP-(\d+)$/i;
  * Returns the next ID after the highest valid EMP-nnn value.
  * Blank/malformed legacy IDs are ignored; an empty roster starts at EMP-001.
  */
-export function getNextEmployeeId(
-  employees: Pick<EmployeeRecord, 'employeeId'>[]
-): string {
+export function getNextEmployeeId(employees: Pick<EmployeeRecord, 'employeeId'>[]): string {
   const highest = employees.reduce((max, employee) => {
     const match = employee.employeeId.trim().match(EMPLOYEE_ID_PATTERN);
     if (!match) return max;
@@ -157,15 +156,17 @@ export function mergeEmployeeWriteInput(
     bankAccountDetails: prefer(input.bankAccountDetails, previous.bankAccountDetails),
     role: prefer(input.role, previous.role),
     emsStatus: prefer(input.emsStatus, previous.emsStatus) || 'Inactive',
-    supabaseUserId: prefer(input.supabaseUserId, previous.supabaseUserId),
+    // Empty string means "clear login link" (EMS access revoked); do not fall back.
+    supabaseUserId:
+      input.supabaseUserId !== undefined && !String(input.supabaseUserId).trim()
+        ? ''
+        : prefer(input.supabaseUserId, previous.supabaseUserId),
     originalEmployeeId: input.originalEmployeeId || previous.employeeId,
     originalEmail: input.originalEmail || previous.email,
   };
 }
 
-export function employeeRecordToAuditValue(
-  employee: EmployeeRecord
-): Record<string, string> {
+export function employeeRecordToAuditValue(employee: EmployeeRecord): Record<string, string> {
   return {
     EmployeeID: employee.employeeId,
     FullName: employee.fullName,
@@ -185,18 +186,13 @@ export function employeeRecordToAuditValue(
   };
 }
 
-export function employeeInputToAuditValue(
-  input: EmployeeWriteInput
-): Record<string, string> {
+export function employeeInputToAuditValue(input: EmployeeWriteInput): Record<string, string> {
   const payload = toSheetWritePayload(input);
-  return Object.fromEntries(
-    Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key))
-  );
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => /^[A-Z]/.test(key)));
 }
 
 export type UniquenessConflict =
-  | { field: 'employeeId'; message: string }
-  | { field: 'email'; message: string };
+  { field: 'employeeId'; message: string } | { field: 'email'; message: string };
 
 export function findUniquenessConflict(
   employees: EmployeeRecord[],
@@ -242,20 +238,22 @@ export class SheetsError extends Error {
   }
 }
 
-async function parseWebhookError(response: Response, fallback: string): Promise<string> {
-  let errText = '';
-  try {
-    errText = await response.text();
-  } catch {
-    /* ignore */
-  }
+/**
+ * n8n answers with these when the workflow did run but its final node emitted
+ * no items (e.g. a Sheets delete node), so they must not be treated as failures.
+ */
+function isWebhookAckBody(text: string): boolean {
+  const body = text.toLowerCase();
+  return body.includes('no item to return was found') || body.includes('workflow was started');
+}
 
+function formatWebhookError(status: number, errText: string, fallback: string): string {
   try {
     const jsonErr = JSON.parse(errText);
     if (jsonErr.message) {
       const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
       const message = String(jsonErr.message) + hint;
-      if (response.status === 404) {
+      if (status === 404) {
         return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
       }
       return message;
@@ -264,7 +262,7 @@ async function parseWebhookError(response: Response, fallback: string): Promise<
     /* keep text */
   }
 
-  if (response.status === 404) {
+  if (status === 404) {
     return (
       errText ||
       'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
@@ -280,14 +278,10 @@ export async function fetchEmployees(): Promise<EmployeeRecord[]> {
     const rows = await listEmployeeDbRows();
     return rows.map((row) => dbRowToEmployeeRecord(row) as EmployeeRecord);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to load employees from Supabase.';
+    const message =
+      error instanceof Error ? error.message : 'Failed to load employees from Supabase.';
     throw new SheetsError(message, 500);
   }
-}
-
-export async function fetchSheetUsers(): Promise<SheetUser[]> {
-  const employees = await fetchEmployees();
-  return employees.map(toSheetUser);
 }
 
 export async function getEmployeeById(id: string): Promise<EmployeeRecord | null> {
@@ -312,7 +306,8 @@ export async function getEmployeeById(id: string): Promise<EmployeeRecord | null
     const row = await findEmployeeDbRowByIdOrEmail(candidates);
     return row ? (dbRowToEmployeeRecord(row) as EmployeeRecord) : null;
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to load employee from Supabase.';
+    const message =
+      error instanceof Error ? error.message : 'Failed to load employee from Supabase.';
     throw new SheetsError(message, 500);
   }
 }
@@ -327,8 +322,7 @@ export async function validateEmployeeWrite(
   options?: { existing?: EmployeeRecord[] }
 ): Promise<ValidateEmployeeResult> {
   const existing = options?.existing ?? (await fetchEmployees());
-  const bodyRecord =
-    body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const bodyRecord = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
 
   try {
     const value = (await employeeValidationSchema.validate(body, {
@@ -382,8 +376,7 @@ export async function upsertEmployee(
   const merged = mergeEmployeeWriteInput(input, previous);
   const payload = toSheetWritePayload(merged);
 
-  const lookupId =
-    (previous?.employeeId || merged.originalEmployeeId || merged.employeeId).trim();
+  const lookupId = (previous?.employeeId || merged.originalEmployeeId || merged.employeeId).trim();
   const previousDbRow = await getEmployeeDbRow(lookupId);
 
   await upsertEmployeeDbRow(merged);
@@ -395,10 +388,13 @@ export async function upsertEmployee(
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
+    const bodyText = await response.text().catch(() => '');
+
+    if (!response.ok && !isWebhookAckBody(bodyText)) {
       throw new SheetsError(
-        await parseWebhookError(
-          response,
+        formatWebhookError(
+          response.status,
+          bodyText,
           `n8n update-user webhook returned status ${response.status}.`
         ),
         response.status
@@ -411,12 +407,83 @@ export async function upsertEmployee(
         writtenEmployeeId: merged.employeeId,
       });
     } catch (rollbackError) {
-      console.error('Failed to roll back Supabase employee after sheet write failure:', rollbackError);
+      console.error(
+        'Failed to roll back Supabase employee after sheet write failure:',
+        rollbackError
+      );
     }
     throw sheetError;
   }
 
   return merged;
+}
+
+/**
+ * Permanently delete an employee from Supabase, then from the Sheet via n8n.
+ * Related salary / leave rows are removed first so FKs do not block the delete.
+ * On webhook failure the employee row (and related snapshots) are restored.
+ */
+export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord> {
+  const id = employeeId.trim();
+  if (!id) throw new SheetsError('Employee ID is required.', 400);
+
+  const previousDbRow = await getEmployeeDbRow(id);
+  if (!previousDbRow) {
+    throw new SheetsError(`Employee ${id} was not found.`, 404);
+  }
+
+  const employee = dbRowToEmployeeRecord(previousDbRow);
+  const previousSalary = await getSalaryDbRow(id);
+  let previousBalances: Awaited<ReturnType<typeof deleteLeaveBalancesByEmployeeId>> = [];
+  let previousRequests: Awaited<ReturnType<typeof deleteLeaveRequestsByEmployeeId>> = [];
+
+  // Clear dependents before the employee row so FKs cannot block the delete.
+  if (previousSalary) {
+    await deleteSalaryDbRow(id);
+  }
+  previousBalances = await deleteLeaveBalancesByEmployeeId(id);
+  previousRequests = await deleteLeaveRequestsByEmployeeId(id);
+  await deleteEmployeeDbRow(id);
+
+  try {
+    const response = await fetch(SHEETS_WEBHOOKS.deleteEmployee, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        EmployeeID: employee.employeeId,
+        Email: employee.email,
+        FullName: employee.fullName,
+      }),
+    });
+
+    const bodyText = await response.text().catch(() => '');
+
+    if (!response.ok && !isWebhookAckBody(bodyText)) {
+      throw new SheetsError(
+        formatWebhookError(
+          response.status,
+          bodyText,
+          `n8n delete-employee webhook returned status ${response.status}.`
+        ),
+        response.status
+      );
+    }
+  } catch (sheetError) {
+    try {
+      await restoreEmployeeDbRow(previousDbRow);
+      if (previousSalary) await restoreSalaryDbRow(previousSalary);
+      if (previousBalances.length > 0) await restoreLeaveBalanceRows(previousBalances);
+      if (previousRequests.length > 0) await restoreLeaveRequestRows(previousRequests);
+    } catch (rollbackError) {
+      console.error(
+        'Failed to roll back Supabase employee after delete-employee webhook failure:',
+        rollbackError
+      );
+    }
+    throw sheetError;
+  }
+
+  return employee;
 }
 
 export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInput {

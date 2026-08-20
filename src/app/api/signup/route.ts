@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { verifyEmployeeAccess } from '@/lib/auth';
-import { assertCanAssignRole, roleDisplayName } from '@/lib/rbac';
+import {
+  assertCanAssignRole,
+  canAssignRole,
+  canEditEmployeeRecord,
+  isSuperAdminSelfEdit,
+  normalizeRole,
+  roleDisplayName,
+} from '@/lib/rbac';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   employeeRecordToAuditValue,
@@ -11,10 +18,7 @@ import {
   toSheetWritePayload,
   upsertEmployee,
 } from '@/lib/sheets/employees';
-import {
-  createAuditLog,
-  diffAuditValues,
-} from '@/lib/sheets/audit';
+import { createAuditLog, diffAuditValues } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import type { EmployeeWriteInput } from '@/types/employee';
 
@@ -48,12 +52,23 @@ export async function POST(request: Request) {
 
     const { email, password, name, role, employeeId } = await request.json();
 
-    const assignment = assertCanAssignRole(actorRole || '', String(role || ''));
-    if (!assignment.ok) {
+    if (
+      isSuperAdminSelfEdit({
+        actorRole: actorRole || '',
+        actorEmail: actor?.email,
+        actorUserId: actor?.id,
+        targetEmail: String(email || ''),
+      })
+    ) {
       return NextResponse.json(
-        { success: false, error: assignment.error },
+        { success: false, error: 'Super Admin cannot change their own account.' },
         { status: 403 }
       );
+    }
+
+    const assignment = assertCanAssignRole(actorRole || '', String(role || ''));
+    if (!assignment.ok) {
+      return NextResponse.json({ success: false, error: assignment.error }, { status: 403 });
     }
     const assignedRoleLabel = roleDisplayName(assignment.role);
 
@@ -62,12 +77,36 @@ export async function POST(request: Request) {
     const previousEmployee =
       employees.find(
         (employee) =>
-          (employeeId &&
-            employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
+          (employeeId && employee.employeeId.toLowerCase() === String(employeeId).toLowerCase()) ||
           employee.email.toLowerCase() === String(email || '').toLowerCase()
       ) || null;
     const resolvedEmployeeId =
       previousEmployee?.employeeId || employeeId || getNextEmployeeId(employees);
+
+    const canEditPrevious =
+      previousEmployee?.role &&
+      canEditEmployeeRecord({
+        actorRole: actorRole || '',
+        actorEmail: actor?.email,
+        actorUserId: actor?.id,
+        targetRole: previousEmployee.role,
+        targetEmail: previousEmployee.email,
+        targetSupabaseUserId: previousEmployee.supabaseUserId,
+      });
+    const canGrantSameRole =
+      previousEmployee?.role &&
+      normalizeRole(previousEmployee.role) === assignment.role &&
+      canAssignRole(actorRole || '', previousEmployee.role);
+
+    if (previousEmployee?.role && !canEditPrevious && !canGrantSameRole) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${roleDisplayName(actorRole || '')} cannot register employees with role ${roleDisplayName(previousEmployee.role)}`,
+        },
+        { status: 403 }
+      );
+    }
 
     try {
       const supabaseAdmin = getSupabaseAdmin();
@@ -123,9 +162,7 @@ export async function POST(request: Request) {
       // Dual-write: Supabase employees table + Google Sheet (rolls back DB if sheet fails)
       await upsertEmployee(writeInput, previousEmployee);
 
-      const oldValue = previousEmployee
-        ? employeeRecordToAuditValue(previousEmployee)
-        : {};
+      const oldValue = previousEmployee ? employeeRecordToAuditValue(previousEmployee) : {};
       const newValue = {
         ...oldValue,
         ...Object.fromEntries(

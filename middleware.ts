@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { canAccessPath } from '@/lib/rbac';
+import { canAccessPath, defaultDashboardPathForRole } from '@/lib/rbac';
 import {
   GATE_COOKIE,
   LEGACY_ROLE_COOKIE,
@@ -26,10 +26,7 @@ export async function middleware(request: NextRequest) {
       })();
 
   // Drop legacy forgeable cookies if still present
-  if (
-    request.cookies.has(LEGACY_SESSION_COOKIE) ||
-    request.cookies.has(LEGACY_ROLE_COOKIE)
-  ) {
+  if (request.cookies.has(LEGACY_SESSION_COOKIE) || request.cookies.has(LEGACY_ROLE_COOKIE)) {
     response.cookies.set(LEGACY_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
     response.cookies.set(LEGACY_ROLE_COOKIE, '', { path: '/', maxAge: 0 });
   }
@@ -37,7 +34,7 @@ export async function middleware(request: NextRequest) {
   if (!gate) return response;
 
   if (!canAccessPath(gate.role, pathname)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(defaultDashboardPathForRole(gate.role), request.url));
   }
 
   return response;

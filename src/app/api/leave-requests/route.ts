@@ -24,12 +24,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { errorResponse } = await verifyResourceAccess(request, 'leave_requests', 'write');
+    const { user, errorResponse } = await verifyResourceAccess(request, 'leave_requests', 'write');
     if (errorResponse) return errorResponse;
 
     const body = (await request.json()) as Record<string, unknown>;
     const input = normalizeLeaveRequestInput(body);
-    const result = await startLeaveRequest(input);
+    const result = await startLeaveRequest(input, { actorEmail: user?.email || '' });
 
     return NextResponse.json({
       success: true,

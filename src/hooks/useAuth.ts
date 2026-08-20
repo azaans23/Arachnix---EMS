@@ -40,7 +40,7 @@ export const useLogout = () => {
   });
 };
 
-export const useLoginForm = () => {
+export const useLoginForm = (nextPath = '/dashboard') => {
   const router = useRouter();
   const loginMutation = useLogin();
 
@@ -53,7 +53,11 @@ export const useLoginForm = () => {
     onSubmit: (values) => {
       loginMutation.mutate(values, {
         onSuccess: () => {
-          router.push('/dashboard');
+          const target =
+            nextPath.startsWith('/dashboard') && !nextPath.startsWith('//')
+              ? nextPath
+              : '/dashboard';
+          router.push(target);
         },
       });
     },

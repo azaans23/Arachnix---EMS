@@ -25,6 +25,7 @@ import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   LEAVE_BALANCE_FIELDS,
   buildLeaveId,
+  reconcileLeaveBalance,
   remainingLeaveDays,
   validateLeaveBalanceRules,
   type LeaveBalanceFieldKey,
@@ -114,6 +115,80 @@ function formatDays(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formNumbers(form: FormState): Omit<LeaveBalanceInput, 'leaveId' | 'employeeId' | 'year'> {
+  const read = (key: LeaveBalanceFieldKey) => {
+    const value = Number(form[key]);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  };
+  return {
+    annualQuota: read('annualQuota'),
+    annualUsed: read('annualUsed'),
+    sickQuota: read('sickQuota'),
+    sickUsed: read('sickUsed'),
+    casualQuota: read('casualQuota'),
+    casualUsed: read('casualUsed'),
+    carryForwardDays: read('carryForwardDays'),
+  };
+}
+
+/**
+ * Applies one field edit and rewrites the sibling inputs with the reconciled
+ * values, reporting which of them the rules had to move.
+ */
+function applyBalanceFieldChange(
+  form: FormState,
+  field: keyof FormState,
+  value: string
+): { form: FormState; adjusted: LeaveBalanceFieldKey[] } {
+  if (field === 'leaveId' || field === 'employeeId' || field === 'year') {
+    const next = { ...form, [field]: value };
+    next.leaveId = buildLeaveId(next.employeeId, next.year);
+    return { form: next, adjusted: [] };
+  }
+
+  const draft: FormState = { ...form, [field]: value };
+  if (!LEAVE_BALANCE_FIELDS.some((item) => item.key === field)) {
+    return { form: draft, adjusted: [] };
+  }
+
+  // Allow incomplete typing (e.g. blank or trailing ".") without forcing siblings yet.
+  if (value.trim() === '' || value.endsWith('.')) {
+    return { form: draft, adjusted: [] };
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { form: draft, adjusted: [] };
+  }
+
+  const editedKey = field as LeaveBalanceFieldKey;
+  const before = formNumbers(draft);
+  const reconciled = reconcileLeaveBalance(
+    {
+      leaveId: draft.leaveId,
+      employeeId: draft.employeeId,
+      year: Number(draft.year) || currentYear(),
+      ...before,
+      [editedKey]: parsed,
+    },
+    editedKey
+  );
+
+  const next: FormState = { ...draft };
+  const adjusted: LeaveBalanceFieldKey[] = [];
+  for (const item of LEAVE_BALANCE_FIELDS) {
+    const reconciledValue = reconciled[item.key];
+    // The edited box keeps exactly what was typed unless the rules changed it.
+    if (item.key === editedKey) {
+      next[item.key] = reconciledValue === parsed ? value : formatDays(reconciledValue);
+    } else {
+      next[item.key] = formatDays(reconciledValue);
+    }
+    if (reconciledValue !== before[item.key]) adjusted.push(item.key);
+  }
+
+  return { form: next, adjusted };
+}
+
 export default function LeaveBalancesPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -132,10 +207,12 @@ export default function LeaveBalancesPage() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeOption | null>(null);
   const [createForm, setCreateForm] = useState<FormState | null>(null);
+  const [createAdjusted, setCreateAdjusted] = useState<LeaveBalanceFieldKey[]>([]);
   const [savingCreate, setSavingCreate] = useState(false);
 
   const [editing, setEditing] = useState<LeaveBalanceRecord | null>(null);
   const [editForm, setEditForm] = useState<FormState | null>(null);
+  const [editAdjusted, setEditAdjusted] = useState<LeaveBalanceFieldKey[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
@@ -189,13 +266,16 @@ export default function LeaveBalancesPage() {
     const years = Array.from(new Set(rows.map((row) => String(row.year)))).sort(
       (a, b) => Number(b) - Number(a)
     );
-    return [{ label: 'All years', value: 'all' }, ...years.map((year) => ({ label: year, value: year }))];
+    return [
+      { label: 'All years', value: 'all' },
+      ...years.map((year) => ({ label: year, value: year })),
+    ];
   }, [rows]);
 
   const departmentOptions = useMemo(() => {
-    const departments = Array.from(
-      new Set(rows.map((row) => row.department).filter(Boolean))
-    ).sort((a, b) => a.localeCompare(b));
+    const departments = Array.from(new Set(rows.map((row) => row.department).filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b)
+    );
     return [
       { label: 'All departments', value: 'all' },
       ...departments.map((department) => ({ label: department, value: department })),
@@ -243,11 +323,7 @@ export default function LeaveBalancesPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load employees.');
       }
-      const raw = Array.isArray(result.data)
-        ? result.data
-        : result.data
-          ? [result.data]
-          : [];
+      const raw = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
       setEmployees(
         raw.map((row: unknown) => {
           const record = mapRawToEmployee(row);
@@ -272,6 +348,7 @@ export default function LeaveBalancesPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
+    setCreateAdjusted([]);
     setEmployeeSearch('');
     await loadEmployees();
   };
@@ -281,6 +358,7 @@ export default function LeaveBalancesPage() {
     setCreateStep('pick');
     setSelectedEmployee(null);
     setCreateForm(null);
+    setCreateAdjusted([]);
   };
 
   const selectEmployeeForCreate = (employee: EmployeeOption) => {
@@ -292,48 +370,51 @@ export default function LeaveBalancesPage() {
         row.employeeId.trim().toLowerCase() === employee.employeeId.trim().toLowerCase() &&
         row.year === year
     );
-    setCreateForm(
-      existing ? toForm(existing) : emptyForm(employee.employeeId, String(year))
-    );
+    setCreateForm(existing ? toForm(existing) : emptyForm(employee.employeeId, String(year)));
+    setCreateAdjusted([]);
   };
 
   const updateCreateField = (field: keyof FormState, value: string) => {
-    setCreateForm((current) => {
-      if (!current || !selectedEmployee) return current;
-      if (field === 'year') {
-        const year = Number(value);
-        const existing = rows.find(
-          (row) =>
-            row.employeeId.trim().toLowerCase() ===
-              selectedEmployee.employeeId.trim().toLowerCase() && row.year === year
-        );
-        return existing
-          ? toForm(existing)
-          : emptyForm(selectedEmployee.employeeId, value);
-      }
+    if (!selectedEmployee) return;
+    if (field === 'year') {
+      const year = Number(value);
+      const existing = rows.find(
+        (row) =>
+          row.employeeId.trim().toLowerCase() ===
+            selectedEmployee.employeeId.trim().toLowerCase() && row.year === year
+      );
+      setCreateForm(existing ? toForm(existing) : emptyForm(selectedEmployee.employeeId, value));
+      setCreateAdjusted([]);
+      return;
+    }
 
-      const next = { ...current, [field]: value };
-      next.leaveId = buildLeaveId(next.employeeId, next.year);
-      return next;
+    setCreateForm((current) => {
+      if (!current) return current;
+      const result = applyBalanceFieldChange(current, field, value);
+      setCreateAdjusted(result.adjusted.filter((key) => key !== field));
+      return result.form;
     });
   };
 
   const openEdit = (row: LeaveBalanceRecord) => {
     setEditing(row);
     setEditForm(toForm(row));
+    setEditAdjusted([]);
   };
 
   const closeEdit = () => {
     setEditing(null);
     setEditForm(null);
+    setEditAdjusted([]);
   };
 
-  const updateFormField = (
-    setter: React.Dispatch<React.SetStateAction<FormState | null>>,
-    field: keyof FormState,
-    value: string
-  ) => {
-    setter((current) => (current ? { ...current, [field]: value } : current));
+  const updateEditField = (field: keyof FormState, value: string) => {
+    setEditForm((current) => {
+      if (!current) return current;
+      const result = applyBalanceFieldChange(current, field, value);
+      setEditAdjusted(result.adjusted.filter((key) => key !== field));
+      return result.form;
+    });
   };
 
   const parseForm = (form: FormState): LeaveBalanceInput | null => {
@@ -419,7 +500,13 @@ export default function LeaveBalancesPage() {
     const q = employeeSearch.trim().toLowerCase();
     if (!q) return employees;
     return employees.filter((employee) =>
-      [employee.name, employee.email, employee.employeeId, employee.department, employee.designation]
+      [
+        employee.name,
+        employee.email,
+        employee.employeeId,
+        employee.department,
+        employee.designation,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q))
     );
@@ -428,70 +515,109 @@ export default function LeaveBalancesPage() {
   const renderBalanceFields = (
     form: FormState,
     onChange: (field: keyof FormState, value: string) => void,
+    adjusted: LeaveBalanceFieldKey[],
     options?: { lockEmployee?: boolean; lockYear?: boolean }
-  ) => (
-    <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="text-xs font-medium text-muted">
-          Leave ID
-          <input
-            value={form.leaveId || buildLeaveId(form.employeeId, form.year)}
-            readOnly
-            className={`${inputClassName} bg-canvas text-muted`}
-          />
-        </label>
-        <label className="text-xs font-medium text-muted">
-          Employee ID
-          <input
-            value={form.employeeId}
-            readOnly={options?.lockEmployee}
-            onChange={(event) => onChange('employeeId', event.target.value)}
-            className={`${inputClassName} ${options?.lockEmployee ? 'bg-canvas text-muted' : ''}`}
-          />
-        </label>
-        <label className="text-xs font-medium text-muted sm:col-span-2">
-          Year <span className="text-danger">*</span>
-          {options?.lockYear ? (
-            <input value={form.year} readOnly className={`${inputClassName} bg-canvas text-muted`} />
-          ) : (
-            <div className="mt-1.5">
-              <CustomDropdown
-                id="leave-balance-year"
-                name="year"
-                options={yearOptions()}
-                value={form.year}
-                onChange={(value) => onChange('year', value)}
-                onBlur={() => {}}
-              />
-            </div>
-          )}
-        </label>
-      </div>
+  ) => {
+    const live: LeaveBalanceInput = {
+      leaveId: form.leaveId,
+      employeeId: form.employeeId,
+      year: Number(form.year) || currentYear(),
+      ...formNumbers(form),
+    };
+    const annualLeft = Math.max(0, live.annualQuota - live.annualUsed);
+    const hint: Record<LeaveBalanceFieldKey, string> = {
+      annualQuota: `${formatDays(annualLeft)} of ${formatDays(live.annualQuota)} still available`,
+      annualUsed: `Sick + Casual used = ${formatDays(live.sickUsed + live.casualUsed)}`,
+      sickQuota: `${formatDays(live.sickQuota + live.casualQuota)} of ${formatDays(live.annualQuota)} allocated to Sick + Casual`,
+      sickUsed: `${formatDays(remainingLeaveDays('sick', live)?.remaining ?? 0)} sick days left`,
+      casualQuota: `${formatDays(live.sickQuota + live.casualQuota)} of ${formatDays(live.annualQuota)} allocated to Sick + Casual`,
+      casualUsed: `${formatDays(remainingLeaveDays('casual', live)?.remaining ?? 0)} casual days left`,
+      carryForwardDays: 'Days carried over from the previous year',
+    };
 
-      <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
-        Total Leaves (Annual) is the overall pool. Sick and Casual quotas must fit inside it
-        (Sick Quota + Casual Quota ≤ Total Leaves). Approving sick or casual leave also
-        consumes from the total.
-      </p>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {LEAVE_BALANCE_FIELDS.map((field) => (
-          <label key={field.key} className="text-xs font-medium text-muted">
-            {field.label} <span className="text-danger">*</span>
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-xs font-medium text-muted">
+            Leave ID
             <input
-              type="number"
-              min="0"
-              step="0.5"
-              required
-              value={form[field.key]}
-              onChange={(event) => onChange(field.key, event.target.value)}
-              className={inputClassName}
+              value={form.leaveId || buildLeaveId(form.employeeId, form.year)}
+              readOnly
+              className={`${inputClassName} bg-canvas text-muted`}
             />
           </label>
-        ))}
+          <label className="text-xs font-medium text-muted">
+            Employee ID
+            <input
+              value={form.employeeId}
+              readOnly={options?.lockEmployee}
+              onChange={(event) => onChange('employeeId', event.target.value)}
+              className={`${inputClassName} ${options?.lockEmployee ? 'bg-canvas text-muted' : ''}`}
+            />
+          </label>
+          <label className="text-xs font-medium text-muted sm:col-span-2">
+            Year <span className="text-danger">*</span>
+            {options?.lockYear ? (
+              <input
+                value={form.year}
+                readOnly
+                className={`${inputClassName} bg-canvas text-muted`}
+              />
+            ) : (
+              <div className="mt-1.5">
+                <CustomDropdown
+                  id="leave-balance-year"
+                  name="year"
+                  options={yearOptions()}
+                  value={form.year}
+                  onChange={(value) => onChange('year', value)}
+                  onBlur={() => {}}
+                />
+              </div>
+            )}
+          </label>
+        </div>
+
+        <p className="rounded-md border border-border bg-canvas/60 px-3 py-2 text-xs text-muted">
+          Total Leaves (Annual) is the overall pool. Sick and Casual quotas sit inside it. Changing
+          any value auto-adjusts the others so Sick + Casual stay within Total Leaves, and used days
+          stay within their quotas.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {LEAVE_BALANCE_FIELDS.map((field) => {
+            const wasAdjusted = adjusted.includes(field.key);
+            return (
+              <label key={field.key} className="text-xs font-medium text-muted">
+                <span className="flex items-center justify-between gap-2">
+                  <span>
+                    {field.label} <span className="text-danger">*</span>
+                  </span>
+                  {wasAdjusted && (
+                    <span className="rounded border border-border bg-canvas px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
+                      Auto-adjusted
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  required
+                  value={form[field.key]}
+                  onChange={(event) => onChange(field.key, event.target.value)}
+                  className={`${inputClassName} ${wasAdjusted ? 'border-ink/40 bg-canvas' : ''}`}
+                />
+                <span className="mt-1 block text-[11px] font-normal text-muted/80">
+                  {hint[field.key]}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   if (allowed === null) {
     return (
@@ -514,147 +640,148 @@ export default function LeaveBalancesPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-muted">
-          Only Super Admin and HR Manager can manage leave balances.
+          Only Super Admin, Admin, and HR Manager can manage leave balances.
         </p>
       </div>
     );
   }
 
-  const createModal =
-    createOpen
-      ? createPortal(
+  const createModal = createOpen
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={closeCreate}
+        >
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-            onClick={closeCreate}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-leave-balance-title"
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
           >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="create-leave-balance-title"
-              onClick={(event) => event.stopPropagation()}
-              className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
-                <div>
-                  <h2
-                    id="create-leave-balance-title"
-                    className="text-lg font-semibold tracking-tight text-ink"
-                  >
-                    {createStep === 'pick' ? 'Select employee' : 'Create leave balance'}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {createStep === 'pick'
-                      ? 'Choose an employee, then set quotas for the year.'
-                      : selectedEmployee
-                        ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
-                        : 'Enter leave quotas and usage.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeCreate}
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
-                  aria-label="Close"
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2
+                  id="create-leave-balance-title"
+                  className="text-lg font-semibold tracking-tight text-ink"
                 >
-                  <X className="h-4 w-4" />
-                </button>
+                  {createStep === 'pick' ? 'Select employee' : 'Create leave balance'}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {createStep === 'pick'
+                    ? 'Choose an employee, then set quotas for the year.'
+                    : selectedEmployee
+                      ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
+                      : 'Enter leave quotas and usage.'}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                {createStep === 'pick' ? (
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                      <input
-                        type="search"
-                        value={employeeSearch}
-                        onChange={(event) => setEmployeeSearch(event.target.value)}
-                        placeholder="Search employees…"
-                        className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                      />
-                    </div>
-                    {employeesLoading ? (
-                      <div className="flex items-center justify-center py-10 text-sm text-muted">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading employees…
-                      </div>
-                    ) : filteredEmployees.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted">No employees found.</p>
-                    ) : (
-                      <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                        {filteredEmployees.map((employee) => (
-                          <li key={employee.employeeId || employee.email}>
-                            <button
-                              type="button"
-                              onClick={() => selectEmployeeForCreate(employee)}
-                              className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium text-ink">
-                                  {employee.name || employee.employeeId}
-                                </span>
-                                <span className="block truncate text-xs text-muted">
-                                  {employee.employeeId}
-                                  {employee.email ? ` · ${employee.email}` : ''}
-                                  {employee.department ? ` · ${employee.department}` : ''}
-                                </span>
-                              </span>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {createStep === 'pick' ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                    <input
+                      type="search"
+                      value={employeeSearch}
+                      onChange={(event) => setEmployeeSearch(event.target.value)}
+                      placeholder="Search employees…"
+                      className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                    />
                   </div>
-                ) : createForm ? (
-                  renderBalanceFields(createForm, updateCreateField, { lockEmployee: true })
-                ) : null}
-              </div>
+                  {employeesLoading ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-muted">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading employees…
+                    </div>
+                  ) : filteredEmployees.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted">No employees found.</p>
+                  ) : (
+                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                      {filteredEmployees.map((employee) => (
+                        <li key={employee.employeeId || employee.email}>
+                          <button
+                            type="button"
+                            onClick={() => selectEmployeeForCreate(employee)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-ink">
+                                {employee.name || employee.employeeId}
+                              </span>
+                              <span className="block truncate text-xs text-muted">
+                                {employee.employeeId}
+                                {employee.email ? ` · ${employee.email}` : ''}
+                                {employee.department ? ` · ${employee.department}` : ''}
+                              </span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : createForm ? (
+                renderBalanceFields(createForm, updateCreateField, createAdjusted, {
+                  lockEmployee: true,
+                })
+              ) : null}
+            </div>
 
-              <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
-                {createStep === 'form' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateStep('pick');
-                      setSelectedEmployee(null);
-                      setCreateForm(null);
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                  >
-                    Back
-                  </button>
-                )}
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+              {createStep === 'form' && (
                 <button
                   type="button"
-                  onClick={closeCreate}
+                  onClick={() => {
+                    setCreateStep('pick');
+                    setSelectedEmployee(null);
+                    setCreateForm(null);
+                  }}
                   className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
                 >
-                  Cancel
+                  Back
                 </button>
-                {createStep === 'form' && createForm && (
-                  <button
-                    type="button"
-                    disabled={savingCreate}
-                    onClick={() => void saveBalance(createForm, setSavingCreate, closeCreate)}
-                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-                  >
-                    {savingCreate ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Saving…
-                      </>
-                    ) : (
-                      'Save leave balance'
-                    )}
-                  </button>
-                )}
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={closeCreate}
+                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+              >
+                Cancel
+              </button>
+              {createStep === 'form' && createForm && (
+                <button
+                  type="button"
+                  disabled={savingCreate}
+                  onClick={() => void saveBalance(createForm, setSavingCreate, closeCreate)}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+                >
+                  {savingCreate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save leave balance'
+                  )}
+                </button>
+              )}
             </div>
-          </div>,
-          document.body
-        )
-      : null;
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
 
   const editModal =
     editing && editForm
@@ -695,7 +822,8 @@ export default function LeaveBalancesPage() {
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {renderBalanceFields(
                   editForm,
-                  (field, value) => updateFormField(setEditForm, field, value),
+                  (field, value) => updateEditField(field, value),
+                  editAdjusted,
                   { lockEmployee: true, lockYear: true }
                 )}
               </div>

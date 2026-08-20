@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { listEmployeeDbRows } from '@/lib/db/employees';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
+import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import {
   buildLeaveId,
   type LeaveBalanceInput,
@@ -8,7 +10,7 @@ import {
   validateLeaveBalanceRules,
 } from '@/types/leave-balance';
 
-type LeaveBalanceDbRow = {
+export type LeaveBalanceDbRow = {
   leaveid: string;
   employeeid: string;
   year: number;
@@ -45,8 +47,7 @@ export function normalizeLeaveBalanceInput(raw: Record<string, unknown>): LeaveB
   if (!employeeId) throw new Error('EmployeeID is required.');
 
   const year = toYear(raw.year ?? raw.Year);
-  const leaveId =
-    String(raw.leaveId ?? raw.LeaveID ?? '').trim() || buildLeaveId(employeeId, year);
+  const leaveId = String(raw.leaveId ?? raw.LeaveID ?? '').trim() || buildLeaveId(employeeId, year);
 
   return {
     leaveId,
@@ -58,10 +59,7 @@ export function normalizeLeaveBalanceInput(raw: Record<string, unknown>): LeaveB
     sickUsed: toDays(raw.sickUsed ?? raw.SickUsed, 'Sick Used'),
     casualQuota: toDays(raw.casualQuota ?? raw.CasualQuota, 'Casual Quota'),
     casualUsed: toDays(raw.casualUsed ?? raw.CasualUsed, 'Casual Used'),
-    carryForwardDays: toDays(
-      raw.carryForwardDays ?? raw.CarryForwardDays,
-      'Carry Forward Days'
-    ),
+    carryForwardDays: toDays(raw.carryForwardDays ?? raw.CarryForwardDays, 'Carry Forward Days'),
   };
 }
 
@@ -203,9 +201,7 @@ export function toWebhookLeaveRow(input: LeaveBalanceInput) {
   };
 }
 
-export async function upsertLeaveBalance(
-  input: LeaveBalanceInput
-): Promise<LeaveBalanceInput> {
+export async function upsertLeaveBalance(input: LeaveBalanceInput): Promise<LeaveBalanceInput> {
   assertQuotaRules(input);
   const payload = toDbWrite({
     ...input,
@@ -226,6 +222,32 @@ async function deleteLeaveBalanceById(leaveId: string): Promise<void> {
   const { error } = await getSupabaseAdmin().from(TABLE).delete().eq('leaveid', leaveId.trim());
   if (error) {
     throw new Error(`Failed to delete leave balance for rollback: ${error.message}`);
+  }
+}
+
+/** Remove every leave-balance row for an employee (used when deleting the employee). */
+export async function deleteLeaveBalancesByEmployeeId(
+  employeeId: string
+): Promise<LeaveBalanceDbRow[]> {
+  const id = employeeId.trim();
+  if (!id) return [];
+
+  const { data, error } = await getSupabaseAdmin().from(TABLE).select('*').eq('employeeid', id);
+  if (error) throw new Error(`Failed to load leave balances for delete: ${error.message}`);
+
+  const rows = (data as LeaveBalanceDbRow[]) || [];
+  if (rows.length === 0) return [];
+
+  const { error: deleteError } = await getSupabaseAdmin().from(TABLE).delete().eq('employeeid', id);
+  if (deleteError) {
+    throw new Error(`Failed to delete leave balances: ${deleteError.message}`);
+  }
+  return rows;
+}
+
+export async function restoreLeaveBalanceRows(rows: LeaveBalanceDbRow[]): Promise<void> {
+  for (const row of rows) {
+    await restoreLeaveBalanceRow(row);
   }
 }
 
@@ -255,8 +277,9 @@ export async function rollbackLeaveBalanceWrites(
  * If the webhook write fails, Supabase changes are rolled back.
  */
 export async function updateLeaveBalances(
-  balances: LeaveBalanceInput[]
-): Promise<{ message: string; data: LeaveBalanceInput[] }> {
+  balances: LeaveBalanceInput[],
+  options?: { actorEmail?: string }
+): Promise<{ message: string; data: LeaveBalanceInput[]; auditLogged: boolean }> {
   if (!balances.length) {
     throw new Error('No leave balances provided to update.');
   }
@@ -316,9 +339,7 @@ export async function updateLeaveBalances(
     }
 
     let message =
-      writes.length === 1
-        ? 'Leave balance saved.'
-        : `Saved ${writes.length} leave balances.`;
+      writes.length === 1 ? 'Leave balance saved.' : `Saved ${writes.length} leave balances.`;
     try {
       const parsed = text.trim() ? JSON.parse(text) : null;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -332,7 +353,79 @@ export async function updateLeaveBalances(
       if (text.trim()) message = text.trim();
     }
 
-    return { message, data: saved };
+    let auditLogged = true;
+    const employeeRows = await listEmployeeDbRows().catch(() => []);
+    const employeesById = new Map(
+      employeeRows.map((row) => {
+        const id = String(row.employeeid || '').trim().toLowerCase();
+        return [
+          id,
+          {
+            fullName: String(row.fullname || '').trim(),
+            email: String(row.email || '').trim(),
+            department: String(row.department || '').trim(),
+            designation: String(row.designation || '').trim(),
+          },
+        ] as const;
+      })
+    );
+
+    for (let i = 0; i < saved.length; i += 1) {
+      const next = saved[i];
+      const previous = snapshots[i]?.previous;
+      const employee = employeesById.get(String(next.employeeId).trim().toLowerCase()) || null;
+      const nextValue = {
+        leaveId: next.leaveId,
+        employeeId: next.employeeId,
+        fullName: employee?.fullName || '',
+        email: employee?.email || '',
+        department: employee?.department || '',
+        designation: employee?.designation || '',
+        year: next.year,
+        annualQuota: next.annualQuota,
+        annualUsed: next.annualUsed,
+        sickQuota: next.sickQuota,
+        sickUsed: next.sickUsed,
+        casualQuota: next.casualQuota,
+        casualUsed: next.casualUsed,
+        carryForwardDays: next.carryForwardDays,
+      };
+      const event = previous
+        ? {
+            action: AUDIT_ACTIONS.UPDATE,
+            recordType: AUDIT_RECORD_TYPES.LEAVE_BALANCE,
+            recordId: String(next.leaveId),
+            ...diffAuditValues(
+              {
+                leaveId: previous.leaveid,
+                employeeId: previous.employeeid,
+                fullName: employee?.fullName || '',
+                email: employee?.email || '',
+                department: employee?.department || '',
+                designation: employee?.designation || '',
+                year: previous.year,
+                annualQuota: previous.annualquota,
+                annualUsed: previous.annualused,
+                sickQuota: previous.sickquota,
+                sickUsed: previous.sickused,
+                casualQuota: previous.casualquota,
+                casualUsed: previous.casualused,
+                carryForwardDays: previous.carryforwarddays,
+              },
+              nextValue
+            ),
+          }
+        : {
+            action: AUDIT_ACTIONS.CREATE,
+            recordType: AUDIT_RECORD_TYPES.LEAVE_BALANCE,
+            recordId: String(next.leaveId),
+            newValue: nextValue,
+          };
+      const ok = await logAuditBestEffort(options?.actorEmail, event, 'Leave balance audit');
+      if (!ok) auditLogged = false;
+    }
+
+    return { message, data: saved, auditLogged };
   } catch (sheetError) {
     try {
       await rollbackLeaveBalanceWrites(snapshots);

@@ -82,9 +82,7 @@ export function toEmployeeDbRow(input: EmployeeWriteInput): EmployeeDbRow {
   };
 }
 
-export async function getEmployeeDbRow(
-  employeeId: string
-): Promise<EmployeeDbRow | null> {
+export async function getEmployeeDbRow(employeeId: string): Promise<EmployeeDbRow | null> {
   const id = employeeId.trim();
   if (!id) return null;
 
@@ -227,9 +225,7 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): {
   };
 }
 
-export async function upsertEmployeeDbRow(
-  input: EmployeeWriteInput
-): Promise<EmployeeDbRow> {
+export async function upsertEmployeeDbRow(input: EmployeeWriteInput): Promise<EmployeeDbRow> {
   const row = toEmployeeDbRow(input);
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)

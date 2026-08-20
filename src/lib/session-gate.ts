@@ -21,11 +21,7 @@ export type GatePayload = {
 const DEFAULT_TTL_SECONDS = 60 * 60; // 1h — typical Supabase access-token lifetime
 
 function getSigningSecret(): string {
-  return (
-    process.env.EMS_SESSION_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    ''
-  );
+  return process.env.EMS_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 }
 
 function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {
@@ -35,9 +31,7 @@ function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {
     binary += String.fromCharCode(view[i]!);
   }
   const b64 =
-    typeof btoa === 'function'
-      ? btoa(binary)
-      : Buffer.from(binary, 'binary').toString('base64');
+    typeof btoa === 'function' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
@@ -46,9 +40,7 @@ function base64UrlDecode(input: string): Uint8Array {
   const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
   const b64 = padded + pad;
   const binary =
-    typeof atob === 'function'
-      ? atob(b64)
-      : Buffer.from(b64, 'base64').toString('binary');
+    typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     out[i] = binary.charCodeAt(i);

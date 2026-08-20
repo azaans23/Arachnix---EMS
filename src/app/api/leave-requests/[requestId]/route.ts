@@ -20,7 +20,10 @@ export async function GET(request: Request, context: RouteContext) {
     const { requestId } = await context.params;
     const leaveRequest = await getLeaveRequest(requestId);
     if (!leaveRequest) {
-      return NextResponse.json({ success: false, error: 'Leave request not found.' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Leave request not found.' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ success: true, data: leaveRequest });
@@ -32,11 +35,7 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    const { user, errorResponse } = await verifyResourceAccess(
-      request,
-      'leave_requests',
-      'write'
-    );
+    const { user, errorResponse } = await verifyResourceAccess(request, 'leave_requests', 'write');
     if (errorResponse) return errorResponse;
 
     const { requestId } = await context.params;

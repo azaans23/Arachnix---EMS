@@ -1,13 +1,8 @@
-export type ModalName =
-  | 'registerEmployee'
-  | 'employeeDetails'
-  | 'createEmployee'
-  | 'editEmployee'
-  | null;
+export type ModalName = 'registerEmployee' | 'createEmployee' | 'editEmployee' | null;
 
 export interface ModalState {
   name: ModalName;
-  data?: any;
+  data?: unknown;
 }
 
 type Listener = (state: ModalState) => void;
@@ -18,7 +13,7 @@ const listeners = new Set<Listener>();
 export const modalStore = {
   get: (): ModalState => currentModal,
 
-  open: (name: ModalName, data?: any) => {
+  open: (name: ModalName, data?: unknown) => {
     currentModal = { name, data };
     listeners.forEach((listener) => listener(currentModal));
   },

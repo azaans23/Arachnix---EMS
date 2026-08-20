@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  CircleCheck,
-  Info,
-  Loader2,
-  OctagonX,
-  TriangleAlert,
-} from 'lucide-react';
+import { CircleCheck, Info, Loader2, OctagonX, TriangleAlert } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import { useTheme } from '@/components/theme/ThemeProvider';
@@ -34,10 +28,8 @@ export function Toaster({ ...props }: ToasterProps) {
           toast:
             'group toast group-[.toaster]:bg-surface group-[.toaster]:text-ink group-[.toaster]:border-border group-[.toaster]:shadow-panel',
           description: 'group-[.toast]:text-muted',
-          actionButton:
-            'group-[.toast]:bg-accent group-[.toast]:text-accent-fg',
-          cancelButton:
-            'group-[.toast]:bg-canvas group-[.toast]:text-muted',
+          actionButton: 'group-[.toast]:bg-accent group-[.toast]:text-accent-fg',
+          cancelButton: 'group-[.toast]:bg-canvas group-[.toast]:text-muted',
           success: 'group-[.toaster]:border-border',
           error: 'group-[.toaster]:border-danger-border',
         },

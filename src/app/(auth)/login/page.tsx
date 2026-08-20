@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLoginForm } from '@/hooks/useAuth';
 import { BrandMark, BrandWordmark } from '@/components/brand/BrandLogo';
 import ThemeToggle from '@/components/theme/ThemeToggle';
@@ -9,8 +9,29 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { syncSessionCookies } from '@/lib/session-cookies';
 
+function safeDashboardPath(next: string | null): string {
+  if (!next) return '/dashboard';
+  if (!next.startsWith('/dashboard')) return '/dashboard';
+  if (next.startsWith('//')) return '/dashboard';
+  return next;
+}
+
 export default function LoginPage() {
-  const { formik, isPending, isError, error } = useLoginForm();
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginFallback() {
+  return <div className="min-h-screen bg-canvas" aria-busy="true" />;
+}
+
+function LoginPageContent() {
+  const searchParams = useSearchParams();
+  const nextPath = safeDashboardPath(searchParams.get('next'));
+  const { formik, isPending, isError, error } = useLoginForm(nextPath);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
@@ -24,13 +45,13 @@ export default function LoginPage() {
       localStorage.setItem('token', session.access_token);
       try {
         await syncSessionCookies(session.access_token);
-        router.replace('/dashboard');
+        router.replace(nextPath);
       } catch {
         /* gate cookie failed — stay on login */
       }
     };
-    restoreSession();
-  }, [router]);
+    void restoreSession();
+  }, [router, nextPath]);
 
   const fieldError = (name: 'email' | 'password') =>
     formik.submitCount > 0 && formik.errors[name] ? formik.errors[name] : null;
@@ -92,9 +113,7 @@ export default function LoginPage() {
 
             <div className="mb-8">
               <h2 className="text-2xl font-semibold tracking-tight text-ink">Sign in</h2>
-              <p className="mt-2 text-sm text-muted">
-                Use your Arachnix work email to continue.
-              </p>
+              <p className="mt-2 text-sm text-muted">Use your Arachnix work email to continue.</p>
             </div>
 
             {isError && (

@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileOfferLetterRunAudits } from '@/lib/audit/run-completion';
 import { listOfferLetterRuns } from '@/lib/db/offer-letters';
-import { startOfferLetterRun } from '@/lib/documents/generate-offer-letter';
+import {
+  dispatchOfferLetterWebhook,
+  startOfferLetterRun,
+} from '@/lib/documents/generate-offer-letter';
 import type { OfferLetterInput } from '@/types/offer-letter';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +16,17 @@ export async function GET(request: Request) {
     if (errorResponse) return errorResponse;
 
     const runs = await listOfferLetterRuns();
+
+    // n8n finishes runs by writing to Supabase, so the completion audit entry is
+    // backfilled here once a run leaves Processing.
+    after(async () => {
+      try {
+        await reconcileOfferLetterRunAudits(runs);
+      } catch (error) {
+        console.error('Offer letter run audit reconciliation failed:', error);
+      }
+    });
+
     return NextResponse.json({ success: true, data: runs });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load offer letter runs.';
@@ -41,8 +56,9 @@ export async function POST(request: Request) {
             email: body.Email ?? body.email,
             designation: body.Designation ?? body.designation,
             joiningDate: body.JoiningDate ?? body.joiningDate,
+            hasPartTimeTenure: body.HasPartTimeTenure ?? body.hasPartTimeTenure,
             partTimeTenure: body.PartTimeTenure ?? body.partTimeTenure,
-            fullTimeTenure: body.FullTimeTenure ?? body.fullTimeTenure,
+            fullTimeStart: body.FullTimeStart ?? body.fullTimeStart,
             partTimeSalary: body.PartTimeSalary ?? body.partTimeSalary,
             fullTimeSalary: body.FullTimeSalary ?? body.fullTimeSalary,
             numberOfLeaves: body.NumberOfLeaves ?? body.numberOfLeaves,
@@ -51,14 +67,20 @@ export async function POST(request: Request) {
 
     const offers: OfferLetterInput[] = offersRaw.map((row) => {
       const item = (row || {}) as Record<string, unknown>;
+      const hasPartTimeRaw = item.hasPartTimeTenure ?? item.HasPartTimeTenure;
+      const hasPartTimeTenure =
+        typeof hasPartTimeRaw === 'boolean'
+          ? hasPartTimeRaw
+          : ['true', '1', 'yes', 'y'].includes(String(hasPartTimeRaw ?? '').trim().toLowerCase());
       return {
         employeeId: String(item.employeeId ?? item.EmployeeID ?? '').trim() || undefined,
         fullName: String(item.fullName ?? item.FullName ?? '').trim(),
         email: String(item.email ?? item.Email ?? '').trim(),
         designation: String(item.designation ?? item.Designation ?? '').trim(),
         joiningDate: String(item.joiningDate ?? item.JoiningDate ?? '').trim(),
+        hasPartTimeTenure,
         partTimeTenure: String(item.partTimeTenure ?? item.PartTimeTenure ?? '').trim(),
-        fullTimeTenure: String(item.fullTimeTenure ?? item.FullTimeTenure ?? '').trim(),
+        fullTimeStart: String(item.fullTimeStart ?? item.FullTimeStart ?? '').trim(),
         partTimeSalary: Number(item.partTimeSalary ?? item.PartTimeSalary),
         fullTimeSalary: Number(item.fullTimeSalary ?? item.FullTimeSalary),
         numberOfLeaves: Number(item.numberOfLeaves ?? item.NumberOfLeaves),
@@ -71,9 +93,19 @@ export async function POST(request: Request) {
       offers,
     });
 
+    // Non-blocking: respond immediately; n8n is triggered in after() and owns
+    // updating run/detail success/failure in Supabase when the workflow finishes.
+    after(async () => {
+      try {
+        await dispatchOfferLetterWebhook(result.prepared);
+      } catch (error) {
+        console.error('Offer letter webhook dispatch failed:', error);
+      }
+    });
+
     return NextResponse.json({
       success: true,
-      data: result.run,
+      data: result.prepared.run,
       message: result.message,
     });
   } catch (error: unknown) {

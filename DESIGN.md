@@ -10,19 +10,19 @@ Scene: HR admin at a bright desk mid-morning, scanning employee records; UI must
 
 Strategy: **Restrained** — tinted neutrals + one accent (ink black) for primary actions.
 
-| Token | Light | Dark |
-|-------|-------|------|
-| canvas | `#F7F7F8` | `#0A0A0A` |
-| surface | `#FFFFFF` | `#141414` |
-| surface-raised | `#FFFFFF` | `#1A1A1A` |
-| ink | `#0A0A0A` | `#F5F5F5` |
-| muted | `#6B6B70` | `#A0A0A5` |
-| border | `#E6E6E9` | `#2A2A2A` |
-| accent | `#0A0A0A` | `#F5F5F5` |
-| accent-fg | `#FFFFFF` | `#0A0A0A` |
-| focus | `oklch(0.45 0.02 260 / 0.22)` | `oklch(0.85 0.01 260 / 0.28)` |
-| danger | `#B42318` | `#F97066` |
-| success | `#067647` | `#32D583` |
+| Token          | Light                         | Dark                          |
+| -------------- | ----------------------------- | ----------------------------- |
+| canvas         | `#F7F7F8`                     | `#0A0A0A`                     |
+| surface        | `#FFFFFF`                     | `#141414`                     |
+| surface-raised | `#FFFFFF`                     | `#1A1A1A`                     |
+| ink            | `#0A0A0A`                     | `#F5F5F5`                     |
+| muted          | `#6B6B70`                     | `#A0A0A5`                     |
+| border         | `#E6E6E9`                     | `#2A2A2A`                     |
+| accent         | `#0A0A0A`                     | `#F5F5F5`                     |
+| accent-fg      | `#FFFFFF`                     | `#0A0A0A`                     |
+| focus          | `oklch(0.45 0.02 260 / 0.22)` | `oklch(0.85 0.01 260 / 0.28)` |
+| danger         | `#B42318`                     | `#F97066`                     |
+| success        | `#067647`                     | `#32D583`                     |
 
 Accent usage ≤10%: primary buttons, active nav, focus rings. No terracotta, purple, or cream brand colors.
 

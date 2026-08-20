@@ -58,7 +58,7 @@ export async function syncSessionCookies(accessToken: string): Promise<SessionSy
 }
 
 /** @deprecated Prefer syncSessionCookies(accessToken). */
-export async function setSessionCookies(_role?: string): Promise<SessionSyncResult | void> {
+export async function setSessionCookies(): Promise<SessionSyncResult | void> {
   if (typeof window === 'undefined') return;
   const token = localStorage.getItem('token');
   if (token) return syncSessionCookies(token);

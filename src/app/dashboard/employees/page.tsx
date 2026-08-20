@@ -20,13 +20,27 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
-import { canAccess, canAssignRole, getTrustedRole, normalizeRole, ROLE_OPTIONS as ALL_ROLES } from '@/lib/rbac';
+import {
+  canAccess,
+  canAssignRole,
+  canDeleteEmployee,
+  canEditEmployeeRecord,
+  canManageEmployeeRole,
+  emailsMatch,
+  getTrustedRole,
+  isSuperAdminRole,
+  normalizeRole,
+  ROLE_OPTIONS as ALL_ROLES,
+} from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import type { SheetUser } from '@/types/employee';
-import { toSheetUser } from '@/types/employee';
+import { emsStatusOf, hasEmsLogin, supabaseUserIdOf, toSheetUser } from '@/types/employee';
 
 type SortKey = 'name' | 'email' | 'role';
 type SortDir = 'asc' | 'desc';
@@ -39,7 +53,7 @@ const ROLE_OPTIONS = [
 const STATUS_OPTIONS = [
   { label: 'All statuses', value: 'all' },
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+  { label: 'Register', value: 'register' },
 ];
 
 const PAGE_SIZE_OPTIONS = [
@@ -51,8 +65,48 @@ const PAGE_SIZE_OPTIONS = [
 ];
 
 function getEmsStatus(user: SheetUser) {
-  return String(user.raw?.EMSStatus || user.raw?.emsStatus || '').toLowerCase().trim();
+  return emsStatusOf(user).toLowerCase();
 }
+
+interface SortIconProps {
+  column: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+}
+
+const SortIcon = ({ column, sortKey, sortDir }: SortIconProps) => {
+  if (sortKey !== column) {
+    return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
+  }
+  return sortDir === 'asc' ? (
+    <ChevronUp className="h-3.5 w-3.5 text-ink" />
+  ) : (
+    <ChevronDown className="h-3.5 w-3.5 text-ink" />
+  );
+};
+
+interface SortableHeaderProps {
+  column: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (column: SortKey) => void;
+}
+
+const SortableHeader = ({ column, label, sortKey, sortDir, onSort }: SortableHeaderProps) => (
+  <th className="px-5 py-3.5 font-semibold">
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className={`inline-flex cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:text-ink ${
+        sortKey === column ? 'text-ink' : 'text-muted'
+      }`}
+    >
+      {label}
+      <SortIcon column={column} sortKey={sortKey} sortDir={sortDir} />
+    </button>
+  </th>
+);
 
 export default function EmployeesPage() {
   const [users, setUsers] = useState<SheetUser[]>([]);
@@ -60,6 +114,8 @@ export default function EmployeesPage() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [canViewEmployees, setCanViewEmployees] = useState<boolean | null>(null);
   const [actorRole, setActorRole] = useState<string | null>(null);
+  const [actorEmail, setActorEmail] = useState<string | null>(null);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -67,11 +123,60 @@ export default function EmployeesPage() {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
+  const [deleteTarget, setDeleteTarget] = useState<SheetUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { openModal } = useModal();
   const router = useRouter();
 
+  const canDelete = canDeleteEmployee(actorRole);
+
   const profilePath = (user: SheetUser) =>
     `/dashboard/employees/${encodeURIComponent(user.employeeId || user.email)}`;
+
+  const canEditUser = (user: SheetUser) => {
+    if (!actorRole) return false;
+    return canEditEmployeeRecord({
+      actorRole,
+      actorEmail,
+      actorUserId,
+      targetRole: user.role,
+      targetEmail: user.email,
+      targetSupabaseUserId: supabaseUserIdOf(user),
+    });
+  };
+
+  const canDeleteUser = (user: SheetUser) => {
+    if (!canDelete || !actorRole) return false;
+    if (emailsMatch(actorEmail, user.email)) return false;
+    if (isSuperAdminRole(user.role)) return false;
+    return canManageEmployeeRole(actorRole, user.role);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget?.employeeId) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `/api/employees/${encodeURIComponent(deleteTarget.employeeId)}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete employee.');
+      }
+      toast.success(`Deleted ${deleteTarget.name || deleteTarget.employeeId}`);
+      setDeleteTarget(null);
+      await fetchUsers();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete employee.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -121,14 +226,20 @@ export default function EmployeesPage() {
     if (normalized === 'super_admin') {
       return 'border-ink/15 bg-ink text-accent-fg';
     }
-    if (normalized === 'hr_manager' || normalized === 'finance_manager' || normalized === 'director') {
+    if (normalized === 'admin') {
+      return 'border-ink/20 bg-ink/90 text-accent-fg';
+    }
+    if (
+      normalized === 'hr_manager' ||
+      normalized === 'finance_manager' ||
+      normalized === 'director'
+    ) {
       return 'border-border bg-canvas text-ink';
     }
     return 'border-border bg-surface text-muted';
   };
 
-  const hasActiveFilters =
-    search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
+  const hasActiveFilters = search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
 
   const clearFilters = () => {
     setSearch('');
@@ -174,9 +285,9 @@ export default function EmployeesPage() {
     }
 
     if (statusFilter === 'active') {
-      list = list.filter((u) => getEmsStatus(u) === 'active');
-    } else if (statusFilter === 'inactive') {
-      list = list.filter((u) => getEmsStatus(u) !== 'active');
+      list = list.filter((u) => hasEmsLogin(u) && getEmsStatus(u) === 'active');
+    } else if (statusFilter === 'register') {
+      list = list.filter((u) => !hasEmsLogin(u));
     }
 
     list.sort((a, b) => {
@@ -199,20 +310,14 @@ export default function EmployeesPage() {
   }, [filteredUsers, currentPage, pageSizeNum]);
 
   useEffect(() => {
-    setPage(1);
-  }, [search, roleFilter, statusFilter, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  useEffect(() => {
     const checkRole = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.user && session.access_token) {
         localStorage.setItem('token', session.access_token);
+        setActorEmail(session.user.email || null);
+        setActorUserId(session.user.id || null);
         let role = getTrustedRole(session.user);
         try {
           const synced = await syncSessionCookies(session.access_token);
@@ -232,38 +337,6 @@ export default function EmployeesPage() {
     };
     checkRole();
   }, []);
-
-  const SortIcon = ({ column }: { column: SortKey }) => {
-    if (sortKey !== column) {
-      return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
-    }
-    return sortDir === 'asc' ? (
-      <ChevronUp className="h-3.5 w-3.5 text-ink" />
-    ) : (
-      <ChevronDown className="h-3.5 w-3.5 text-ink" />
-    );
-  };
-
-  const SortableHeader = ({
-    column,
-    label,
-  }: {
-    column: SortKey;
-    label: string;
-  }) => (
-    <th className="px-5 py-3.5 font-semibold">
-      <button
-        type="button"
-        onClick={() => handleSort(column)}
-        className={`inline-flex cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:text-ink ${
-          sortKey === column ? 'text-ink' : 'text-muted'
-        }`}
-      >
-        {label}
-        <SortIcon column={column} />
-      </button>
-    </th>
-  );
 
   if (canViewEmployees === null) {
     return (
@@ -286,7 +359,7 @@ export default function EmployeesPage() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Access denied</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Only Super Admin and HR Manager can view employee records.
+          Only Super Admin, Admin, and HR Manager can view employee records.
         </p>
       </div>
     );
@@ -299,8 +372,7 @@ export default function EmployeesPage() {
         ? `${filteredUsers.length} of ${users.length} record${users.length === 1 ? '' : 's'}`
         : `${users.length} record${users.length === 1 ? '' : 's'}`;
 
-  const rangeStart =
-    filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredUsers.length);
 
   return (
@@ -364,7 +436,10 @@ export default function EmployeesPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search name, email, ID, department…"
                 className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 transition-colors focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               />
@@ -376,7 +451,10 @@ export default function EmployeesPage() {
                   name="roleFilter"
                   options={ROLE_OPTIONS}
                   value={roleFilter}
-                  onChange={setRoleFilter}
+                  onChange={(val) => {
+                    setRoleFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All roles"
                 />
@@ -387,7 +465,10 @@ export default function EmployeesPage() {
                   name="statusFilter"
                   options={STATUS_OPTIONS}
                   value={statusFilter}
-                  onChange={setStatusFilter}
+                  onChange={(val) => {
+                    setStatusFilter(val);
+                    setPage(1);
+                  }}
                   onBlur={() => {}}
                   placeholder="All statuses"
                 />
@@ -421,20 +502,43 @@ export default function EmployeesPage() {
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                        <SortableHeader column="name" label="Name" />
-                        <SortableHeader column="email" label="Email" />
-                        <SortableHeader column="role" label="Role" />
+                        <SortableHeader
+                          column="name"
+                          label="Name"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="email"
+                          label="Email"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          column="role"
+                          label="Role"
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          onSort={handleSort}
+                        />
                         <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
-                        const isActive = getEmsStatus(user) === 'active';
+                        const registered = hasEmsLogin(user);
+                        const canEdit = canEditUser(user);
                         return (
                           <tr
                             key={user.employeeId || user.email || idx}
-                            onClick={() => router.push(profilePath(user))}
-                            className="cursor-pointer transition-colors duration-150 hover:bg-canvas/70"
+                            onClick={() => {
+                              if (canEdit) router.push(profilePath(user));
+                            }}
+                            className={`transition-colors duration-150 ${
+                              canEdit ? 'cursor-pointer hover:bg-canvas/70' : 'bg-canvas/40'
+                            }`}
                           >
                             <td className="px-5 py-3.5 font-medium">{user.name || 'N/A'}</td>
                             <td className="px-5 py-3.5 text-muted">{user.email}</td>
@@ -447,8 +551,11 @@ export default function EmployeesPage() {
                             </td>
                             <td className="px-5 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {isActive ? (
-                                  <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+                                {registered ? (
+                                  <span
+                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                    title="Login access is active"
+                                  >
                                     Active
                                   </span>
                                 ) : actorRole && canAssignRole(actorRole, user.role) ? (
@@ -462,6 +569,7 @@ export default function EmployeesPage() {
                                       });
                                     }}
                                     className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                                    title="Create login credentials for this employee"
                                   >
                                     <UserPlus className="h-3.5 w-3.5" />
                                     Register
@@ -475,17 +583,33 @@ export default function EmployeesPage() {
                                   </span>
                                 )}
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    router.push(profilePath(user));
-                                  }}
-                                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
-                                  title="Open profile"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      router.push(profilePath(user));
+                                    }}
+                                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
+                                    title="Open profile"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+
+                                {canDeleteUser(user) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteTarget(user);
+                                    }}
+                                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-danger-border bg-surface text-danger transition-colors duration-150 hover:bg-danger-bg"
+                                    title="Delete employee"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -507,13 +631,16 @@ export default function EmployeesPage() {
                       name="pageSize"
                       options={PAGE_SIZE_OPTIONS}
                       value={pageSize}
-                      onChange={setPageSize}
+                      onChange={(val) => {
+                        setPageSize(val);
+                        setPage(1);
+                      }}
                       onBlur={() => {}}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage <= 1}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -525,7 +652,7 @@ export default function EmployeesPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage >= totalPages}
                     className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -538,6 +665,64 @@ export default function EmployeesPage() {
           )}
         </div>
       )}
+
+      {deleteTarget && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
+              <button
+                type="button"
+                aria-label="Close dialog backdrop"
+                className="absolute inset-0 cursor-default"
+                disabled={deleting}
+                onClick={() => {
+                  if (!deleting) setDeleteTarget(null);
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                className="relative w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              >
+                <div className="border-b border-border px-5 py-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                    Delete employee
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-ink">
+                    Remove {deleteTarget.name || deleteTarget.employeeId}?
+                  </h2>
+                  <p className="mt-2 text-sm text-muted">
+                    This permanently deletes the employee record, salary profile, leave data, and
+                    EMS login. This cannot be undone.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setDeleteTarget(null)}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => void confirmDelete()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-danger px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {deleting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

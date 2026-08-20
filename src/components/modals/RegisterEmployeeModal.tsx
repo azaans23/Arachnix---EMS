@@ -79,8 +79,7 @@ export default function RegisterEmployeeModal({
             onClose();
           },
           onError: (err: unknown) => {
-            const message =
-              err instanceof Error ? err.message : 'Failed to register user.';
+            const message = err instanceof Error ? err.message : 'Failed to register user.';
             toast.error(message);
           },
         }
@@ -104,9 +103,7 @@ export default function RegisterEmployeeModal({
             <UserCheck className="w-6 h-6 text-ink" />
           </div>
           <h2 className="text-xl font-bold text-ink">Register Credentials</h2>
-          <p className="text-xs text-muted mt-1">
-            Complete registration to give access to EMS
-          </p>
+          <p className="text-xs text-muted mt-1">Complete registration to give access to EMS</p>
         </div>
 
         {canGrant === false && (
@@ -117,9 +114,7 @@ export default function RegisterEmployeeModal({
 
         <form onSubmit={formik.handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-ink tracking-wide uppercase">
-              Name
-            </label>
+            <label className="text-xs font-semibold text-ink tracking-wide uppercase">Name</label>
             <div className="relative flex items-center">
               <div className="absolute left-3 text-muted/50">
                 <User className="w-4 h-4" />
@@ -151,9 +146,7 @@ export default function RegisterEmployeeModal({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-ink tracking-wide uppercase">
-              Role
-            </label>
+            <label className="text-xs font-semibold text-ink tracking-wide uppercase">Role</label>
             <div className="relative flex items-center">
               <div className="absolute left-3 text-muted/50">
                 <Shield className="w-4 h-4" />

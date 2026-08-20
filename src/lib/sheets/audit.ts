@@ -11,6 +11,7 @@ import type {
   AuditLogRecord,
   CreateAuditEventInput,
 } from '@/types/audit';
+import { SYSTEM_AUDIT_EMAIL } from '@/types/audit';
 
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEYS = new Set([
@@ -23,19 +24,43 @@ const SENSITIVE_KEYS = new Set([
   'secret',
 ]);
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function pick(raw: Record<string, unknown>, ...keys: string[]): string {
-  for (const key of keys) {
-    const value = raw[key];
-    if (value !== undefined && value !== null) return String(value);
-  }
-  return '';
-}
+/**
+ * Identity / summary fields always kept on UPDATE audits so reviewers can see
+ * who/what was touched even when only a subset of fields changed.
+ */
+const AUDIT_CONTEXT_KEY_HINTS = new Set([
+  'employeeid',
+  'fullname',
+  'name',
+  'email',
+  'phone',
+  'department',
+  'designation',
+  'employeetype',
+  'role',
+  'emsstatus',
+  'requestid',
+  'leaveid',
+  'recordid',
+  'runid',
+  'salaryid',
+  'holidaydate',
+  'holidayname',
+  'account',
+  'category',
+  'transactiontype',
+  'year',
+  'period',
+  'leavetype',
+  'status',
+  'startdate',
+  'enddate',
+  'uploadedby',
+  'filename',
+  'triggeredby',
+  'month',
+  'monthname',
+]);
 
 function sanitizeForAudit(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeForAudit);
@@ -55,12 +80,37 @@ function serializeAuditValue(value: unknown): string {
   return JSON.stringify(sanitizeForAudit(value));
 }
 
+function isContextKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  if (AUDIT_CONTEXT_KEY_HINTS.has(lower)) return true;
+  // Catch PascalCase sheet keys like EmployeeID / FullName / Department.
+  if (lower.endsWith('id') || lower.endsWith('name')) return true;
+  return false;
+}
+
+function findKey(
+  record: Record<string, unknown>,
+  needle: string
+): { key: string; value: unknown } | null {
+  const lower = needle.toLowerCase();
+  const match = Object.keys(record).find((key) => key.toLowerCase() === lower);
+  if (!match) return null;
+  return { key: match, value: record[match] };
+}
+
+/**
+ * Builds old/new audit payloads for UPDATE:
+ * - Always includes identity/context fields (id, name, department, …)
+ * - Plus only the fields that actually changed
+ * - Adds `changedFields` so the UI can highlight what moved
+ */
 export function diffAuditValues(
   oldValue: Record<string, unknown>,
   newValue: Record<string, unknown>
 ): { oldValue: Record<string, unknown>; newValue: Record<string, unknown> } {
   const oldChanges: Record<string, unknown> = {};
   const newChanges: Record<string, unknown> = {};
+  const changedFields: string[] = [];
   const keys = new Set([...Object.keys(oldValue), ...Object.keys(newValue)]);
 
   for (const key of keys) {
@@ -68,6 +118,7 @@ export function diffAuditValues(
       if (oldValue[key] !== newValue[key]) {
         oldChanges[key] = REDACTED;
         newChanges[key] = REDACTED;
+        changedFields.push(key);
       }
       continue;
     }
@@ -77,10 +128,43 @@ export function diffAuditValues(
     if (JSON.stringify(before) !== JSON.stringify(after)) {
       oldChanges[key] = before;
       newChanges[key] = after;
+      changedFields.push(key);
     }
   }
 
-  return { oldValue: oldChanges, newValue: newChanges };
+  const oldOut: Record<string, unknown> = {};
+  const newOut: Record<string, unknown> = {};
+
+  // Prefer key casing from the new snapshot, then the old one.
+  const contextKeyNames = new Map<string, string>();
+  for (const key of Object.keys(newValue)) {
+    if (isContextKey(key)) contextKeyNames.set(key.toLowerCase(), key);
+  }
+  for (const key of Object.keys(oldValue)) {
+    if (isContextKey(key) && !contextKeyNames.has(key.toLowerCase())) {
+      contextKeyNames.set(key.toLowerCase(), key);
+    }
+  }
+
+  for (const [, preferredKey] of contextKeyNames) {
+    const fromNew = findKey(newValue, preferredKey);
+    const fromOld = findKey(oldValue, preferredKey);
+    const key = fromNew?.key || fromOld?.key || preferredKey;
+    oldOut[key] = fromOld?.value ?? fromNew?.value ?? '';
+    newOut[key] = fromNew?.value ?? fromOld?.value ?? '';
+  }
+
+  for (const key of changedFields) {
+    oldOut[key] = oldChanges[key];
+    newOut[key] = newChanges[key];
+  }
+
+  if (changedFields.length > 0) {
+    oldOut.changedFields = changedFields;
+    newOut.changedFields = changedFields;
+  }
+
+  return { oldValue: oldOut, newValue: newOut };
 }
 
 export class AuditLogError extends Error {
@@ -91,58 +175,6 @@ export class AuditLogError extends Error {
     this.name = 'AuditLogError';
     this.status = status;
   }
-}
-
-/** n8n replies with this when a Webhook node responds before the workflow finishes. */
-const N8N_ACK_MESSAGES = new Set(['workflow was started']);
-
-const RESPOND_IMMEDIATELY_HINT =
-  'The get-audit-log workflow acknowledged the request without returning any rows. ' +
-  'In n8n, open that Webhook node and change "Respond" from "Immediately" to ' +
-  '"When Last Node Finishes" (or add a "Respond to Webhook" node) so the AuditLog rows are sent back.';
-
-/** n8n sometimes wraps each row as { json: {...} }. */
-function unwrapN8nItem(value: unknown): unknown {
-  const record = asRecord(value);
-  const inner = record.json;
-  return inner && typeof inner === 'object' ? inner : value;
-}
-
-function hasAuditIdentity(record: AuditLogRecord): boolean {
-  return Boolean(
-    record.logId || record.timestamp || record.userEmail || record.action || record.recordId
-  );
-}
-
-export function mapRawToAuditLog(rawInput: unknown): AuditLogRecord {
-  const raw = asRecord(rawInput);
-  return {
-    logId: pick(raw, 'LogID', 'logId', 'LogId', 'logid'),
-    timestamp: pick(raw, 'Timestamp', 'timestamp'),
-    userEmail: pick(raw, 'UserEmail', 'userEmail', 'useremail'),
-    action: pick(raw, 'Action', 'action'),
-    recordType: pick(raw, 'RecordType', 'recordType', 'recordtype'),
-    recordId: pick(raw, 'RecordID', 'recordId', 'RecordId', 'recordid'),
-    oldValue: serializeAuditValue(raw.OldValue ?? raw.oldValue ?? raw.oldvalue),
-    newValue: serializeAuditValue(raw.NewValue ?? raw.newValue ?? raw.newvalue),
-  };
-}
-
-export function normalizeAuditPayload(payload: unknown): AuditLogRecord[] {
-  const root = asRecord(payload);
-
-  if (!Array.isArray(payload) && typeof root.message === 'string') {
-    if (N8N_ACK_MESSAGES.has(root.message.trim().toLowerCase())) {
-      throw new AuditLogError(RESPOND_IMMEDIATELY_HINT, 502);
-    }
-  }
-
-  const data = Array.isArray(payload)
-    ? payload
-    : (root.data ?? root.records ?? root.rows ?? payload);
-  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
-
-  return rows.map((row) => mapRawToAuditLog(unwrapN8nItem(row))).filter(hasAuditIdentity);
 }
 
 async function webhookError(response: Response, fallback: string): Promise<AuditLogError> {
@@ -222,12 +254,34 @@ export async function createAuditLog(
     try {
       await deleteAuditLogDbRow(dbRow.logid);
     } catch (rollbackError) {
-      console.error('Failed to roll back Supabase auditlog after sheet write failure:', rollbackError);
+      console.error(
+        'Failed to roll back Supabase auditlog after sheet write failure:',
+        rollbackError
+      );
     }
     throw sheetError;
   }
 
   return record;
+}
+
+/**
+ * Best-effort audit for domain mutations. Never throws — business writes must
+ * not fail because the audit dual-write failed.
+ */
+export async function logAuditBestEffort(
+  actorEmail: string | null | undefined,
+  event: CreateAuditEventInput,
+  label = 'Audit'
+): Promise<boolean> {
+  const email = String(actorEmail || '').trim() || SYSTEM_AUDIT_EMAIL;
+  try {
+    await createAuditLog({ email }, event);
+    return true;
+  } catch (error) {
+    console.error(`${label} delivery failed:`, error);
+    return false;
+  }
 }
 
 /**

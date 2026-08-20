@@ -1,9 +1,25 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
+import { reconcileSalarySlipRunAudits } from '@/lib/audit/run-completion';
 import { listSalarySlipRuns } from '@/lib/db/salary-slips';
-import { startSalarySlipRun } from '@/lib/payroll/generate';
+import { dispatchSalarySlipWebhook, startSalarySlipRun } from '@/lib/payroll/generate';
+import type { SalarySlipExtrasInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeSlipExtras(row: Record<string, unknown>): SalarySlipExtrasInput {
+  return {
+    employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
+    overtimePay: String(row.overtimePay ?? row.OvertimePay ?? row['Overtime Pay'] ?? '').trim(),
+    performanceBonus: String(
+      row.performanceBonus ?? row.PerformanceBonus ?? row['Performance Bonus'] ?? ''
+    ).trim(),
+    contributions: String(
+      row.contributions ?? row.Contributions ?? row.contribution ?? row.Contribution ?? ''
+    ).trim(),
+    others: String(row.others ?? row.Others ?? '').trim(),
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -11,6 +27,17 @@ export async function GET(request: Request) {
     if (errorResponse) return errorResponse;
 
     const runs = await listSalarySlipRuns();
+
+    // n8n finishes runs by writing to Supabase, so the completion audit entry is
+    // backfilled here once a run leaves Processing.
+    after(async () => {
+      try {
+        await reconcileSalarySlipRunAudits(runs);
+      } catch (error) {
+        console.error('Salary slip run audit reconciliation failed:', error);
+      }
+    });
+
     return NextResponse.json({ success: true, data: runs });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load salary slip runs.';
@@ -34,52 +61,19 @@ export async function POST(request: Request) {
       ? body.employeeIds.map((id: unknown) => String(id))
       : undefined;
     const confirmIncomplete = Boolean(body.confirmIncomplete);
-    const salaryDetails = Array.isArray(body.salaryDetails)
-      ? body.salaryDetails.map((row: Record<string, unknown>) => ({
-          employeeId: String(row.employeeId || row.EmployeeID || '').trim(),
-          salary: String(row.salary ?? row.Salary ?? row.BaseSalary ?? row.baseSalary ?? '').trim(),
-          allowance: String(row.allowance ?? row.Allowance ?? '').trim(),
-          tax: String(row.tax ?? row.Tax ?? '').trim(),
-          overtimePay: String(
-            row.overtimePay ?? row.OvertimePay ?? row['Overtime Pay'] ?? ''
-          ).trim(),
-          performanceBonus: String(
-            row.performanceBonus ?? row.PerformanceBonus ?? row['Performance Bonus'] ?? ''
-          ).trim(),
-          contributions: String(
-            row.contributions ??
-              row.Contributions ??
-              row.contribution ??
-              row.Contribution ??
-              ''
-          ).trim(),
-          others: String(row.others ?? row.Others ?? '').trim(),
-          netSalary: String(row.netSalary ?? row.NetSalary ?? '').trim() || undefined,
-          accountNumber: String(
-            row.accountNumber ?? row.AccountNumber ?? row['Account Number'] ?? ''
-          ).trim(),
-          accountName: String(
-            row.accountName ?? row.AccountName ?? row['Account Name'] ?? ''
-          ).trim(),
-          bankName: String(row.bankName ?? row.BankName ?? row['Bank Name'] ?? '').trim(),
-          period: String(row.period ?? row.Period ?? '').trim() || undefined,
-          uniqueKey: String(row.uniqueKey ?? row.UniqueKey ?? '').trim() || undefined,
-          status: String(row.status ?? row.Status ?? '').trim() || undefined,
-          totalEarning: String(
-            row.totalEarning ?? row.TotalEarning ?? row['Total Earning'] ?? ''
-          ).trim() || undefined,
-          totalDeduction: String(
-            row.totalDeduction ?? row.TotalDeduction ?? row['Total Deduction'] ?? ''
-          ).trim() || undefined,
-        }))
-      : undefined;
+    const slipExtras = Array.isArray(body.slipExtras)
+      ? body.slipExtras.map((row: Record<string, unknown>) => normalizeSlipExtras(row))
+      : Array.isArray(body.salaryDetails)
+        ? // Back-compat: extras may arrive mixed into salaryDetails from older clients.
+          body.salaryDetails.map((row: Record<string, unknown>) => normalizeSlipExtras(row))
+        : undefined;
 
     const result = await startSalarySlipRun(user?.email || '', {
       month,
       year,
       employeeIds,
       confirmIncomplete,
-      salaryDetails,
+      slipExtras,
     });
 
     if ('needsConfirmation' in result) {
@@ -97,9 +91,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Non-blocking: respond immediately; n8n is triggered in after() and owns
+    // updating run/detail success/failure in Supabase when the workflow finishes.
+    after(async () => {
+      try {
+        await dispatchSalarySlipWebhook(result.prepared);
+      } catch (error) {
+        console.error('Salary slip webhook dispatch failed:', error);
+      }
+    });
+
     return NextResponse.json({
       success: true,
-      data: result.run,
+      data: result.prepared.run,
       message: result.message,
     });
   } catch (error: unknown) {

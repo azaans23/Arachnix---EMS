@@ -4,15 +4,16 @@ const N8N_BASE_URL = (
   'https://n8n.arachnix.ai'
 ).replace(/\/$/, '');
 
+/** Active n8n webhooks still called from the app. */
 export const SHEETS_WEBHOOKS = {
-  getUsers: `${N8N_BASE_URL}/webhook/get-users`,
   updateUser: `${N8N_BASE_URL}/webhook/update-user`,
-  getAuditLog: `${N8N_BASE_URL}/webhook/get-audit-log`,
   createAudit: `${N8N_BASE_URL}/webhook/create-audit`,
   generateSalarySlip: `${N8N_BASE_URL}/webhook/generate-salary-slip`,
-  generateOfferLetter: `${N8N_BASE_URL}/webhook-test/generate-offer-letter`,
-  getSalaryDetail: `${N8N_BASE_URL}/webhook/get-salary-detail`,
+  generateOfferLetter: `${N8N_BASE_URL}/webhook/generate-offer-letter`,
   updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
-  updateLeave: `${N8N_BASE_URL}/webhook-test/update-leave`,
-  createLeaveRequest: `${N8N_BASE_URL}/webhook-test/create-leave-request`,
+  updateLeave: `${N8N_BASE_URL}/webhook/update-leave`,
+  createLeaveRequest: `${N8N_BASE_URL}/webhook/create-leave-request`,
+  createHoliday: `${N8N_BASE_URL}/webhook/create-holiday`,
+  uploadAccountingRecord: `${N8N_BASE_URL}/webhook/create-transaction`,
+  deleteEmployee: `${N8N_BASE_URL}/webhook/delete-employee`,
 } as const;

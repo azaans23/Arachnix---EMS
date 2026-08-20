@@ -62,19 +62,115 @@ function prettyValue(value: string): string {
   }
 }
 
+function parseAuditPayload(value: string): {
+  context: Record<string, unknown>;
+  changes: Record<string, unknown>;
+  changedFields: string[];
+  raw: string;
+} | null {
+  if (!value?.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    const changedFields = Array.isArray(record.changedFields)
+      ? record.changedFields.map((field) => String(field))
+      : [];
+    const changedSet = new Set(changedFields.map((field) => field.toLowerCase()));
+    const context: Record<string, unknown> = {};
+    const changes: Record<string, unknown> = {};
+
+    for (const [key, entry] of Object.entries(record)) {
+      if (key === 'changedFields') continue;
+      if (changedSet.has(key.toLowerCase())) changes[key] = entry;
+      else context[key] = entry;
+    }
+
+    return { context, changes, changedFields, raw: prettyValue(value) };
+  } catch {
+    return null;
+  }
+}
+
 function actionClasses(action: string): string {
   switch (action.toUpperCase()) {
     case 'CREATE':
     case 'GRANT_ACCESS':
     case 'APPROVE':
+    case 'UPLOAD':
+    case 'GENERATE':
       return 'border-border bg-ink text-accent-fg';
     case 'DELETE':
     case 'REJECT':
     case 'REVOKE_ACCESS':
+    case 'FAILED':
+    case 'PARTIAL':
       return 'border-danger-border bg-danger-bg text-danger';
+    case 'REQUEST_CHANGES':
+      return 'border-border bg-canvas text-ink';
     default:
       return 'border-border bg-canvas text-ink';
   }
+}
+
+/** Detect failed / partial / completed runs from newValue.status. */
+function processOutcome(record: AuditLogRecord): 'Failed' | 'Partial' | 'Completed' | null {
+  const raw = String(record.newValue || '').trim();
+  if (!raw) return null;
+
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parsed = value as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  if (!parsed) return null;
+
+  const status = String(parsed.status || parsed.Status || '')
+    .trim()
+    .toLowerCase();
+  if (status === 'failed' || status === 'fail' || status === 'error') return 'Failed';
+  if (status === 'partial') return 'Partial';
+  if (status === 'completed' || status === 'success' || status === 'succeeded') {
+    return 'Completed';
+  }
+
+  const failCount = Number(parsed.failCount ?? parsed.FailCount);
+  if (Number.isFinite(failCount) && failCount > 0) {
+    const successCount = Number(parsed.successCount ?? parsed.SuccessCount);
+    if (Number.isFinite(successCount) && successCount > 0) return 'Partial';
+    return 'Failed';
+  }
+
+  return null;
+}
+
+function isRunRecordType(recordType: string) {
+  const type = recordType.trim().toLowerCase();
+  return (
+    type === 'salarysliprun' ||
+    type === 'offerletterrun' ||
+    type === 'salary slip run' ||
+    type === 'offer letter run'
+  );
+}
+
+/** Action label shown in the table (completed runs read as CREATE). */
+function displayAction(record: AuditLogRecord): string {
+  const outcome = processOutcome(record);
+  if (outcome === 'Failed' || outcome === 'Partial') return outcome;
+  if (outcome === 'Completed' && isRunRecordType(record.recordType || '')) {
+    return 'CREATE';
+  }
+  return String(record.action || '').replaceAll('_', ' ');
+}
+
+function displayActionClasses(record: AuditLogRecord): string {
+  const label = displayAction(record);
+  return actionClasses(label);
 }
 
 export default function AuditLogPage() {
@@ -154,7 +250,11 @@ export default function AuditLogPage() {
           record.action,
           record.recordType,
           record.recordId,
-        ].some((value) => String(value || '').toLowerCase().includes(query));
+        ].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(query)
+        );
       })
       .sort((a, b) => {
         const left =
@@ -178,17 +278,8 @@ export default function AuditLogPage() {
     currentPage * pageSizeNum
   );
   const hasFilters = Boolean(search.trim() || actionFilter !== 'all' || typeFilter !== 'all');
-  const rangeStart =
-    filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
+  const rangeStart = filteredRecords.length === 0 ? 0 : (currentPage - 1) * pageSizeNum + 1;
   const rangeEnd = Math.min(currentPage * pageSizeNum, filteredRecords.length);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, actionFilter, typeFilter, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const clearFilters = () => {
     setSearch('');
@@ -381,9 +472,12 @@ export default function AuditLogPage() {
                   {visibleRecords.map((record, index) => {
                     const rowId = record.logId || `${record.timestamp}-${index}`;
                     const expanded = expandedId === rowId;
+                    const outcome = processOutcome(record);
+                    const failed = outcome === 'Failed' || outcome === 'Partial';
+                    const actionText = displayAction(record);
                     return (
                       <Fragment key={rowId}>
-                        <tr className="hover:bg-canvas/50">
+                        <tr className={failed ? 'bg-danger-bg/40 hover:bg-danger-bg/60' : 'hover:bg-canvas/50'}>
                           <td className="whitespace-nowrap px-4 py-3.5 text-muted">
                             {displayDate(record.timestamp)}
                           </td>
@@ -392,14 +486,19 @@ export default function AuditLogPage() {
                           </td>
                           <td className="px-4 py-3.5">
                             <span
-                              className={`inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${actionClasses(record.action)}`}
+                              className={`inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${displayActionClasses(record)}`}
+                              title={
+                                failed
+                                  ? `${String(record.action || '').replaceAll('_', ' ')} · ${outcome}`
+                                  : outcome === 'Completed'
+                                    ? 'Completed run'
+                                    : undefined
+                              }
                             >
-                              {String(record.action || '').replaceAll('_', ' ')}
+                              {actionText}
                             </span>
                           </td>
-                          <td className="truncate px-4 py-3.5">
-                            {record.recordType || 'N/A'}
-                          </td>
+                          <td className="truncate px-4 py-3.5">{record.recordType || 'N/A'}</td>
                           <td
                             className="truncate px-4 py-3.5 font-mono text-xs text-muted"
                             title={record.recordId || 'N/A'}
@@ -449,13 +548,16 @@ export default function AuditLogPage() {
                     name="pageSize"
                     options={PAGE_SIZE_OPTIONS}
                     value={pageSize}
-                    onChange={setPageSize}
+                    onChange={(val) => {
+                      setPageSize(val);
+                      setPage(1);
+                    }}
                     onBlur={() => {}}
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage <= 1}
                   className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -467,7 +569,7 @@ export default function AuditLogPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage >= totalPages}
                   className="inline-flex h-10 cursor-pointer items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -484,14 +586,59 @@ export default function AuditLogPage() {
 }
 
 function AuditValue({ label, value }: { label: string; value: string }) {
+  const parsed = parseAuditPayload(value);
+
+  if (!parsed) {
+    return (
+      <div className="min-w-0 rounded-md border border-border bg-surface p-3">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+          {label}
+        </p>
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+          {prettyValue(value)}
+        </pre>
+      </div>
+    );
+  }
+
+  const hasContext = Object.keys(parsed.context).length > 0;
+  const hasChanges = Object.keys(parsed.changes).length > 0;
+
   return (
     <div className="min-w-0 rounded-md border border-border bg-surface p-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
         {label}
       </p>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
-        {prettyValue(value)}
-      </pre>
+      {parsed.changedFields.length > 0 ? (
+        <p className="mb-2 text-xs text-muted">
+          Changed:{' '}
+          <span className="font-medium text-ink">{parsed.changedFields.join(', ')}</span>
+        </p>
+      ) : null}
+      {hasContext ? (
+        <div className="mb-3">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            Record
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+            {JSON.stringify(parsed.context, null, 2)}
+          </pre>
+        </div>
+      ) : null}
+      {hasChanges ? (
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            Changes
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+            {JSON.stringify(parsed.changes, null, 2)}
+          </pre>
+        </div>
+      ) : !hasContext ? (
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+          {parsed.raw}
+        </pre>
+      ) : null}
     </div>
   );
 }

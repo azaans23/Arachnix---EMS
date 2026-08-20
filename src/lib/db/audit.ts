@@ -50,11 +50,7 @@ export async function insertAuditLogDbRow(
 ): Promise<AuditLogDbRow> {
   const row = toAuditLogInsert(record);
 
-  const { data, error } = await getSupabaseAdmin()
-    .from(TABLE)
-    .insert(row)
-    .select('*')
-    .single();
+  const { data, error } = await getSupabaseAdmin().from(TABLE).insert(row).select('*').single();
 
   if (error) {
     throw new Error(`Supabase auditlog insert failed: ${error.message}`);
@@ -84,6 +80,38 @@ export async function listAuditLogDbRows(): Promise<AuditLogDbRow[]> {
   }
 
   return (data as AuditLogDbRow[]) || [];
+}
+
+/**
+ * Record IDs of the given type that already have an audit entry whose action is
+ * not in `ignoreActions`. Used to keep background reconciliation idempotent.
+ */
+export async function listAuditedRecordIds(params: {
+  recordType: string;
+  recordIds: string[];
+  ignoreActions?: string[];
+}): Promise<Set<string>> {
+  const ids = params.recordIds.map((id) => String(id).trim()).filter(Boolean);
+  if (ids.length === 0) return new Set();
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(TABLE)
+    .select('recordid, action')
+    .eq('recordtype', params.recordType)
+    .in('recordid', ids);
+
+  if (error) {
+    throw new Error(`Supabase auditlog lookup failed: ${error.message}`);
+  }
+
+  const ignored = new Set((params.ignoreActions || []).map((action) => action.toUpperCase()));
+  const audited = new Set<string>();
+  for (const row of (data as Array<{ recordid: string; action: string }>) || []) {
+    if (ignored.has(String(row.action || '').toUpperCase())) continue;
+    audited.add(String(row.recordid));
+  }
+
+  return audited;
 }
 
 export function dbRowToAuditLogRecord(row: AuditLogDbRow): AuditLogRecord {
