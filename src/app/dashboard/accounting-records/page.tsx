@@ -454,7 +454,7 @@ export default function AccountingRecordsPage() {
   {
     label: 'Net cashflow',
     value: formatMoney(net, dominantCurrency),
-    tone: 'text-white', // white
+    tone: 'text-ink',
   },
   { label: 'Transactions', value: String(metrics?.transactionCount ?? 0) },
   {

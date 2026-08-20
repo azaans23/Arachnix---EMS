@@ -134,6 +134,17 @@ export function computeSalaryTotals(input: {
   };
 }
 
+/** Formats amounts for n8n document payloads, e.g. `100000` → `100,000`. */
+export function formatAmountWithCommas(value: string | number | null | undefined): string {
+  if (value === undefined || value === null || String(value).trim() === '') return '';
+  const n = Number(String(value).replace(/,/g, '').trim());
+  if (!Number.isFinite(n)) return String(value).trim();
+  if (Number.isInteger(n)) {
+    return n.toLocaleString('en-US');
+  }
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 /** Totals for the persisted salary profile (no slip extras). */
 export function computeStoredSalaryTotals(input: {
   salary?: string | number | null;

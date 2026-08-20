@@ -5,7 +5,7 @@ import {
   updateOfferLetterRun,
   upsertOfferLetterRunDetail,
 } from '@/lib/db/offer-letters';
-import { formatMonthName } from '@/lib/payroll/period';
+import { formatAmountWithCommas, formatMonthName } from '@/lib/payroll/period';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import { logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
@@ -205,8 +205,10 @@ export async function startOfferLetterRun(
       FullTimeStart: offer.hasPartTimeTenure
         ? displayDate(offer.fullTimeStart, 'Full-time start')
         : '',
-      PartTimeSalary: offer.hasPartTimeTenure ? offer.partTimeSalary : '',
-      FullTimeSalary: offer.fullTimeSalary,
+      PartTimeSalary: offer.hasPartTimeTenure
+        ? formatAmountWithCommas(offer.partTimeSalary)
+        : '',
+      FullTimeSalary: formatAmountWithCommas(offer.fullTimeSalary),
       NumberOfLeaves: offer.numberOfLeaves,
     })),
   };

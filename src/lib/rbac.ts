@@ -6,7 +6,7 @@
  * Admin           — broad operational access; can create Admin/HR/Finance/Employee roles,
  *                   edit self + staff, but cannot manage Super Admin
  * HR Manager      — employee management, leave, salary profiles, offer letters, holidays;
- *                   can edit staff only (not Admin / Super Admin)
+ *                   can manage HR, Director, and Employee (not Finance, Admin, or Super Admin)
  * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
  *                   no employee directory
  * Director        — read-only financial + headcount dashboard
@@ -134,7 +134,7 @@ const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
     ROLES.EMPLOYEE,
   ],
   [ROLES.ADMIN]: [ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.EMPLOYEE],
-  [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
+  [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
   [ROLES.FINANCE_MANAGER]: [],
   [ROLES.DIRECTOR]: [],
   [ROLES.EMPLOYEE]: [],
@@ -178,8 +178,11 @@ export function canManageEmployeeRole(
   // Nobody manages Super Admin via role alone (only self-edit, which needs identity).
   if (target === ROLES.SUPER_ADMIN) return false;
   if (actor === ROLES.SUPER_ADMIN) return true;
-  if (actor === ROLES.ADMIN || actor === ROLES.HR_MANAGER) {
+  if (actor === ROLES.ADMIN) {
     return STAFF_ROLES.includes(target);
+  }
+  if (actor === ROLES.HR_MANAGER) {
+    return target === ROLES.HR_MANAGER || target === ROLES.DIRECTOR || target === ROLES.EMPLOYEE;
   }
   return false;
 }
@@ -238,7 +241,7 @@ export function isSuperAdminSelfEdit(input: {
  * Who may edit an employee profile:
  * - Super Admin → everyone, including themselves; only they may edit a Super Admin
  * - Admin → themselves + staff (not other Admins, not Super Admin)
- * - HR → staff only (not Admin, not Super Admin)
+ * - HR → HR, Director, and Employee (not Finance, Admin, or Super Admin)
  */
 export function canEditEmployeeRecord(input: {
   actorRole: AppRole | string;
@@ -264,7 +267,7 @@ export function canEditEmployeeRecord(input: {
   }
 
   if (actor === ROLES.HR_MANAGER) {
-    return STAFF_ROLES.includes(target);
+    return target === ROLES.HR_MANAGER || target === ROLES.DIRECTOR || target === ROLES.EMPLOYEE;
   }
 
   return false;

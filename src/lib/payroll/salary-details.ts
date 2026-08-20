@@ -9,6 +9,7 @@ import {
   upsertSalaryDbRow,
   type SalaryDbRow,
 } from '@/lib/db/salaries';
+import { formatAmountWithCommas } from '@/lib/payroll/period';
 import { listEmployeeDbRows, dbRowToEmployeeRecord } from '@/lib/db/employees';
 import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
@@ -497,19 +498,19 @@ export function toSalaryDetailWebhookFields(
 
   return {
     UniqueKey: detail?.uniqueKey || detail?.employeeId || '',
-    BaseSalary: detail?.salary || '',
-    NetSalary: String(totals.netsalary),
-    OvertimePay: overtimePay,
-    PerformanceBonus: performanceBonus,
-    Contributions: contributions,
-    Allowance: detail?.allowance || '',
-    Tax: detail?.tax || '',
-    Others: others,
+    BaseSalary: formatAmountWithCommas(detail?.salary),
+    NetSalary: formatAmountWithCommas(totals.netsalary),
+    OvertimePay: formatAmountWithCommas(overtimePay),
+    PerformanceBonus: formatAmountWithCommas(performanceBonus),
+    Contributions: formatAmountWithCommas(contributions),
+    Allowance: formatAmountWithCommas(detail?.allowance),
+    Tax: formatAmountWithCommas(detail?.tax),
+    Others: formatAmountWithCommas(others),
     AccountNumber: detail?.accountNumber || '',
     AccountName: detail?.accountName || '',
     BankName: detail?.bankName || '',
-    TotalEarning: String(totals.totalearning),
-    TotalDeduction: String(totals.totaldeduction),
+    TotalEarning: formatAmountWithCommas(totals.totalearning),
+    TotalDeduction: formatAmountWithCommas(totals.totaldeduction),
     Period: slipPeriod || '',
   };
 }

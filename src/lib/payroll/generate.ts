@@ -6,7 +6,7 @@ import {
   upsertSalarySlipRunDetail,
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
-import { formatSalaryPeriod } from '@/lib/payroll/period';
+import { formatAmountWithCommas, formatSalaryPeriod } from '@/lib/payroll/period';
 import { logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
@@ -244,7 +244,7 @@ export async function startSalarySlipRun(
         Designation: detail?.designation || employee.designation,
         BankAccountDetails: employee.bankAccountDetails,
         ...toSalaryDetailWebhookFields(detail, extras, period),
-        BaseSalary: detail?.salary || employee.baseSalary,
+        BaseSalary: formatAmountWithCommas(detail?.salary || employee.baseSalary),
         Status: 'Pending',
       };
     }),
