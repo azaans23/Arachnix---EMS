@@ -33,8 +33,19 @@ export async function middleware(request: NextRequest) {
 
   if (!gate) return response;
 
-  if (!canAccessPath(gate.role, pathname)) {
-    return NextResponse.redirect(new URL(defaultDashboardPathForRole(gate.role), request.url));
+  if (!canAccessPath(gate.role, pathname, {
+    hasFinanceAccess: gate.hasFinanceAccess,
+    isDirector: gate.isDirector,
+  })) {
+    return NextResponse.redirect(
+      new URL(
+        defaultDashboardPathForRole(gate.role, {
+          hasFinanceAccess: gate.hasFinanceAccess,
+          isDirector: gate.isDirector,
+        }),
+        request.url
+      )
+    );
   }
 
   return response;

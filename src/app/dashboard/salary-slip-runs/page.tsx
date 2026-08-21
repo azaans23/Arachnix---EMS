@@ -320,14 +320,16 @@ export default function SalarySlipRunsPage() {
       }
       localStorage.setItem('token', session.access_token);
       let role = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         role = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT fallback */
       }
-      const canView = canAccess(role, 'salary_slip_runs');
-      setCanGenerate(canWrite(role, 'salary_slip_runs'));
+      const canView = canAccess(role, 'salary_slip_runs', flags);
+      setCanGenerate(canWrite(role, 'salary_slip_runs', flags));
       setAllowed(canView);
       if (canView) await load();
       else setLoading(false);

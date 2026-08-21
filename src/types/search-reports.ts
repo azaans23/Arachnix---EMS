@@ -1,4 +1,4 @@
-import type { AppRole } from '@/lib/rbac';
+import type { AccessFlags, AppRole } from '@/lib/rbac';
 import { ROLES, normalizeRole, canAccess } from '@/lib/rbac';
 
 export const SEARCH_SOURCES = [
@@ -96,33 +96,52 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
   },
 ];
 
-export function reportsForRole(role: AppRole | string): ReportDefinition[] {
+export function reportsForRole(role: AppRole | string, flags?: AccessFlags): ReportDefinition[] {
   const normalized = normalizeRole(role);
-  return REPORT_DEFINITIONS.filter((report) => report.roles.includes(normalized));
+  return REPORT_DEFINITIONS.filter((report) => {
+    if (report.roles.includes(normalized)) return true;
+    if (flags?.isDirector && report.roles.includes(ROLES.DIRECTOR)) return true;
+    if (flags?.hasFinanceAccess && report.roles.includes(ROLES.FINANCE_MANAGER)) return true;
+    return false;
+  });
 }
 
-export function canRunReport(role: AppRole | string, type: ReportType): boolean {
-  return reportsForRole(role).some((report) => report.type === type);
+export function canRunReport(
+  role: AppRole | string,
+  type: ReportType,
+  flags?: AccessFlags
+): boolean {
+  return reportsForRole(role, flags).some((report) => report.type === type);
 }
 
 /** Search sources a role is allowed to query. */
-export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
+export function searchSourcesForRole(role: AppRole | string, flags?: AccessFlags): SearchSource[] {
   const normalized = normalizeRole(role);
-  switch (normalized) {
-    case ROLES.SUPER_ADMIN:
-    case ROLES.ADMIN:
-      return [...SEARCH_SOURCES];
-    case ROLES.HR_MANAGER:
-      return ['employee', 'leave_request', 'leave_balance', 'salary'];
-    case ROLES.FINANCE_MANAGER:
-      return ['accounting', 'salary'];
-    case ROLES.DIRECTOR:
-      // Directors may search people/payroll/leave for overview, but detail pages are
-      // blocked; hits link to Reports instead (see hrefForSearchHit).
-      return ['accounting', 'employee', 'salary', 'leave_request'];
-    default:
-      return [];
+  const sources = (() => {
+    switch (normalized) {
+      case ROLES.SUPER_ADMIN:
+      case ROLES.ADMIN:
+        return [...SEARCH_SOURCES];
+      case ROLES.HR_MANAGER:
+        return ['employee', 'leave_request', 'leave_balance', 'salary'] as SearchSource[];
+      case ROLES.FINANCE_MANAGER:
+        return ['accounting', 'salary'] as SearchSource[];
+      case ROLES.DIRECTOR:
+        return ['accounting', 'employee', 'salary', 'leave_request'] as SearchSource[];
+      default:
+        return [] as SearchSource[];
+    }
+  })();
+
+  const extra: SearchSource[] = [];
+  if (flags?.hasFinanceAccess && normalized === ROLES.HR_MANAGER) {
+    extra.push('accounting');
   }
+  if (flags?.isDirector) {
+    extra.push('accounting', 'employee', 'salary', 'leave_request');
+  }
+
+  return Array.from(new Set([...sources, ...extra]));
 }
 
 /**

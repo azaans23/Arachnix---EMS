@@ -7,10 +7,14 @@ import {
 } from '@/lib/auth';
 import {
   assertCanEditEmployee,
+  canAssignHrFinanceAccess,
   canEditEmployeeRecord,
   normalizeRole,
   roleDisplayName,
+  ROLES,
 } from '@/lib/rbac';
+import type { EmployeeWriteInput } from '@/types/employee';
+import { parseToggle } from '@/types/employee';
 import {
   employeeInputToAuditValue,
   employeeRecordToAuditValue,
@@ -26,7 +30,6 @@ import { AUDIT_ACTIONS } from '@/types/audit';
 import { updateSalaryDetails } from '@/lib/payroll/salary-details';
 import { computeSalaryTotals } from '@/lib/payroll/period';
 import type { SalaryDetailInput } from '@/types/salary-slip';
-import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,6 +162,19 @@ export async function POST(request: Request) {
       validation.value.role = roleDisplayName(normalizeRole(previousRole));
     }
 
+    validation.value.isDirector = parseToggle(
+      body.isDirector ?? validation.value.isDirector ?? previous?.isDirector
+    );
+    if (normalizeRole(validation.value.role) !== ROLES.HR_MANAGER) {
+      validation.value.hasFinanceAccess = false;
+    } else if (!canAssignHrFinanceAccess(actorRole || '')) {
+      validation.value.hasFinanceAccess = Boolean(previous?.hasFinanceAccess);
+    } else {
+      validation.value.hasFinanceAccess = parseToggle(
+        body.hasFinanceAccess ?? validation.value.hasFinanceAccess
+      );
+    }
+
     // EMS login is created by registration. Without an Auth user the status is
     // always Inactive (UI shows "Register"). Choosing Inactive while a login
     // exists revokes access: delete Auth and clear the Supabase user link.
@@ -275,12 +291,19 @@ export async function POST(request: Request) {
     // until the employee has a login (use saved link — revoke clears it).
     const hasLogin = Boolean(saved.supabaseUserId);
 
+    const flagsChanging =
+      Boolean(previous) &&
+      (Boolean(previous?.isDirector) !== Boolean(validation.value.isDirector) ||
+        Boolean(previous?.hasFinanceAccess) !== Boolean(validation.value.hasFinanceAccess));
+
     let authRoleSynced = false;
-    if (roleChanging && hasLogin) {
+    if ((roleChanging || flagsChanging) && hasLogin) {
       const { synced } = await syncEmployeeAuthRole({
         supabaseUserId: saved.supabaseUserId,
         email: saved.email || previous?.email || validation.value.email,
         roleLabel: saved.role || validation.value.role,
+        hasFinanceAccess: saved.hasFinanceAccess,
+        isDirector: saved.isDirector,
       });
       authRoleSynced = synced;
     }

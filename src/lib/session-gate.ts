@@ -15,6 +15,8 @@ export const ROLE_COOKIE = LEGACY_ROLE_COOKIE;
 export type GatePayload = {
   uid: string;
   role: AppRole;
+  hasFinanceAccess: boolean;
+  isDirector: boolean;
   exp: number;
 };
 
@@ -92,6 +94,8 @@ export function cookieMaxAgeSeconds(expUnix: number): number {
 export async function createGateToken(input: {
   uid: string;
   role: AppRole | string;
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
   exp?: number;
 }): Promise<{ token: string; exp: number; maxAge: number } | null> {
   const secret = getSigningSecret();
@@ -107,6 +111,8 @@ export async function createGateToken(input: {
   const payload: GatePayload = {
     uid: input.uid,
     role: normalizeRole(input.role),
+    hasFinanceAccess: Boolean(input.hasFinanceAccess),
+    isDirector: Boolean(input.isDirector),
     exp,
   };
   const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
@@ -143,6 +149,8 @@ export async function verifyGateToken(
     return {
       uid: parsed.uid,
       role: normalizeRole(parsed.role),
+      hasFinanceAccess: Boolean(parsed.hasFinanceAccess),
+      isDirector: Boolean(parsed.isDirector),
       exp: parsed.exp,
     };
   } catch {

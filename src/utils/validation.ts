@@ -87,6 +87,8 @@ export const employeeValidationSchema = Yup.object({
     .required('Role is required')
     .oneOf([...KNOWN_ROLE_VALUES], 'Invalid role'),
   emsStatus: Yup.string().trim().required('EMS status is required'),
+  isDirector: Yup.boolean().optional(),
+  hasFinanceAccess: Yup.boolean().optional(),
   originalEmployeeId: Yup.string().trim().optional(),
   originalEmail: Yup.string().trim().optional(),
   // Create-only salary fields (ignored on edit; required when creating).

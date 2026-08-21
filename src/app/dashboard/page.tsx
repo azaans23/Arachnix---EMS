@@ -39,6 +39,8 @@ type SessionUser = {
   email: string;
   role: AppRole;
   roleLabel: string;
+  hasFinanceAccess: boolean;
+  isDirector: boolean;
 };
 
 type Stat = { label: string; value: string; tone?: string };
@@ -80,15 +82,20 @@ export default function DashboardPage() {
         localStorage.setItem('token', session.access_token);
         let role = getTrustedRole(authUser);
         let roleLabel = roleDisplayName(role);
+        let hasFinanceAccess = false;
+        let isDirector = false;
 
         try {
           const synced = await syncSessionCookies(session.access_token);
           role = synced.role;
           roleLabel = synced.roleLabel;
+          hasFinanceAccess = synced.hasFinanceAccess;
+          isDirector = synced.isDirector;
         } catch {
           /* keep JWT role fallback */
         }
 
+        const flags = { hasFinanceAccess, isDirector };
         const name = authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'there';
 
         setUser({
@@ -96,9 +103,11 @@ export default function DashboardPage() {
           email: authUser.email || '',
           role,
           roleLabel,
+          hasFinanceAccess,
+          isDirector,
         });
 
-        if (!hasAnyOverviewSection(overviewSectionsForRole(role))) return;
+        if (!hasAnyOverviewSection(overviewSectionsForRole(role, flags))) return;
 
         setOverviewLoading(true);
         try {
@@ -128,12 +137,20 @@ export default function DashboardPage() {
 
   const firstName = user?.name?.split(' ')[0] || 'there';
   const quickLinks = user
-    ? getNavItemsForRole(user.role)
+    ? getNavItemsForRole(user.role, {
+        hasFinanceAccess: user.hasFinanceAccess,
+        isDirector: user.isDirector,
+      })
         .filter((item) => item.href !== '/dashboard' && item.href !== '/dashboard/settings')
         .slice(0, 6)
     : [];
 
-  const roleSections = user ? overviewSectionsForRole(user.role) : null;
+  const roleSections = user
+    ? overviewSectionsForRole(user.role, {
+        hasFinanceAccess: user.hasFinanceAccess,
+        isDirector: user.isDirector,
+      })
+    : null;
   const sections = overview?.sections ?? roleSections;
   const headcount = overview?.headcount;
   const finance = overview?.finance;
@@ -317,7 +334,14 @@ export default function DashboardPage() {
                 title={item.label}
                 description={descriptionForResource(item.resource)}
                 icon={iconForHref(item.href)}
-                primary={Boolean(user && index === 0 && canAccess(user.role, 'employees'))}
+                primary={Boolean(
+                  user &&
+                    index === 0 &&
+                    canAccess(user.role, 'employees', {
+                      hasFinanceAccess: user.hasFinanceAccess,
+                      isDirector: user.isDirector,
+                    })
+                )}
               />
             ))
           )}

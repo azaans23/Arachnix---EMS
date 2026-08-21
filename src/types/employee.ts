@@ -35,6 +35,10 @@ export interface EmployeeRecord {
   role: string;
   supabaseUserId: string;
   emsStatus: string;
+  /** Sheet/DB toggle — not a system role. */
+  isDirector: boolean;
+  /** Sheet/DB toggle — HR Manager also receives Finance permissions. */
+  hasFinanceAccess: boolean;
   /** Original sheet/webhook payload for passthrough fields */
   raw: Record<string, unknown>;
 }
@@ -55,6 +59,8 @@ export interface EmployeeWriteInput {
   bankAccountDetails: string;
   role: string;
   emsStatus: string;
+  isDirector?: boolean;
+  hasFinanceAccess?: boolean;
   /** Preserved from the sheet on update; set on EMS registration. */
   supabaseUserId?: string;
   /** When editing, the ID currently stored on the sheet (for uniqueness exclusion). */
@@ -126,4 +132,35 @@ export function hasEmsLogin(user: Pick<SheetUser, 'raw'>): boolean {
 
 export function isEmsActive(user: Pick<SheetUser, 'raw'>): boolean {
   return hasEmsLogin(user) && emsStatusOf(user).toLowerCase() === 'active';
+}
+
+export function parseToggle(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return text === 'true' || text === '1' || text === 'yes' || text === 'y' || text === 'on';
+}
+
+export function formatToggle(value: boolean | undefined): string {
+  return value ? 'TRUE' : 'FALSE';
+}
+
+export function isDirectorOf(user: Pick<SheetUser, 'raw'>): boolean {
+  return parseToggle(
+    pickRaw(user.raw, ['IsDirector', 'isDirector', 'isdirector', 'Director', 'director'])
+  );
+}
+
+export function hasFinanceAccessOf(user: Pick<SheetUser, 'raw'>): boolean {
+  return parseToggle(
+    pickRaw(user.raw, [
+      'HasFinanceAccess',
+      'hasFinanceAccess',
+      'hasfinanceaccess',
+      'AssignFinance',
+      'assignFinance',
+    ])
+  );
 }

@@ -8,11 +8,13 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const { role, errorResponse } = await verifyAuth(request);
+    const { role, hasFinanceAccess, isDirector, errorResponse } = await verifyAuth(request);
     if (errorResponse) return errorResponse;
 
+    const flags = { hasFinanceAccess, isDirector };
     const canListEmployees =
-      role !== undefined && (canAccess(role, 'employees') || canAccess(role, 'salary'));
+      role !== undefined &&
+      (canAccess(role, 'employees', flags) || canAccess(role, 'salary', flags));
     if (!canListEmployees) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: employees directory is not available for this role.' },

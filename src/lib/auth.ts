@@ -3,10 +3,12 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
+  AccessContext,
   AppRole,
   canAccess,
   canWrite,
   EMPLOYEE_API_ROLES,
+  getTrustedAccess,
   getTrustedRole,
   hasTrustedAppRole,
   isKnownRoleValue,
@@ -20,12 +22,15 @@ import { fetchEmployees } from '@/lib/sheets/employees';
 export type AuthResult = {
   user?: User;
   role?: AppRole;
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
   errorResponse?: NextResponse;
 };
 
 export async function syncAuthAppMetadataRole(
   userId: string,
-  roleLabel: string
+  roleLabel: string,
+  flags?: { hasFinanceAccess?: boolean; isDirector?: boolean }
 ): Promise<boolean> {
   const id = userId.trim();
   const label = roleLabel.trim();
@@ -34,7 +39,11 @@ export async function syncAuthAppMetadataRole(
   try {
     const admin = getSupabaseAdmin();
     const { error } = await admin.auth.admin.updateUserById(id, {
-      app_metadata: { role: label },
+      app_metadata: {
+        role: label,
+        hasFinanceAccess: Boolean(flags?.hasFinanceAccess),
+        isDirector: Boolean(flags?.isDirector),
+      },
     });
     if (error) {
       console.error('Failed to sync app_metadata.role:', error.message);
@@ -92,6 +101,8 @@ export async function syncEmployeeAuthRole(params: {
   supabaseUserId?: string | null;
   email?: string | null;
   roleLabel: string;
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
 }): Promise<{ synced: boolean; userId: string | null }> {
   const roleLabel = roleDisplayName(normalizeRole(params.roleLabel));
   let userId = String(params.supabaseUserId || '').trim();
@@ -100,45 +111,72 @@ export async function syncEmployeeAuthRole(params: {
   }
   if (!userId) return { synced: false, userId: null };
 
-  const synced = await syncAuthAppMetadataRole(userId, roleLabel);
+  const synced = await syncAuthAppMetadataRole(userId, roleLabel, {
+    hasFinanceAccess: params.hasFinanceAccess,
+    isDirector: params.isDirector,
+  });
   return { synced, userId };
 }
 
-export async function resolveTrustedRole(
+export async function resolveTrustedAccess(
   user: User,
   options?: { reconcileWithSheet?: boolean }
-): Promise<AppRole> {
+): Promise<AccessContext> {
   const email = (user.email || '').trim().toLowerCase();
   const reconcile = Boolean(options?.reconcileWithSheet);
+  const jwt = getTrustedAccess(user);
 
-  let sheetRole: AppRole | null = null;
+  let sheet: AccessContext | null = null;
   const needSheet = reconcile || !hasTrustedAppRole(user);
 
   if (needSheet && email) {
     try {
       const employees = await fetchEmployees();
       const match = employees.find((e) => e.email.trim().toLowerCase() === email);
-      if (match?.role && isKnownRoleValue(match.role)) {
-        sheetRole = normalizeRole(match.role);
+      if (match) {
+        const role =
+          match.role && isKnownRoleValue(match.role)
+            ? normalizeRole(match.role) === ROLES.DIRECTOR
+              ? ROLES.EMPLOYEE
+              : normalizeRole(match.role)
+            : ROLES.EMPLOYEE;
+        sheet = {
+          role,
+          hasFinanceAccess: Boolean(match.hasFinanceAccess) && role === ROLES.HR_MANAGER,
+          isDirector: Boolean(match.isDirector),
+        };
       }
     } catch (err) {
       console.error('Failed to resolve role from employee sheet:', err);
     }
   }
 
-  if (hasTrustedAppRole(user)) {
-    const appRole = getTrustedRole(user);
-    if (reconcile && sheetRole && sheetRole !== appRole) {
-      await syncAuthAppMetadataRole(user.id, roleDisplayName(sheetRole));
-      return sheetRole;
-    }
-    return appRole;
+  const flagsChanged =
+    Boolean(sheet) &&
+    (sheet!.role !== jwt.role ||
+      Boolean(sheet!.hasFinanceAccess) !== Boolean(jwt.hasFinanceAccess) ||
+      Boolean(sheet!.isDirector) !== Boolean(jwt.isDirector));
+
+  if (hasTrustedAppRole(user) && sheet && reconcile && flagsChanged) {
+    await syncAuthAppMetadataRole(user.id, roleDisplayName(sheet.role), sheet);
+    return sheet;
+  }
+  if (hasTrustedAppRole(user)) return jwt;
+
+  if (!sheet) {
+    return { role: ROLES.EMPLOYEE, hasFinanceAccess: false, isDirector: false };
   }
 
-  if (!sheetRole) return ROLES.EMPLOYEE;
+  await syncAuthAppMetadataRole(user.id, roleDisplayName(sheet.role), sheet);
+  return sheet;
+}
 
-  await syncAuthAppMetadataRole(user.id, roleDisplayName(sheetRole));
-  return sheetRole;
+export async function resolveTrustedRole(
+  user: User,
+  options?: { reconcileWithSheet?: boolean }
+): Promise<AppRole> {
+  const access = await resolveTrustedAccess(user, options);
+  return normalizeRole(access.role);
 }
 
 async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
@@ -168,9 +206,14 @@ async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
     };
   }
 
-  const role = await resolveTrustedRole(user);
+  const access = getTrustedAccess(user);
 
-  return { user, role };
+  return {
+    user,
+    role: normalizeRole(access.role),
+    hasFinanceAccess: access.hasFinanceAccess,
+    isDirector: access.isDirector,
+  };
 }
 
 export async function verifyAuth(request: Request): Promise<AuthResult> {
@@ -211,9 +254,15 @@ export async function verifyResourceAccess(
   const result = await getAuthenticatedUser(request);
   if (result.errorResponse) return result;
 
+  const flags = {
+    hasFinanceAccess: result.hasFinanceAccess,
+    isDirector: result.isDirector,
+  };
   const allowed =
     result.role &&
-    (access === 'write' ? canWrite(result.role, resource) : canAccess(result.role, resource));
+    (access === 'write'
+      ? canWrite(result.role, resource, flags)
+      : canAccess(result.role, resource, flags));
 
   if (!allowed) {
     return {

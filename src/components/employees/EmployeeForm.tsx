@@ -33,9 +33,12 @@ import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/util
 import { computeSalaryTotals } from '@/lib/payroll/period';
 import {
   assignableRoleOptions,
+  canAssignHrFinanceAccess,
   canEditEmployeeRecord,
   getTrustedRole,
+  normalizeRole,
   ROLE_OPTIONS,
+  ROLES,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { supabase } from '@/lib/supabase';
@@ -81,6 +84,8 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     role: 'Employee',
     emsStatus: 'Active',
     supabaseUserId: '',
+    isDirector: false,
+    hasFinanceAccess: false,
     tax: '0',
     allowance: '0',
     accountNumber: '',
@@ -591,7 +596,12 @@ export default function EmployeeForm({
               id="role"
               name="role"
               value={formik.values.role}
-              onChange={(val) => formik.setFieldValue('role', val)}
+              onChange={(val) => {
+                formik.setFieldValue('role', val);
+                if (normalizeRole(val) !== ROLES.HR_MANAGER) {
+                  formik.setFieldValue('hasFinanceAccess', false);
+                }
+              }}
               onBlur={() => formik.setFieldTouched('role', true)}
               options={roleOptions}
               icon={<Shield className="h-4 w-4" />}
@@ -600,6 +610,47 @@ export default function EmployeeForm({
             />
             {showError('role') && <p className="text-xs text-danger">{showError('role')}</p>}
           </div>
+
+          <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-[var(--accent)]"
+              checked={Boolean(formik.values.isDirector)}
+              onChange={(event) => formik.setFieldValue('isDirector', event.target.checked)}
+            />
+            <span>
+              <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
+                Director
+              </span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Marks this person as a company director for accounting accounts. This is not a
+                login role.
+              </span>
+            </span>
+          </label>
+
+          {normalizeRole(formik.values.role) === ROLES.HR_MANAGER &&
+            Boolean(actorRole && canAssignHrFinanceAccess(actorRole)) && (
+              <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  checked={Boolean(formik.values.hasFinanceAccess)}
+                  onChange={(event) =>
+                    formik.setFieldValue('hasFinanceAccess', event.target.checked)
+                  }
+                />
+                <span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
+                    Assign finance access
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    HR also receives Finance Manager permissions (salary slips and accounting).
+                    Only Super Admin and Admin can grant this.
+                  </span>
+                </span>
+              </label>
+            )}
 
           <div className="flex flex-col gap-1">
             <label

@@ -1,6 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { listEmployeeDbRows } from '@/lib/db/employees';
-import { normalizeRole, ROLES } from '@/lib/rbac';
 import {
   parsePeriodMonth,
   ACCOUNTING_ARCHIVE_GRACE_MINUTES,
@@ -105,7 +104,7 @@ export type AccountingDirectorAccount = {
 export async function listAccountingDirectorAccounts(): Promise<AccountingDirectorAccount[]> {
   const employees = await listEmployeeDbRows();
   const directors = employees
-    .filter((employee) => normalizeRole(employee.role) === ROLES.DIRECTOR)
+    .filter((employee) => Boolean(employee.isdirector))
     .map((employee) => ({
       employeeId: employee.employeeid,
       name: String(employee.fullname || '').trim(),

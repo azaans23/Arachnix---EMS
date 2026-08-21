@@ -1,4 +1,6 @@
 import type { EmployeeRecord, EmployeeWriteInput } from '@/types/employee';
+import { formatToggle, parseToggle } from '@/types/employee';
+import { normalizeRole, ROLES } from '@/lib/rbac';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import {
   dbRowToEmployeeRecord,
@@ -55,6 +57,15 @@ export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
       ? (rawInput as Record<string, unknown>)
       : ({} as Record<string, unknown>);
 
+  const rawRole = pick(raw, 'Role', 'role') || 'Employee';
+  const isDirector =
+    parseToggle(raw.IsDirector ?? raw.isDirector ?? raw.isdirector) ||
+    normalizeRole(rawRole) === ROLES.DIRECTOR;
+  const hasFinanceAccess = parseToggle(
+    raw.HasFinanceAccess ?? raw.hasFinanceAccess ?? raw.hasfinanceaccess
+  );
+  const role = normalizeRole(rawRole) === ROLES.DIRECTOR ? 'Employee' : rawRole;
+
   return {
     employeeId: pick(raw, 'EmployeeID', 'employeeId', 'EmployeeId'),
     fullName: pick(raw, 'FullName', 'fullName', 'name', 'Name'),
@@ -68,9 +79,11 @@ export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
     joiningDate: toDateInputValue(raw.JoiningDate ?? raw.joiningDate),
     baseSalary: pick(raw, 'BaseSalary', 'baseSalary'),
     bankAccountDetails: pick(raw, 'BankAccountDetails', 'bankAccountDetails'),
-    role: pick(raw, 'Role', 'role') || 'Employee',
+    role,
     supabaseUserId: pick(raw, 'SupabaseUserID', 'supabaseUserId', 'SupabaseUserId'),
     emsStatus: pick(raw, 'EMSStatus', 'emsStatus') || 'Inactive',
+    isDirector,
+    hasFinanceAccess: hasFinanceAccess && normalizeRole(role) === ROLES.HR_MANAGER,
     raw,
   };
 }
@@ -118,6 +131,10 @@ export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, s
     BaseSalary: String(input.baseSalary ?? '').trim(),
     BankAccountDetails: input.bankAccountDetails.trim(),
     Role: input.role.trim(),
+    IsDirector: formatToggle(Boolean(input.isDirector)),
+    HasFinanceAccess: formatToggle(
+      Boolean(input.hasFinanceAccess) && normalizeRole(input.role) === ROLES.HR_MANAGER
+    ),
     SupabaseUserID: String(input.supabaseUserId ?? '').trim(),
     EMSStatus: input.emsStatus.trim() || 'Inactive',
   };
@@ -138,6 +155,8 @@ export function mergeEmployeeWriteInput(
       joiningDate: toDateInputValue(input.joiningDate),
       emsStatus: input.emsStatus.trim() || 'Active',
       supabaseUserId: input.supabaseUserId || '',
+      isDirector: Boolean(input.isDirector),
+      hasFinanceAccess: Boolean(input.hasFinanceAccess),
     };
   }
 
@@ -155,6 +174,8 @@ export function mergeEmployeeWriteInput(
     baseSalary: prefer(String(input.baseSalary ?? ''), previous.baseSalary),
     bankAccountDetails: prefer(input.bankAccountDetails, previous.bankAccountDetails),
     role: prefer(input.role, previous.role),
+    isDirector: input.isDirector ?? previous.isDirector,
+    hasFinanceAccess: input.hasFinanceAccess ?? previous.hasFinanceAccess,
     emsStatus: prefer(input.emsStatus, previous.emsStatus) || 'Inactive',
     // Empty string means "clear login link" (EMS access revoked); do not fall back.
     supabaseUserId:
@@ -181,6 +202,8 @@ export function employeeRecordToAuditValue(employee: EmployeeRecord): Record<str
     BaseSalary: employee.baseSalary,
     BankAccountDetails: employee.bankAccountDetails,
     Role: employee.role,
+    IsDirector: formatToggle(employee.isDirector),
+    HasFinanceAccess: formatToggle(employee.hasFinanceAccess),
     SupabaseUserID: employee.supabaseUserId,
     EMSStatus: employee.emsStatus,
   };
@@ -501,6 +524,8 @@ export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInp
     baseSalary: employee.baseSalary,
     bankAccountDetails: employee.bankAccountDetails,
     role: employee.role || 'Employee',
+    isDirector: employee.isDirector,
+    hasFinanceAccess: employee.hasFinanceAccess,
     emsStatus: employee.emsStatus || 'Active',
     supabaseUserId: employee.supabaseUserId,
     originalEmployeeId: employee.employeeId,

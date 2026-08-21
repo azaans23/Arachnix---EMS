@@ -37,12 +37,19 @@ function matchFields(query: string, fields: Array<{ label: string; value: unknow
 export async function runGlobalSearch(params: {
   query: string;
   role: AppRole | string;
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
   sources?: SearchSource[];
 }): Promise<SearchHit[]> {
   const query = normalizeQuery(params.query);
   if (query.length < 2) return [];
 
-  const allowed = new Set(searchSourcesForRole(params.role));
+  const allowed = new Set(
+    searchSourcesForRole(params.role, {
+      hasFinanceAccess: params.hasFinanceAccess,
+      isDirector: params.isDirector,
+    })
+  );
   const requested = params.sources?.length
     ? params.sources.filter((source) => allowed.has(source))
     : [...allowed];

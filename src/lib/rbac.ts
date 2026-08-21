@@ -7,10 +7,13 @@
  *                   edit self + staff, but cannot manage Super Admin
  * HR Manager      — employee management, leave, salary profiles, offer letters, holidays;
  *                   reports (employee and payroll only);
- *                   can manage HR, Director, and Employee (not Finance, Admin, or Super Admin)
+ *                   can manage HR and Employee (not Finance, Admin, or Super Admin)
  * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
  *                   no employee directory
- * Director        — read-only financial + headcount dashboard
+ * Director        — not a login role. `isDirector` is a toggle on any employee and
+ *                   unlocks read-only dashboard / accounting / reports overlay
+ * HR + finance    — Super Admin / Admin may toggle `hasFinanceAccess` on HR Manager
+ *                   so that person also receives Finance Manager permissions
  */
 
 export const ROLES = {
@@ -23,6 +26,14 @@ export const ROLES = {
 } as const;
 
 export type AppRole = (typeof ROLES)[keyof typeof ROLES];
+
+/** Extra grants stored on the employee row / JWT app_metadata (not roles). */
+export type AccessFlags = {
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
+};
+
+export type AccessContext = AccessFlags & { role: AppRole | string };
 
 export type ResourceKey =
   | 'dashboard'
@@ -48,7 +59,6 @@ export const ROLE_OPTIONS = [
   { label: 'Admin', value: 'Admin' },
   { label: 'HR Manager', value: 'HR Manager' },
   { label: 'Finance Manager', value: 'Finance Manager' },
-  { label: 'Director', value: 'Director' },
   { label: 'Employee', value: 'Employee' },
 ] as const;
 
@@ -111,6 +121,29 @@ export function getTrustedRole(
   return ROLES.EMPLOYEE;
 }
 
+function metadataFlag(
+  user: { app_metadata?: Record<string, unknown> | null } | null | undefined,
+  key: string
+): boolean {
+  const value = user?.app_metadata?.[key];
+  if (typeof value === 'boolean') return value;
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return text === 'true' || text === '1' || text === 'yes';
+}
+
+export function getTrustedAccess(
+  user: { app_metadata?: Record<string, unknown> | null } | null | undefined
+): AccessContext {
+  const role = getTrustedRole(user);
+  return {
+    role,
+    hasFinanceAccess: metadataFlag(user, 'hasFinanceAccess'),
+    isDirector: metadataFlag(user, 'isDirector') || role === ROLES.DIRECTOR,
+  };
+}
+
 /** True when app_metadata already carries a recognized role. */
 export function hasTrustedAppRole(
   user: { app_metadata?: Record<string, unknown> | null } | null | undefined
@@ -127,27 +160,16 @@ export function isKnownRoleValue(raw: string | null | undefined): boolean {
 }
 
 const ASSIGNABLE_ROLES: Record<AppRole, AppRole[]> = {
-  [ROLES.SUPER_ADMIN]: [
-    ROLES.ADMIN,
-    ROLES.HR_MANAGER,
-    ROLES.FINANCE_MANAGER,
-    ROLES.DIRECTOR,
-    ROLES.EMPLOYEE,
-  ],
+  [ROLES.SUPER_ADMIN]: [ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.EMPLOYEE],
   [ROLES.ADMIN]: [ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.EMPLOYEE],
-  [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.DIRECTOR, ROLES.EMPLOYEE],
+  [ROLES.HR_MANAGER]: [ROLES.HR_MANAGER, ROLES.EMPLOYEE],
   [ROLES.FINANCE_MANAGER]: [],
   [ROLES.DIRECTOR]: [],
   [ROLES.EMPLOYEE]: [],
 };
 
 /** Every role except Admin and Super Admin. */
-export const STAFF_ROLES: AppRole[] = [
-  ROLES.HR_MANAGER,
-  ROLES.FINANCE_MANAGER,
-  ROLES.DIRECTOR,
-  ROLES.EMPLOYEE,
-];
+export const STAFF_ROLES: AppRole[] = [ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.EMPLOYEE];
 
 export function isSuperAdminRole(role: AppRole | string | null | undefined): boolean {
   return normalizeRole(role) === ROLES.SUPER_ADMIN;
@@ -183,7 +205,7 @@ export function canManageEmployeeRole(
     return STAFF_ROLES.includes(target);
   }
   if (actor === ROLES.HR_MANAGER) {
-    return target === ROLES.HR_MANAGER || target === ROLES.DIRECTOR || target === ROLES.EMPLOYEE;
+    return target === ROLES.HR_MANAGER || target === ROLES.EMPLOYEE;
   }
   return false;
 }
@@ -242,7 +264,7 @@ export function isSuperAdminSelfEdit(input: {
  * Who may edit an employee profile:
  * - Super Admin → everyone, including themselves; only they may edit a Super Admin
  * - Admin → themselves + staff (not other Admins, not Super Admin)
- * - HR → HR, Director, and Employee (not Finance, Admin, or Super Admin)
+ * - HR → HR and Employee (not Finance, Admin, Super Admin, and not Director-as-role)
  */
 export function canEditEmployeeRecord(input: {
   actorRole: AppRole | string;
@@ -268,7 +290,7 @@ export function canEditEmployeeRecord(input: {
   }
 
   if (actor === ROLES.HR_MANAGER) {
-    return target === ROLES.HR_MANAGER || target === ROLES.DIRECTOR || target === ROLES.EMPLOYEE;
+    return target === ROLES.HR_MANAGER || target === ROLES.EMPLOYEE;
   }
 
   return false;
@@ -446,17 +468,50 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   },
 };
 
-export function getAccessLevel(role: AppRole | string, resource: ResourceKey): AccessLevel {
+export function getAccessLevel(
+  role: AppRole | string,
+  resource: ResourceKey,
+  flags?: AccessFlags
+): AccessLevel {
   const normalized = normalizeRole(role);
-  return PERMISSIONS[resource]?.[normalized] || 'none';
+  const isDirector = Boolean(flags?.isDirector) || normalized === ROLES.DIRECTOR;
+  const baseRole = normalized === ROLES.DIRECTOR ? ROLES.EMPLOYEE : normalized;
+  let level: AccessLevel = PERMISSIONS[resource]?.[baseRole] || 'none';
+
+  if (isDirector) {
+    level = higherAccess(level, PERMISSIONS[resource]?.[ROLES.DIRECTOR] || 'none');
+  }
+  if (flags?.hasFinanceAccess && baseRole === ROLES.HR_MANAGER) {
+    level = higherAccess(level, PERMISSIONS[resource]?.[ROLES.FINANCE_MANAGER] || 'none');
+  }
+  return level;
 }
 
-export function canAccess(role: AppRole | string, resource: ResourceKey): boolean {
-  return getAccessLevel(role, resource) !== 'none';
+function higherAccess(left: AccessLevel, right: AccessLevel): AccessLevel {
+  const rank = (level: AccessLevel) => (level === 'write' ? 2 : level === 'read' ? 1 : 0);
+  return rank(left) >= rank(right) ? left : right;
 }
 
-export function canWrite(role: AppRole | string, resource: ResourceKey): boolean {
-  return getAccessLevel(role, resource) === 'write';
+export function canAccess(
+  role: AppRole | string,
+  resource: ResourceKey,
+  flags?: AccessFlags
+): boolean {
+  return getAccessLevel(role, resource, flags) !== 'none';
+}
+
+export function canWrite(
+  role: AppRole | string,
+  resource: ResourceKey,
+  flags?: AccessFlags
+): boolean {
+  return getAccessLevel(role, resource, flags) === 'write';
+}
+
+/** Super Admin / Admin may grant Finance permissions to an HR Manager. */
+export function canAssignHrFinanceAccess(actorRole: AppRole | string): boolean {
+  const actor = normalizeRole(actorRole);
+  return actor === ROLES.SUPER_ADMIN || actor === ROLES.ADMIN;
 }
 
 /** Route path → resource mapping */
@@ -490,10 +545,14 @@ export function resourceForPath(pathname: string): ResourceKey | null {
   return null;
 }
 
-export function canAccessPath(role: AppRole | string, pathname: string): boolean {
+export function canAccessPath(
+  role: AppRole | string,
+  pathname: string,
+  flags?: AccessFlags
+): boolean {
   const resource = resourceForPath(pathname);
   if (!resource) return false;
-  return canAccess(role, resource);
+  return canAccess(role, resource, flags);
 }
 
 export type NavItemConfig = {
@@ -554,13 +613,13 @@ export const NAV_ITEMS: NavItemConfig[] = [
   { href: '/dashboard/settings', label: 'Settings', resource: 'settings', section: 'workspace' },
 ];
 
-export function getNavItemsForRole(role: AppRole | string): NavItemConfig[] {
-  return NAV_ITEMS.filter((item) => canAccess(role, item.resource));
+export function getNavItemsForRole(role: AppRole | string, flags?: AccessFlags): NavItemConfig[] {
+  return NAV_ITEMS.filter((item) => canAccess(role, item.resource, flags));
 }
 
 /** Safe landing page for roles that cannot access the dashboard overview. */
-export function defaultDashboardPathForRole(role: AppRole | string): string {
-  return getNavItemsForRole(role)[0]?.href || '/login';
+export function defaultDashboardPathForRole(role: AppRole | string, flags?: AccessFlags): string {
+  return getNavItemsForRole(role, flags)[0]?.href || '/login';
 }
 
 /** Roles allowed to mutate employee APIs (get-users, update-user, signup) */

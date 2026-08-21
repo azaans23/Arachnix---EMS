@@ -225,14 +225,16 @@ export default function AccountingRecordsPage() {
       }
       localStorage.setItem('token', session.access_token);
       let role = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         role = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT fallback */
       }
-      const canView = canAccess(role, 'accounting_records');
-      setCanEdit(canWrite(role, 'accounting_records'));
+      const canView = canAccess(role, 'accounting_records', flags);
+      setCanEdit(canWrite(role, 'accounting_records', flags));
       setAllowed(canView);
       if (canView) await load();
       else setLoading(false);

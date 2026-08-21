@@ -57,14 +57,16 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       }
       localStorage.setItem('token', session.access_token);
       let resolved = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         resolved = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT role */
       }
       setRole(resolved);
-      setAllowed(canAccess(resolved, 'search'));
+      setAllowed(canAccess(resolved, 'search', flags));
     };
     void boot();
   }, []);
