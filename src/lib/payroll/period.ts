@@ -1,3 +1,5 @@
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
+
 const MONTH_NAMES = [
   'January',
   'February',
@@ -145,7 +147,7 @@ export function formatAmountWithCommas(value: string | number | null | undefined
   return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-/** Totals for the persisted salary profile (no slip extras). */
+/** Totals for the persisted salary profile (no slip extras). Tax is always FBR withholding. */
 export function computeStoredSalaryTotals(input: {
   salary?: string | number | null;
   allowance?: string | number | null;
@@ -154,6 +156,6 @@ export function computeStoredSalaryTotals(input: {
   return computeSalaryTotals({
     salary: input.salary,
     allowance: input.allowance,
-    tax: input.tax,
+    tax: withholdingTaxFromSalaryFields(input.salary),
   });
 }

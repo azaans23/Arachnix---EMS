@@ -31,6 +31,7 @@ import {
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 import { computeSalaryTotals } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import {
   assignableRoleOptions,
   canAssignHrFinanceAccess,
@@ -326,9 +327,9 @@ export default function EmployeeForm({
     return computeSalaryTotals({
       salary: formik.values.salary || '',
       allowance: formik.values.allowance || '',
-      tax: formik.values.tax || '',
+      tax: withholdingTaxFromSalaryFields(formik.values.salary),
     });
-  }, [formik.values.allowance, formik.values.salary, formik.values.tax, isEditMode]);
+  }, [formik.values.allowance, formik.values.salary, isEditMode]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
@@ -682,8 +683,9 @@ export default function EmployeeForm({
                   Salary profile
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Saved only on the Salary sheet and salaries table. You can update it later on the
-                  Salary page.
+                  Saved only on the Salary sheet and salaries table. Withholding tax is calculated
+                  from base salary using FBR salaried slabs (FY 2026–27). You can update the
+                  profile later on the Salary page.
                 </p>
                 {salaryPreview && (
                   <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
@@ -723,7 +725,14 @@ export default function EmployeeForm({
                   step="1"
                   placeholder="85000"
                   value={formik.values.salary || ''}
-                  onChange={formik.handleChange}
+                  onChange={(event) => {
+                    formik.handleChange(event);
+                    void formik.setFieldValue(
+                      'tax',
+                      withholdingTaxFromSalaryFields(event.target.value),
+                      false
+                    );
+                  }}
                   onBlur={formik.handleBlur}
                   className={fieldClass('salary')}
                 />
@@ -750,7 +759,7 @@ export default function EmployeeForm({
               </Field>
 
               <Field
-                label="Tax (PKR)"
+                label="Withholding tax (PKR)"
                 htmlFor="tax"
                 error={showError('tax')}
                 icon={<DollarSign className="h-4 w-4" />}
@@ -761,11 +770,12 @@ export default function EmployeeForm({
                   type="number"
                   min="0"
                   step="1"
-                  placeholder="0"
-                  value={formik.values.tax || ''}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={fieldClass('tax')}
+                  readOnly
+                  tabIndex={-1}
+                  value={formik.values.tax || '0'}
+                  className={`${fieldClass('tax')} cursor-not-allowed text-muted shadow-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]`}
+                  aria-readonly="true"
+                  title="Calculated from base salary using FBR salaried withholding tax slabs"
                 />
               </Field>
 

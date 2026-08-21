@@ -26,6 +26,7 @@ import { canAccess, canWrite, getTrustedRole } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import { computeStoredSalaryTotals } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   SALARY_DETAIL_FIELDS,
@@ -55,12 +56,13 @@ type EmployeeOption = SheetUser & {
 };
 
 function toStoredPayload(form: SalaryDetailInput): SalaryDetailInput {
-  const totals = computeStoredSalaryTotals(form);
+  const tax = withholdingTaxFromSalaryFields(form.salary);
+  const totals = computeStoredSalaryTotals({ ...form, tax });
   return {
     employeeId: form.employeeId,
     salary: form.salary,
     allowance: form.allowance || '0',
-    tax: form.tax || '0',
+    tax,
     accountNumber: form.accountNumber,
     accountName: form.accountName,
     bankName: form.bankName,
@@ -75,7 +77,7 @@ function toEditForm(detail: SalaryDetailRecord): SalaryDetailInput {
     employeeId: detail.employeeId,
     salary: detail.salary,
     allowance: detail.allowance,
-    tax: detail.tax,
+    tax: withholdingTaxFromSalaryFields(detail.salary),
     netSalary: detail.netSalary,
     accountNumber: detail.accountNumber,
     accountName: detail.accountName,
@@ -90,7 +92,7 @@ function emptyCreateForm(employee: EmployeeOption): SalaryDetailInput {
     employeeId: employee.employeeId,
     salary: '',
     allowance: '',
-    tax: '',
+    tax: '0',
     accountNumber: '',
     accountName: '',
     bankName: '',
@@ -434,7 +436,14 @@ export default function SalaryPage() {
   };
 
   const updateEditField = (field: SalaryDetailFieldKey, value: string) => {
-    setEditForm((current) => (current ? { ...current, [field]: value } : current));
+    setEditForm((current) => {
+      if (!current) return current;
+      const next = { ...current, [field]: value };
+      if (field === 'salary') {
+        next.tax = withholdingTaxFromSalaryFields(next.salary);
+      }
+      return next;
+    });
   };
 
   const loadEmployees = async () => {
@@ -497,7 +506,14 @@ export default function SalaryPage() {
   };
 
   const updateCreateField = (field: SalaryDetailFieldKey, value: string) => {
-    setCreateForm((current) => (current ? { ...current, [field]: value } : current));
+    setCreateForm((current) => {
+      if (!current) return current;
+      const next = { ...current, [field]: value };
+      if (field === 'salary') {
+        next.tax = withholdingTaxFromSalaryFields(next.salary);
+      }
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -728,23 +744,41 @@ export default function SalaryPage() {
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   {SALARY_FORM_FIELDS.map((field) => {
-                    const empty = !String(editForm[field.key] || '').trim();
+                    const empty =
+                      field.key !== 'tax' && !String(editForm[field.key] || '').trim();
+                    const isTax = field.key === 'tax';
                     return (
                       <label key={field.key} className="block text-xs">
                         <span
                           className={`mb-1 block font-medium ${empty ? 'text-danger' : 'text-muted'}`}
                         >
-                          {field.label}
+                          {isTax ? 'Withholding tax' : field.label}
                           {empty ? ' (empty)' : ''}
                         </span>
                         <input
                           type="text"
                           value={editForm[field.key] || ''}
-                          onChange={(e) => updateEditField(field.key, e.target.value)}
-                          className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
-                            empty ? 'border-danger-border ring-1 ring-danger/30' : 'border-border'
-                          }`}
-                          placeholder={`Enter ${field.label}`}
+                          readOnly={isTax}
+                          tabIndex={isTax ? -1 : undefined}
+                          aria-readonly={isTax ? true : undefined}
+                          title={
+                            isTax
+                              ? 'Calculated from base salary using FBR salaried withholding tax slabs'
+                              : undefined
+                          }
+                          onChange={
+                            isTax ? undefined : (e) => updateEditField(field.key, e.target.value)
+                          }
+                          className={
+                            isTax
+                              ? 'h-9 w-full cursor-not-allowed rounded-md border border-border px-3 text-sm text-muted shadow-none focus:outline-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]'
+                              : `h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                                  empty
+                                    ? 'border-danger-border ring-1 ring-danger/30'
+                                    : 'border-border'
+                                }`
+                          }
+                          placeholder={isTax ? undefined : `Enter ${field.label}`}
                         />
                       </label>
                     );
@@ -954,7 +988,9 @@ export default function SalaryPage() {
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
                       {SALARY_FORM_FIELDS.map((field) => {
-                        const empty = !String(createForm[field.key] || '').trim();
+                        const empty =
+                          field.key !== 'tax' && !String(createForm[field.key] || '').trim();
+                        const isTax = field.key === 'tax';
                         return (
                           <label key={field.key} className="block text-xs">
                             <span
@@ -962,19 +998,35 @@ export default function SalaryPage() {
                                 empty ? 'text-danger' : 'text-muted'
                               }`}
                             >
-                              {field.label}
+                              {isTax ? 'Withholding tax' : field.label}
                               {empty ? ' (empty)' : ''}
                             </span>
                             <input
                               type="text"
                               value={createForm[field.key] || ''}
-                              onChange={(e) => updateCreateField(field.key, e.target.value)}
-                              className={`h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
-                                empty
-                                  ? 'border-danger-border ring-1 ring-danger/30'
-                                  : 'border-border'
-                              }`}
-                              placeholder={`Enter ${field.label}`}
+                              readOnly={isTax}
+                              tabIndex={isTax ? -1 : undefined}
+                              aria-readonly={isTax ? true : undefined}
+                              title={
+                                isTax
+                                  ? 'Calculated from base salary using FBR salaried withholding tax slabs'
+                                  : undefined
+                              }
+                              onChange={
+                                isTax
+                                  ? undefined
+                                  : (e) => updateCreateField(field.key, e.target.value)
+                              }
+                              className={
+                                isTax
+                                  ? 'h-9 w-full cursor-not-allowed rounded-md border border-border px-3 text-sm text-muted shadow-none focus:outline-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]'
+                                  : `h-9 w-full rounded-md border bg-surface px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)] ${
+                                      empty
+                                        ? 'border-danger-border ring-1 ring-danger/30'
+                                        : 'border-border'
+                                    }`
+                              }
+                              placeholder={isTax ? undefined : `Enter ${field.label}`}
                             />
                           </label>
                         );

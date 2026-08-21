@@ -30,6 +30,7 @@ import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import { updateSalaryDetails } from '@/lib/payroll/salary-details';
 import { computeSalaryTotals } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import type { SalaryDetailInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
@@ -37,7 +38,7 @@ export const dynamic = 'force-dynamic';
 function buildCreateSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput {
   const salary = String(input.salary || '').trim();
   const allowance = String(input.allowance ?? '0').trim() || '0';
-  const tax = String(input.tax ?? '0').trim() || '0';
+  const tax = withholdingTaxFromSalaryFields(salary);
   const totals = computeSalaryTotals({ salary, allowance, tax });
 
   return {
@@ -206,9 +207,6 @@ export async function POST(request: Request) {
       const fieldErrors: Record<string, string> = {};
       if (!createSalary.salary || Number(createSalary.salary) <= 0) {
         fieldErrors.salary = 'Base salary is required';
-      }
-      if (!createSalary.tax && createSalary.tax !== '0') {
-        fieldErrors.tax = 'Tax is required';
       }
       if (!createSalary.allowance && createSalary.allowance !== '0') {
         fieldErrors.allowance = 'Allowance is required';

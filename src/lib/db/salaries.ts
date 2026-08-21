@@ -77,17 +77,6 @@ export type SalaryDbWriteInput = SalaryDetailInput & {
 
 const TABLE = 'salaries';
 
-function toMoney(value: string | number | null | undefined, field: string): number {
-  if (value === undefined || value === null || String(value).trim() === '') {
-    return 0;
-  }
-  const n = Number(String(value).replace(/,/g, '').trim());
-  if (!Number.isFinite(n) || n < 0) {
-    throw new Error(`Invalid ${field}: ${value}`);
-  }
-  return n;
-}
-
 function moneyToString(value: number | null | undefined): string {
   if (value === undefined || value === null || !Number.isFinite(Number(value))) return '';
   return String(value);
@@ -111,30 +100,17 @@ export function toSalaryDbRow(input: SalaryDbWriteInput): SalaryDbWriteRow {
     throw new Error(`Base Salary is required for ${employeeid}.`);
   }
 
-  const totalearning =
-    input.totalEarning !== undefined && String(input.totalEarning).trim() !== ''
-      ? toMoney(input.totalEarning, 'TotalEarning')
-      : computed.totalearning;
-  const totaldeduction =
-    input.totalDeduction !== undefined && String(input.totalDeduction).trim() !== ''
-      ? toMoney(input.totalDeduction, 'TotalDeduction')
-      : computed.totaldeduction;
-  const netsalary =
-    input.netSalary !== undefined && String(input.netSalary).trim() !== ''
-      ? toMoney(input.netSalary, 'NetSalary')
-      : computed.netsalary;
-
   return {
     employeeid,
     basesalary,
-    netsalary,
+    netsalary: computed.netsalary,
     allowance: computed.allowance,
     tax: computed.tax,
     accountnumber,
     accountname,
     bankname,
-    totaldeduction,
-    totalearning,
+    totaldeduction: computed.totaldeduction,
+    totalearning: computed.totalearning,
     updatedat: new Date().toISOString(),
   };
 }
