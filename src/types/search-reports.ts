@@ -50,7 +50,7 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     type: 'payroll',
     label: 'Payroll',
     description: 'Salary rows for a period — base, earnings, deductions, net.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.FINANCE_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'leave',
@@ -62,7 +62,7 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
     type: 'employee',
     label: 'Employee',
     description: 'Roster snapshot — department, designation, status, join date.',
-    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.DIRECTOR],
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR_MANAGER, ROLES.DIRECTOR],
   },
   {
     type: 'expense',

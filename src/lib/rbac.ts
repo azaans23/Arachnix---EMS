@@ -6,6 +6,7 @@
  * Admin           — broad operational access; can create Admin/HR/Finance/Employee roles,
  *                   edit self + staff, but cannot manage Super Admin
  * HR Manager      — employee management, leave, salary profiles, offer letters, holidays;
+ *                   reports (employee and payroll only);
  *                   can manage HR, Director, and Employee (not Finance, Admin, or Super Admin)
  * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
  *                   no employee directory
@@ -431,6 +432,7 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
   reports: {
     [ROLES.SUPER_ADMIN]: 'read',
     [ROLES.ADMIN]: 'read',
+    [ROLES.HR_MANAGER]: 'read',
     [ROLES.FINANCE_MANAGER]: 'read',
     [ROLES.DIRECTOR]: 'read',
   },
