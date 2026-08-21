@@ -1,4 +1,5 @@
 import { listAccountingRecords } from '@/lib/db/accounting';
+import { ACCOUNTING_NO_FILE_LABEL } from '@/types/accounting';
 import { listEmployeeDbRows } from '@/lib/db/employees';
 import { listLeaveBalances } from '@/lib/db/leave-balances';
 import { listLeaveRequests } from '@/lib/db/leave-requests';
@@ -136,7 +137,7 @@ async function searchAccounting(query: string, role: AppRole | string): Promise<
       { label: 'Category', value: row.category },
       { label: 'Transaction type', value: row.transactionType },
       { label: 'Document type', value: row.category },
-      { label: 'File name', value: row.fileName },
+      { label: 'File name', value: row.fileName || ACCOUNTING_NO_FILE_LABEL },
       { label: 'Notes', value: row.notes },
       { label: 'Source', value: row.source },
       { label: 'Destination', value: row.destination },

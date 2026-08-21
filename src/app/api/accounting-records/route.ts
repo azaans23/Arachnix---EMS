@@ -62,10 +62,8 @@ export async function POST(request: Request) {
     if (errorResponse) return errorResponse;
 
     const form = await request.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) {
-      return NextResponse.json({ success: false, error: 'A file is required.' }, { status: 400 });
-    }
+    const rawFile = form.get('file');
+    const file = rawFile instanceof File && rawFile.size > 0 ? rawFile : null;
 
     const fields: Record<string, unknown> = {};
     for (const key of [
@@ -92,7 +90,8 @@ export async function POST(request: Request) {
     });
 
     // Non-blocking: respond to the UI immediately; Drive/Sheet continue in after(),
-    // which also owns the rollback if the workflow never returns a Drive link.
+    // which also owns the rollback if a file was attached and the workflow never
+    // returns a Drive link.
     after(async () => {
       try {
         await dispatchAccountingUploadWebhook(prepared);
@@ -101,10 +100,13 @@ export async function POST(request: Request) {
       }
     });
 
+    const pendingDrive = prepared.hasFile;
     return NextResponse.json({
       success: true,
-      data: { ...prepared.record, period: prepared.period, pendingDrive: true },
-      message: 'Upload accepted. Drive archival is running in the background.',
+      data: { ...prepared.record, period: prepared.period, pendingDrive },
+      message: pendingDrive
+        ? 'Upload accepted. Drive archival is running in the background.'
+        : 'Transaction saved.',
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to upload accounting file.';

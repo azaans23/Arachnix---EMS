@@ -5,6 +5,7 @@ import {
   ACCOUNTING_ARCHIVE_GRACE_MINUTES,
   ACCOUNTING_COMPANY_ROOT,
   ACCOUNTING_BANK_ACCOUNT,
+  ACCOUNTING_NO_FILE_LABEL,
   nextAccountingInvoiceReference,
   type AccountingRecord,
   type AccountingUploadInput,
@@ -61,6 +62,8 @@ function toUtcTimestamp(value: string | null): string {
 
 export function mapAccountingRow(row: AccountingDbRow): AccountingRecord {
   const driveLink = (row.drivelink || '').trim();
+  const fileName = (row.filename || '').trim();
+  const hasFile = Boolean(fileName) && fileName !== ACCOUNTING_NO_FILE_LABEL;
   const uploadDate = toUtcTimestamp(row.uploaddate);
   const uploadedAt = uploadDate ? Date.parse(uploadDate) : NaN;
   const withinGrace =
@@ -80,12 +83,13 @@ export function mapAccountingRow(row: AccountingDbRow): AccountingRecord {
     destination: row.destination || '',
     reference: row.reference || '',
     notes: row.notes || '',
-    fileName: row.filename || '',
+    fileName: hasFile ? fileName : '',
     driveLink,
     uploadedBy: row.uploadedby || '',
     status: row.status || 'Active',
-    pendingDrive: !driveLink && withinGrace,
-    driveMissing: !driveLink && !withinGrace,
+    hasFile,
+    pendingDrive: hasFile && !driveLink && withinGrace,
+    driveMissing: hasFile && !driveLink && !withinGrace,
   };
 }
 
@@ -144,8 +148,8 @@ export function toWebhookAccountingRow(record: AccountingRecord, period?: string
     Destination: record.destination || '',
     Reference: record.reference || '',
     Notes: record.notes || '',
-    FileName: record.fileName || '',
-    DriveLink: record.driveLink || '',
+    FileName: record.fileName || ACCOUNTING_NO_FILE_LABEL,
+    DriveLink: record.driveLink || (record.fileName ? '' : ACCOUNTING_NO_FILE_LABEL),
     UploadedBy: record.uploadedBy || '',
     Status: record.status || 'Active',
     Period: period || '',
@@ -258,7 +262,7 @@ export async function createAccountingRecord(input: {
     destination: input.meta.destination || null,
     reference,
     notes: input.meta.notes || null,
-    filename: input.fileName,
+    filename: input.fileName.trim() || null,
     drivelink: null,
     uploadedby: input.uploadedBy.slice(0, 255),
     status: 'Active',

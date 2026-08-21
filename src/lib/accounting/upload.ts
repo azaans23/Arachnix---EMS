@@ -32,6 +32,7 @@ export type PreparedAccountingUpload = {
   originalFileName: string;
   mimeType: string;
   bytes: Uint8Array;
+  hasFile: boolean;
 };
 
 async function postAccountingUploadWebhook(form: FormData) {
@@ -114,7 +115,7 @@ function extractDriveLink(value: unknown, depth = 0): string {
  */
 export async function startAccountingUpload(params: {
   fields: Record<string, unknown> | AccountingUploadInput;
-  file: File;
+  file: File | null;
   uploadedBy: string;
 }): Promise<PreparedAccountingUpload> {
   const meta =
@@ -130,27 +131,34 @@ export async function startAccountingUpload(params: {
     throw new Error('Period must be YYYY-MM.');
   }
 
-  const originalFileName = params.file.name || 'upload.bin';
-  if (!isAllowedAccountingFileName(originalFileName)) {
-    throw new Error('File must be PDF, PNG, JPEG, CSV, Excel, or ZIP.');
-  }
-  if (params.file.size <= 0) throw new Error('File is empty.');
-  if (params.file.size > MAX_FILE_BYTES) {
-    throw new Error('File is too large (max 20 MB).');
+  const file = params.file && params.file.size > 0 ? params.file : null;
+  let originalFileName = '';
+  let targetFileName = '';
+  let bytes = new Uint8Array();
+  let mimeType = '';
+
+  if (file) {
+    originalFileName = file.name || 'upload.bin';
+    if (!isAllowedAccountingFileName(originalFileName)) {
+      throw new Error('File must be PDF, PNG, JPEG, CSV, Excel, or ZIP.');
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      throw new Error('File is too large (max 20 MB).');
+    }
+
+    targetFileName = buildAccountingDriveFileName({
+      date: `${meta.period}-01`,
+      account: meta.account,
+      transactionType: meta.transactionType,
+      clientVendor: meta.clientVendor,
+      amount: meta.amount,
+      reference: meta.reference,
+      originalFileName,
+    });
+    bytes = new Uint8Array(await file.arrayBuffer());
+    mimeType = file.type || 'application/octet-stream';
   }
 
-  const dateForName = `${meta.period}-01`;
-  const targetFileName = buildAccountingDriveFileName({
-    date: dateForName,
-    account: meta.account,
-    transactionType: meta.transactionType,
-    clientVendor: meta.clientVendor,
-    amount: meta.amount,
-    reference: meta.reference,
-    originalFileName,
-  });
-
-  const bytes = new Uint8Array(await params.file.arrayBuffer());
   const record = await createAccountingRecord({
     meta,
     fileName: targetFileName,
@@ -186,8 +194,9 @@ export async function startAccountingUpload(params: {
     period: meta.period,
     targetFileName,
     originalFileName,
-    mimeType: params.file.type || 'application/octet-stream',
+    mimeType,
     bytes,
+    hasFile: Boolean(file),
   };
 }
 
@@ -204,11 +213,13 @@ export async function startAccountingUpload(params: {
 export async function dispatchAccountingUploadWebhook(
   prepared: PreparedAccountingUpload
 ): Promise<void> {
-  const blob = new Blob([Buffer.from(prepared.bytes)], { type: prepared.mimeType });
   const form = new FormData();
-  form.append('file', blob, prepared.targetFileName);
-  form.append('targetFileName', prepared.targetFileName);
-  form.append('originalFileName', prepared.originalFileName);
+  if (prepared.hasFile) {
+    const blob = new Blob([Buffer.from(prepared.bytes)], { type: prepared.mimeType });
+    form.append('file', blob, prepared.targetFileName);
+    form.append('targetFileName', prepared.targetFileName);
+    form.append('originalFileName', prepared.originalFileName);
+  }
   form.append('record', JSON.stringify(toWebhookAccountingRow(prepared.record, prepared.period)));
   form.append('action', 'upload');
 
@@ -216,18 +227,24 @@ export async function dispatchAccountingUploadWebhook(
   try {
     responseText = await postAccountingUploadWebhook(form);
   } catch (error) {
-    await rollbackAccountingUpload(
-      prepared,
-      error instanceof Error ? error.message : 'webhook failed'
-    );
+    if (prepared.hasFile) {
+      await rollbackAccountingUpload(
+        prepared,
+        error instanceof Error ? error.message : 'webhook failed'
+      );
+    }
     throw error;
   }
 
   const workflowError = parseWorkflowError(responseText);
   if (workflowError) {
-    await rollbackAccountingUpload(prepared, workflowError);
+    if (prepared.hasFile) {
+      await rollbackAccountingUpload(prepared, workflowError);
+    }
     throw new Error(`Accounting workflow failed: ${workflowError}`);
   }
+
+  if (!prepared.hasFile) return;
 
   const driveLink = parseDriveLink(responseText);
   if (driveLink) {
