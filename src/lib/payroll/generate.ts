@@ -54,10 +54,8 @@ export function parseBaseSalary(value: unknown): number {
 }
 
 export function hasPayrollSalary(employee: EmployeeRecord, salaryIds?: Set<string>): boolean {
-  if (salaryIds) {
-    return salaryIds.has(employee.employeeId.trim().toLowerCase());
-  }
-  return parseBaseSalary(employee.baseSalary) > 0;
+  if (!salaryIds) return false;
+  return salaryIds.has(employee.employeeId.trim().toLowerCase());
 }
 
 export function payrollEligibilityReason(
@@ -242,9 +240,12 @@ export async function startSalarySlipRun(
         Email: detail?.email || employee.email,
         Department: detail?.department || employee.department,
         Designation: detail?.designation || employee.designation,
-        BankAccountDetails: employee.bankAccountDetails,
+        BankAccountDetails: [detail?.bankName, detail?.accountName, detail?.accountNumber]
+          .map((part) => String(part || '').trim())
+          .filter(Boolean)
+          .join(' · '),
         ...toSalaryDetailWebhookFields(detail, extras, period),
-        BaseSalary: formatAmountWithCommas(detail?.salary || employee.baseSalary),
+        BaseSalary: formatAmountWithCommas(detail?.salary || ''),
         Status: 'Pending',
       };
     }),

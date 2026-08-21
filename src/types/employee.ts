@@ -30,8 +30,6 @@ export interface EmployeeRecord {
   designation: string;
   employeeType: string;
   joiningDate: string;
-  baseSalary: string;
-  bankAccountDetails: string;
   role: string;
   supabaseUserId: string;
   emsStatus: string;
@@ -55,8 +53,6 @@ export interface EmployeeWriteInput {
   designation: string;
   employmentType: string;
   joiningDate: string;
-  baseSalary: string;
-  bankAccountDetails: string;
   role: string;
   emsStatus: string;
   isDirector?: boolean;
@@ -67,15 +63,6 @@ export interface EmployeeWriteInput {
   originalEmployeeId?: string;
   /** When editing, the email currently stored on the sheet. */
   originalEmail?: string;
-  /**
-   * Create-only: initial salary row fields. Tax / allowance are collected on
-   * hire; overtime, bonus, contributions, and others stay empty.
-   */
-  tax?: string;
-  allowance?: string;
-  accountNumber?: string;
-  accountName?: string;
-  bankName?: string;
 }
 
 /** Compact shape used by list UI / modals. */

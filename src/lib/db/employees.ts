@@ -13,8 +13,6 @@ export type EmployeeDbRow = {
   designation: string;
   employeetype: string;
   joiningdate: string;
-  basesalary: number;
-  bankaccountdetails: string | null;
   role: string;
   supabaseuserid: string | null;
   emsstatus: string;
@@ -44,14 +42,6 @@ function toDateOrNull(value: string): string | null {
   return emptyToNull(toDateValue(value));
 }
 
-function toSalary(value: string): number {
-  const n = Number(String(value ?? '').trim());
-  if (!Number.isFinite(n)) {
-    throw new Error(`Invalid base salary: ${value}`);
-  }
-  return n;
-}
-
 function toUuidOrNull(value: string | undefined): string | null {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) return null;
@@ -75,8 +65,6 @@ export function toEmployeeDbRow(input: EmployeeWriteInput): EmployeeDbRow {
     designation: input.designation.trim(),
     employeetype: input.employmentType.trim(),
     joiningdate,
-    basesalary: toSalary(input.baseSalary),
-    bankaccountdetails: emptyToNull(input.bankAccountDetails),
     role: input.role.trim(),
     supabaseuserid: toUuidOrNull(input.supabaseUserId),
     emsstatus: (input.emsStatus || 'Active').trim() || 'Active',
@@ -174,8 +162,6 @@ export async function findEmployeeDbRowByIdOrEmail(
 export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
   const dob = row.dob ? String(row.dob).slice(0, 10) : '';
   const joiningDate = row.joiningdate ? String(row.joiningdate).slice(0, 10) : '';
-  const baseSalary =
-    row.basesalary === null || row.basesalary === undefined ? '' : String(row.basesalary);
   const supabaseUserId = row.supabaseuserid ? String(row.supabaseuserid) : '';
 
   const raw: Record<string, unknown> = {
@@ -189,8 +175,6 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
     Designation: row.designation,
     EmployeeType: row.employeetype,
     JoiningDate: joiningDate,
-    BaseSalary: baseSalary,
-    BankAccountDetails: row.bankaccountdetails || '',
     Role: row.role,
     SupabaseUserID: supabaseUserId,
     EMSStatus: row.emsstatus || 'Inactive',
@@ -211,8 +195,6 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
     designation: String(row.designation || ''),
     employeeType: String(row.employeetype || ''),
     joiningDate,
-    baseSalary,
-    bankAccountDetails: String(row.bankaccountdetails || ''),
     role: roleLabel,
     supabaseUserId,
     emsStatus: String(row.emsstatus || 'Inactive'),

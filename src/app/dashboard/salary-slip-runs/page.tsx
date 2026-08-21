@@ -289,7 +289,7 @@ export default function SalarySlipRunsPage() {
             const record = mapRawToEmployee(row);
             const sheetUser = toSheetUser(record);
             const salaryDetail = salaryById.get(record.employeeId.trim().toLowerCase());
-            const salary = parseBaseSalary(salaryDetail?.salary || record.baseSalary);
+            const salary = parseBaseSalary(salaryDetail?.salary);
             return {
               ...sheetUser,
               eligible: hasPayrollSalary(record, salaryIds),

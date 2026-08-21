@@ -150,11 +150,13 @@ export function salaryDbRowToDetail(
     employeeType?: string;
     role?: string;
     emsStatus?: string;
-    baseSalary?: string;
-    bankAccountDetails?: string;
   } | null
 ): SalaryDetailRecord {
   const uniqueKey = row.uniquekey || row.employeeid;
+  const bankAccountDetails = [row.bankname, row.accountname, row.accountnumber]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' · ');
   return {
     employeeId: row.employeeid,
     fullName: employee?.fullName || '',
@@ -165,7 +167,7 @@ export function salaryDbRowToDetail(
     employeeType: employee?.employeeType || '',
     role: employee?.role || '',
     emsStatus: employee?.emsStatus || '',
-    baseSalary: employee?.baseSalary || moneyToString(row.basesalary),
+    baseSalary: moneyToString(row.basesalary),
     salary: moneyToString(row.basesalary),
     netSalary: moneyToString(row.netsalary),
     allowance: moneyToString(row.allowance),
@@ -175,7 +177,7 @@ export function salaryDbRowToDetail(
     accountNumber: row.accountnumber,
     accountName: row.accountname,
     bankName: row.bankname,
-    bankAccountDetails: employee?.bankAccountDetails || '',
+    bankAccountDetails,
     uniqueKey,
     salaryId: String(row.salaryid),
     raw: {

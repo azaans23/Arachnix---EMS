@@ -146,8 +146,6 @@ export async function POST(request: Request) {
                 designation: '',
                 employmentType: '',
                 joiningDate: '',
-                baseSalary: '',
-                bankAccountDetails: '',
                 role: assignedRoleLabel,
                 emsStatus: 'Active',
               }),

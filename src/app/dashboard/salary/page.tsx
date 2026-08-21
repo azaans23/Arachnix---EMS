@@ -52,8 +52,6 @@ type EmployeeOption = SheetUser & {
   department: string;
   designation: string;
   emsStatus: string;
-  baseSalary: string;
-  bankAccountDetails: string;
 };
 
 function toStoredPayload(form: SalaryDetailInput): SalaryDetailInput {
@@ -459,8 +457,6 @@ export default function SalaryPage() {
             department: record.department,
             designation: record.designation,
             emsStatus: record.emsStatus,
-            baseSalary: record.baseSalary,
-            bankAccountDetails: record.bankAccountDetails,
           } as EmployeeOption;
         })
       );
