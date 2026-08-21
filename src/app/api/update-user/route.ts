@@ -8,6 +8,7 @@ import {
 import {
   assertCanEditEmployee,
   canAssignHrFinanceAccess,
+  canAssignDirectorFlag,
   canEditEmployeeRecord,
   normalizeRole,
   roleDisplayName,
@@ -27,8 +28,31 @@ import {
 } from '@/lib/sheets/employees';
 import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
+import { updateSalaryDetails } from '@/lib/payroll/salary-details';
+import { computeSalaryTotals } from '@/lib/payroll/period';
+import type { SalaryDetailInput } from '@/types/salary-slip';
 
 export const dynamic = 'force-dynamic';
+
+function buildCreateSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput {
+  const salary = String(input.salary || '').trim();
+  const allowance = String(input.allowance ?? '0').trim() || '0';
+  const tax = String(input.tax ?? '0').trim() || '0';
+  const totals = computeSalaryTotals({ salary, allowance, tax });
+
+  return {
+    employeeId: input.employeeId.trim(),
+    salary,
+    allowance,
+    tax,
+    accountNumber: String(input.accountNumber || '').trim(),
+    accountName: String(input.accountName || input.name || '').trim(),
+    bankName: String(input.bankName || '').trim(),
+    totalEarning: String(totals.totalearning),
+    totalDeduction: String(totals.totaldeduction),
+    netSalary: String(totals.netsalary),
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -117,9 +141,13 @@ export async function POST(request: Request) {
       validation.value.role = roleDisplayName(normalizeRole(previousRole));
     }
 
-    validation.value.isDirector = parseToggle(
-      body.isDirector ?? validation.value.isDirector ?? previous?.isDirector
-    );
+    if (canAssignDirectorFlag(actorRole || '')) {
+      validation.value.isDirector = parseToggle(
+        body.isDirector ?? validation.value.isDirector ?? previous?.isDirector
+      );
+    } else {
+      validation.value.isDirector = Boolean(previous?.isDirector);
+    }
     if (normalizeRole(validation.value.role) !== ROLES.HR_MANAGER) {
       validation.value.hasFinanceAccess = false;
     } else if (!canAssignHrFinanceAccess(actorRole || '')) {
@@ -171,6 +199,35 @@ export async function POST(request: Request) {
       }
     }
 
+    const isCreate = !previous;
+    let createSalary: SalaryDetailInput | null = null;
+    if (isCreate) {
+      createSalary = buildCreateSalaryDetail(validation.value);
+      const fieldErrors: Record<string, string> = {};
+      if (!createSalary.salary || Number(createSalary.salary) <= 0) {
+        fieldErrors.salary = 'Base salary is required';
+      }
+      if (!createSalary.tax && createSalary.tax !== '0') {
+        fieldErrors.tax = 'Tax is required';
+      }
+      if (!createSalary.allowance && createSalary.allowance !== '0') {
+        fieldErrors.allowance = 'Allowance is required';
+      }
+      if (!createSalary.bankName) fieldErrors.bankName = 'Bank name is required';
+      if (!createSalary.accountName) fieldErrors.accountName = 'Account name is required';
+      if (!createSalary.accountNumber) fieldErrors.accountNumber = 'Account number is required';
+      if (Object.keys(fieldErrors).length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Salary profile fields are required when creating an employee.',
+            fieldErrors,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const nextValue = employeeInputToAuditValue(
       mergeEmployeeWriteInput(validation.value, previous)
     );
@@ -194,6 +251,30 @@ export async function POST(request: Request) {
       },
       () => upsertEmployee(validation.value, previous)
     );
+
+    let salarySaved = false;
+    let salaryWarning = '';
+    if (isCreate && createSalary) {
+      try {
+        await updateSalaryDetails(
+          [
+            {
+              ...createSalary,
+              employeeId: saved.employeeId || createSalary.employeeId,
+            },
+          ],
+          { actorEmail: user?.email || '' }
+        );
+        salarySaved = true;
+      } catch (salaryError: unknown) {
+        const message =
+          salaryError instanceof Error
+            ? salaryError.message
+            : 'Failed to save the salary profile.';
+        console.error('[POST /api/update-user] salary write failed:', message, salaryError);
+        salaryWarning = `Employee profile was saved, but the salary profile could not be written: ${message}`;
+      }
+    }
 
     // Auth accounts are created by registration, so there is no role to sync
     // until the employee has a login (use saved link — revoke clears it).
@@ -222,12 +303,14 @@ export async function POST(request: Request) {
       auditLogged,
       authRoleSynced,
       emsAccessRevoked: Boolean(authUserIdToDelete),
+      salarySaved: isCreate ? salarySaved : undefined,
       warning:
         [
           !auditLogged ? 'Employee saved, but the audit entry could not be delivered.' : '',
           roleChanging && hasLogin && !authRoleSynced
             ? 'Employee role saved, but Auth permissions could not be updated. Ask the user to sign out and back in.'
             : '',
+          salaryWarning,
         ]
           .filter(Boolean)
           .join(' ') || undefined,

@@ -63,6 +63,15 @@ export interface EmployeeWriteInput {
   originalEmployeeId?: string;
   /** When editing, the email currently stored on the sheet. */
   originalEmail?: string;
+  /**
+   * Create-only. Written to the salaries table/sheet, never to employees.
+   */
+  salary?: string;
+  tax?: string;
+  allowance?: string;
+  accountNumber?: string;
+  accountName?: string;
+  bankName?: string;
 }
 
 /** Compact shape used by list UI / modals. */

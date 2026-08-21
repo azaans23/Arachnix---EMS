@@ -15,6 +15,9 @@ import {
   Clock,
   Hash,
   ShieldAlert,
+  DollarSign,
+  CreditCard,
+  Landmark,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
 import DatePicker, { toIsoDate } from '@/components/ui/DatePicker';
@@ -27,9 +30,11 @@ import {
 } from '@/types/employee';
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
+import { computeSalaryTotals } from '@/lib/payroll/period';
 import {
   assignableRoleOptions,
   canAssignHrFinanceAccess,
+  canAssignDirectorFlag,
   canEditEmployeeRecord,
   getTrustedRole,
   normalizeRole,
@@ -80,6 +85,12 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     supabaseUserId: '',
     isDirector: false,
     hasFinanceAccess: false,
+    salary: '',
+    tax: '0',
+    allowance: '0',
+    accountNumber: '',
+    accountName: '',
+    bankName: '',
   };
 }
 
@@ -266,6 +277,9 @@ export default function EmployeeForm({
           originalEmployeeId: user?.employeeId || values.originalEmployeeId || '',
           originalEmail: user?.email || values.originalEmail || '',
         };
+        if (!isEditMode && !String(payload.accountName || '').trim()) {
+          payload.accountName = payload.name.trim();
+        }
 
         const res = await fetch('/api/update-user', {
           method: 'POST',
@@ -292,7 +306,7 @@ export default function EmployeeForm({
             ? 'EMS access revoked. You can register this employee again.'
             : isEditMode
               ? 'Employee profile updated successfully'
-              : 'Employee created. Add their salary on the Salary page.'
+              : 'Employee created with salary profile'
         );
         if (result.warning) {
           toast.warning(String(result.warning));
@@ -306,6 +320,15 @@ export default function EmployeeForm({
       }
     },
   });
+
+  const salaryPreview = useMemo(() => {
+    if (isEditMode) return null;
+    return computeSalaryTotals({
+      salary: formik.values.salary || '',
+      allowance: formik.values.allowance || '',
+      tax: formik.values.tax || '',
+    });
+  }, [formik.values.allowance, formik.values.salary, formik.values.tax, isEditMode]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
@@ -322,7 +345,7 @@ export default function EmployeeForm({
     }`;
 
   if (rosterLoading) {
-    return <FormSkeleton fields={10} />;
+    return <FormSkeleton fields={isEditMode ? 10 : 16} />;
   }
 
   return (
@@ -541,23 +564,25 @@ export default function EmployeeForm({
             {showError('role') && <p className="text-xs text-danger">{showError('role')}</p>}
           </div>
 
-          <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-[var(--accent)]"
-              checked={Boolean(formik.values.isDirector)}
-              onChange={(event) => formik.setFieldValue('isDirector', event.target.checked)}
-            />
-            <span>
-              <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
-                Director
+          {Boolean(actorRole && canAssignDirectorFlag(actorRole)) && (
+            <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                checked={Boolean(formik.values.isDirector)}
+                onChange={(event) => formik.setFieldValue('isDirector', event.target.checked)}
+              />
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
+                  Director
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Marks this person as a company director for accounting accounts. This is not a
+                  login role. Only Super Admin can change this.
+                </span>
               </span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Marks this person as a company director for accounting accounts. This is not a
-                login role.
-              </span>
-            </span>
-          </label>
+            </label>
+          )}
 
           {normalizeRole(formik.values.role) === ROLES.HR_MANAGER &&
             Boolean(actorRole && canAssignHrFinanceAccess(actorRole)) && (
@@ -649,6 +674,161 @@ export default function EmployeeForm({
               className={`${fieldClass('address')} resize-none`}
             />
           </Field>
+
+          {!isEditMode && (
+            <>
+              <div className="md:col-span-2 rounded-lg border border-border bg-canvas/50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Salary profile
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Saved only on the Salary sheet and salaries table. You can update it later on the
+                  Salary page.
+                </p>
+                {salaryPreview && (
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted">Total earning</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {salaryPreview.totalearning.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Total deduction</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {salaryPreview.totaldeduction.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Net salary</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-ink">
+                        PKR {salaryPreview.netsalary.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Field
+                label="Base Salary (PKR)"
+                htmlFor="salary"
+                error={showError('salary')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="salary"
+                  name="salary"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="85000"
+                  value={formik.values.salary || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('salary')}
+                />
+              </Field>
+
+              <Field
+                label="Allowance (PKR)"
+                htmlFor="allowance"
+                error={showError('allowance')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="allowance"
+                  name="allowance"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={formik.values.allowance || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('allowance')}
+                />
+              </Field>
+
+              <Field
+                label="Tax (PKR)"
+                htmlFor="tax"
+                error={showError('tax')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="tax"
+                  name="tax"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={formik.values.tax || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('tax')}
+                />
+              </Field>
+
+              <Field
+                label="Bank Name"
+                htmlFor="bankName"
+                error={showError('bankName')}
+                icon={<Landmark className="h-4 w-4" />}
+              >
+                <input
+                  id="bankName"
+                  name="bankName"
+                  type="text"
+                  placeholder="Bank Alfalah"
+                  value={formik.values.bankName || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('bankName')}
+                />
+              </Field>
+
+              <Field
+                label="Account Name"
+                htmlFor="accountName"
+                error={showError('accountName')}
+                icon={<User className="h-4 w-4" />}
+              >
+                <input
+                  id="accountName"
+                  name="accountName"
+                  type="text"
+                  placeholder={formik.values.name || 'Account holder name'}
+                  value={formik.values.accountName || ''}
+                  onChange={formik.handleChange}
+                  onBlur={(event) => {
+                    formik.handleBlur(event);
+                    if (!formik.values.accountName?.trim() && formik.values.name.trim()) {
+                      formik.setFieldValue('accountName', formik.values.name.trim());
+                    }
+                  }}
+                  className={fieldClass('accountName')}
+                />
+              </Field>
+
+              <Field
+                label="Account Number"
+                htmlFor="accountNumber"
+                error={showError('accountNumber')}
+                icon={<CreditCard className="h-4 w-4" />}
+              >
+                <input
+                  id="accountNumber"
+                  name="accountNumber"
+                  type="text"
+                  placeholder="1234-56789-001"
+                  value={formik.values.accountNumber || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('accountNumber')}
+                />
+              </Field>
+            </>
+          )}
         </div>
 
         <div

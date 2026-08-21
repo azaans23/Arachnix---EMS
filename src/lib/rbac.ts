@@ -10,8 +10,8 @@
  *                   can manage HR and Employee (not Finance, Admin, or Super Admin)
  * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
  *                   no employee directory
- * Director        — not a login role. `isDirector` is a toggle on any employee and
- *                   unlocks read-only dashboard / accounting / reports overlay
+ * Director        — not a login role. Super Admin may toggle `isDirector` on any employee;
+ *                   that unlocks read-only dashboard / accounting / reports overlay
  * HR + finance    — Super Admin / Admin may toggle `hasFinanceAccess` on HR Manager
  *                   so that person also receives Finance Manager permissions
  */
@@ -512,6 +512,11 @@ export function canWrite(
 export function canAssignHrFinanceAccess(actorRole: AppRole | string): boolean {
   const actor = normalizeRole(actorRole);
   return actor === ROLES.SUPER_ADMIN || actor === ROLES.ADMIN;
+}
+
+/** Only Super Admin may mark or unmark someone as a company director. */
+export function canAssignDirectorFlag(actorRole: AppRole | string): boolean {
+  return isSuperAdminRole(actorRole);
 }
 
 /** Route path → resource mapping */
