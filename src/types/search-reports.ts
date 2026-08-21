@@ -127,7 +127,7 @@ export function searchSourcesForRole(role: AppRole | string, flags?: AccessFlags
       case ROLES.FINANCE_MANAGER:
         return ['accounting', 'salary'] as SearchSource[];
       case ROLES.DIRECTOR:
-        return ['accounting', 'employee', 'salary', 'leave_request'] as SearchSource[];
+        return ['employee', 'salary', 'leave_request'] as SearchSource[];
       default:
         return [] as SearchSource[];
     }
@@ -138,7 +138,7 @@ export function searchSourcesForRole(role: AppRole | string, flags?: AccessFlags
     extra.push('accounting');
   }
   if (flags?.isDirector) {
-    extra.push('accounting', 'employee', 'salary', 'leave_request');
+    extra.push('employee', 'salary', 'leave_request');
   }
 
   return Array.from(new Set([...sources, ...extra]));

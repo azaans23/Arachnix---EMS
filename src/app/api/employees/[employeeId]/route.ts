@@ -6,7 +6,7 @@ import {
 } from '@/lib/auth';
 import {
   canDeleteEmployee,
-  canManageEmployeeRole,
+  canDeleteEmployeeRecord,
   emailsMatch,
   isSuperAdminRole,
   isSuperAdminSelfEdit,
@@ -33,7 +33,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     if (!actorRole || !canDeleteEmployee(actorRole)) {
       return NextResponse.json(
-        { success: false, error: 'Forbidden: only Admin or Super Admin can delete employees.' },
+        { success: false, error: 'Forbidden: you cannot delete employees.' },
         { status: 403 }
       );
     }
@@ -87,11 +87,23 @@ export async function DELETE(request: Request, context: RouteContext) {
       );
     }
 
-    if (!canManageEmployeeRole(actorRole, target.role)) {
+    if (
+      !canDeleteEmployeeRecord({
+        actorRole,
+        actorEmail,
+        actorUserId,
+        targetRole: target.role,
+        targetEmail: target.email,
+        targetSupabaseUserId: target.supabaseUserId,
+        isDirector: target.isDirector,
+      })
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: `You cannot delete employees with role ${target.role}.`,
+          error: target.isDirector
+            ? 'HR cannot delete a director.'
+            : `You cannot delete employees with role ${target.role}.`,
         },
         { status: 403 }
       );

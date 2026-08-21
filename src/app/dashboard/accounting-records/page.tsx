@@ -426,7 +426,7 @@ export default function AccountingRecordsPage() {
         <EmptyState
           icon={<ShieldAlert className="h-5 w-5" />}
           title="Access restricted"
-          description="Accounting records are available to Finance Manager, Director, Admin, and Super Admin."
+          description="Accounting records are available to Finance Manager, Admin, and Super Admin."
         />
       </div>
     );

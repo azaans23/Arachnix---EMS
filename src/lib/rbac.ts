@@ -11,7 +11,7 @@
  * Finance Manager — salary profiles, salary slips, accounting, and holiday read;
  *                   no employee directory
  * Director        — not a login role. Super Admin may toggle `isDirector` on any employee;
- *                   that unlocks read-only dashboard / accounting / reports overlay
+ *                   that unlocks read-only dashboard / reports overlay (not accounting records)
  * HR + finance    — Super Admin / Admin may toggle `hasFinanceAccess` on HR Manager
  *                   so that person also receives Finance Manager permissions
  */
@@ -442,7 +442,6 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
     [ROLES.SUPER_ADMIN]: 'write',
     [ROLES.ADMIN]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
-    [ROLES.DIRECTOR]: 'read',
   },
   search: {
     [ROLES.SUPER_ADMIN]: 'read',
@@ -630,10 +629,53 @@ export function defaultDashboardPathForRole(role: AppRole | string, flags?: Acce
 /** Roles allowed to mutate employee APIs (get-users, update-user, signup) */
 export const EMPLOYEE_API_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR_MANAGER];
 
-/** Only Admin / Super Admin may permanently delete an employee. */
-export const EMPLOYEE_DELETE_ROLES: AppRole[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+/** Admin, Super Admin, and HR may delete employees (with per-record checks). */
+export const EMPLOYEE_DELETE_ROLES: AppRole[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.HR_MANAGER,
+];
 
 export function canDeleteEmployee(actorRole: AppRole | string | null | undefined): boolean {
   if (!actorRole) return false;
   return EMPLOYEE_DELETE_ROLES.includes(normalizeRole(actorRole));
+}
+
+/**
+ * Permanent delete of a specific employee:
+ * - Nobody may delete themselves or Super Admin
+ * - HR may delete HR / Employee records that are not marked Director
+ * - HR may not delete Finance Manager, Admin, or Super Admin
+ * - Admin / Super Admin follow canManageEmployeeRole
+ */
+export function canDeleteEmployeeRecord(input: {
+  actorRole: AppRole | string | null | undefined;
+  actorEmail?: string | null;
+  actorUserId?: string | null;
+  targetRole: AppRole | string | null | undefined;
+  targetEmail?: string | null;
+  targetSupabaseUserId?: string | null;
+  isDirector?: boolean;
+}): boolean {
+  if (!input.actorRole || !canDeleteEmployee(input.actorRole)) return false;
+  if (isSuperAdminRole(input.targetRole)) return false;
+  if (
+    isActorSelf({
+      actorEmail: input.actorEmail,
+      actorUserId: input.actorUserId,
+      targetEmail: input.targetEmail,
+      targetSupabaseUserId: input.targetSupabaseUserId,
+    })
+  ) {
+    return false;
+  }
+
+  const actor = normalizeRole(input.actorRole);
+  if (actor === ROLES.HR_MANAGER) {
+    if (input.isDirector) return false;
+    const target = normalizeRole(input.targetRole || '');
+    return target === ROLES.HR_MANAGER || target === ROLES.EMPLOYEE;
+  }
+
+  return canManageEmployeeRole(input.actorRole, input.targetRole || '');
 }

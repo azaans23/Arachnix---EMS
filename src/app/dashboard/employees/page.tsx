@@ -29,18 +29,23 @@ import {
   canAccess,
   canAssignRole,
   canDeleteEmployee,
+  canDeleteEmployeeRecord,
   canEditEmployeeRecord,
-  canManageEmployeeRole,
-  emailsMatch,
   getTrustedRole,
-  isSuperAdminRole,
   normalizeRole,
   ROLE_OPTIONS as ALL_ROLES,
+  ROLES,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import type { SheetUser } from '@/types/employee';
-import { emsStatusOf, hasEmsLogin, supabaseUserIdOf, toSheetUser } from '@/types/employee';
+import {
+  emsStatusOf,
+  hasEmsLogin,
+  isDirectorOf,
+  supabaseUserIdOf,
+  toSheetUser,
+} from '@/types/employee';
 
 type SortKey = 'name' | 'email' | 'role';
 type SortDir = 'asc' | 'desc';
@@ -147,10 +152,18 @@ export default function EmployeesPage() {
 
   const canDeleteUser = (user: SheetUser) => {
     if (!canDelete || !actorRole) return false;
-    if (emailsMatch(actorEmail, user.email)) return false;
-    if (isSuperAdminRole(user.role)) return false;
-    return canManageEmployeeRole(actorRole, user.role);
+    return canDeleteEmployeeRecord({
+      actorRole,
+      actorEmail,
+      actorUserId,
+      targetRole: user.role,
+      targetEmail: user.email,
+      targetSupabaseUserId: supabaseUserIdOf(user),
+      isDirector: isDirectorOf(user),
+    });
   };
+
+  const isHrActor = Boolean(actorRole && normalizeRole(actorRole) === ROLES.HR_MANAGER);
 
   const confirmDelete = async () => {
     if (!deleteTarget?.employeeId) return;
@@ -530,6 +543,12 @@ export default function EmployeesPage() {
                       {pagedUsers.map((user, idx) => {
                         const registered = hasEmsLogin(user);
                         const canEdit = canEditUser(user);
+                        const canRemove = canDeleteUser(user);
+                        const canRegister = Boolean(
+                          actorRole && canAssignRole(actorRole, user.role)
+                        );
+                        const showDisabledActions = isHrActor && !canEdit;
+
                         return (
                           <tr
                             key={user.employeeId || user.email || idx}
@@ -558,7 +577,7 @@ export default function EmployeesPage() {
                                   >
                                     Active
                                   </span>
-                                ) : actorRole && canAssignRole(actorRole, user.role) ? (
+                                ) : canRegister ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -570,6 +589,17 @@ export default function EmployeesPage() {
                                     }}
                                     className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
                                     title="Create login credentials for this employee"
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5" />
+                                    Register
+                                  </button>
+                                ) : isHrActor ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-semibold text-muted opacity-50"
+                                    title="You cannot grant EMS access for this role"
                                   >
                                     <UserPlus className="h-3.5 w-3.5" />
                                     Register
@@ -595,9 +625,19 @@ export default function EmployeesPage() {
                                   >
                                     <Pencil className="h-3.5 w-3.5" />
                                   </button>
+                                ) : showDisabledActions ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md border border-border bg-canvas text-muted opacity-50"
+                                    title="You cannot edit this employee"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
                                 ) : null}
 
-                                {canDeleteUser(user) ? (
+                                {canRemove ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -606,6 +646,20 @@ export default function EmployeesPage() {
                                     }}
                                     className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-danger-border bg-surface text-danger transition-colors duration-150 hover:bg-danger-bg"
                                     title="Delete employee"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : showDisabledActions || (isHrActor && canDelete) ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md border border-border bg-canvas text-muted opacity-50"
+                                    title={
+                                      isDirectorOf(user)
+                                        ? 'HR cannot delete a director'
+                                        : 'You cannot delete this employee'
+                                    }
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>
