@@ -9,7 +9,6 @@ import {
   canWrite,
   EMPLOYEE_API_ROLES,
   getTrustedAccess,
-  getTrustedRole,
   hasTrustedAppRole,
   isKnownRoleValue,
   normalizeRole,
@@ -206,7 +205,11 @@ async function getAuthenticatedUser(request: Request): Promise<AuthResult> {
     };
   }
 
-  const access = getTrustedAccess(user);
+  // JWT app_metadata is the fast path, but an account that has not been through
+  // login / session bootstrap yet carries no role claim. Falling back to the
+  // employee sheet (and syncing app_metadata) keeps that first protected request
+  // on the user's real role instead of silently downgrading them to Employee.
+  const access = await resolveTrustedAccess(user);
 
   return {
     user,
