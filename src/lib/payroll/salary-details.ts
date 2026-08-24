@@ -10,6 +10,7 @@ import {
   type SalaryDbRow,
 } from '@/lib/db/salaries';
 import { formatAmountWithCommas } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import { listEmployeeDbRows, dbRowToEmployeeRecord } from '@/lib/db/employees';
 import { diffAuditValues, logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
@@ -239,12 +240,14 @@ export async function updateSalaryDetails(
   }
 
   const writes = details.map((detail) => {
-    const totals = computeStoredSalaryTotals(detail);
+    const tax = withholdingTaxFromSalaryFields(detail.salary);
+    const withTax = { ...detail, tax };
+    const totals = computeStoredSalaryTotals(withTax);
     return {
-      ...detail,
-      totalEarning: detail.totalEarning || String(totals.totalearning),
-      totalDeduction: detail.totalDeduction || String(totals.totaldeduction),
-      netSalary: detail.netSalary || String(totals.netsalary),
+      ...withTax,
+      totalEarning: String(totals.totalearning),
+      totalDeduction: String(totals.totaldeduction),
+      netSalary: String(totals.netsalary),
     };
   });
 
@@ -367,7 +370,7 @@ export function mergeSalaryDetails(
     const current = byId.get(key);
     const salary = override.salary?.trim() || current?.salary || '';
     const allowance = override.allowance?.trim() || current?.allowance || '';
-    const tax = override.tax?.trim() || current?.tax || '';
+    const tax = withholdingTaxFromSalaryFields(salary);
     const totals = computeStoredSalaryTotals({ salary, allowance, tax });
     byId.set(key, {
       employeeId: override.employeeId.trim(),

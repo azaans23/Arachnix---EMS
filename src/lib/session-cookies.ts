@@ -17,6 +17,8 @@ export {
 export type SessionSyncResult = {
   role: AppRole;
   roleLabel: string;
+  hasFinanceAccess: boolean;
+  isDirector: boolean;
   metadataUpdated?: boolean;
 };
 
@@ -35,6 +37,8 @@ export async function syncSessionCookies(accessToken: string): Promise<SessionSy
     error?: string;
     role?: AppRole;
     roleLabel?: string;
+    hasFinanceAccess?: boolean;
+    isDirector?: boolean;
     metadataUpdated?: boolean;
   };
 
@@ -53,6 +57,8 @@ export async function syncSessionCookies(accessToken: string): Promise<SessionSy
   return {
     role: body.role || 'employee',
     roleLabel: body.roleLabel || 'Employee',
+    hasFinanceAccess: Boolean(body.hasFinanceAccess),
+    isDirector: Boolean(body.isDirector),
     metadataUpdated: body.metadataUpdated,
   };
 }

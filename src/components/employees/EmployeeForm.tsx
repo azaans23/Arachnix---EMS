@@ -8,15 +8,15 @@ import {
   Mail,
   Phone,
   Briefcase,
-  DollarSign,
   Shield,
   MapPin,
-  CreditCard,
   Database,
   Calendar,
   Clock,
   Hash,
   ShieldAlert,
+  DollarSign,
+  CreditCard,
   Landmark,
 } from 'lucide-react';
 import CustomDropdown from '@/components/ui/Dropdown';
@@ -31,11 +31,16 @@ import {
 import { getNextEmployeeId, mapRawToEmployee, employeeToFormValues } from '@/lib/sheets/employees';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 import { computeSalaryTotals } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import {
   assignableRoleOptions,
+  canAssignHrFinanceAccess,
+  canAssignDirectorFlag,
   canEditEmployeeRecord,
   getTrustedRole,
+  normalizeRole,
   ROLE_OPTIONS,
+  ROLES,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { supabase } from '@/lib/supabase';
@@ -76,11 +81,12 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     designation: '',
     employmentType: '',
     joiningDate: '',
-    baseSalary: '',
-    bankAccountDetails: '',
     role: 'Employee',
     emsStatus: 'Active',
     supabaseUserId: '',
+    isDirector: false,
+    hasFinanceAccess: false,
+    salary: '',
     tax: '0',
     allowance: '0',
     accountNumber: '',
@@ -91,18 +97,6 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
 
 function valuesFromUser(user: SheetUser): EmployeeWriteInput {
   return employeeToFormValues(mapRawToEmployee(user.raw || {}));
-}
-
-function composeBankAccountDetails(values: EmployeeWriteInput): string {
-  const parts = [values.bankName, values.accountName, values.accountNumber]
-    .map((part) => String(part || '').trim())
-    .filter(Boolean);
-  if (parts.length > 0) return parts.join(' · ');
-  return String(values.bankAccountDetails || '').trim();
-}
-
-function formatMoney(value: number) {
-  return value.toLocaleString('en-PK', { maximumFractionDigits: 0 });
 }
 
 export default function EmployeeForm({
@@ -252,14 +246,7 @@ export default function EmployeeForm({
     validateOnChange: false,
     validate: async (values) => {
       try {
-        const toValidate: EmployeeWriteInput = { ...values };
-        if (!isEditMode) {
-          if (!toValidate.accountName?.trim() && toValidate.name.trim()) {
-            toValidate.accountName = toValidate.name.trim();
-          }
-          toValidate.bankAccountDetails = composeBankAccountDetails(toValidate);
-        }
-        await employeeValidationSchema.validate(toValidate, {
+        await employeeValidationSchema.validate(values, {
           abortEarly: false,
           context: uniquenessContext,
         });
@@ -291,12 +278,8 @@ export default function EmployeeForm({
           originalEmployeeId: user?.employeeId || values.originalEmployeeId || '',
           originalEmail: user?.email || values.originalEmail || '',
         };
-
-        if (!isEditMode) {
-          if (!payload.accountName?.trim()) {
-            payload.accountName = payload.name.trim();
-          }
-          payload.bankAccountDetails = composeBankAccountDetails(payload);
+        if (!isEditMode && !String(payload.accountName || '').trim()) {
+          payload.accountName = payload.name.trim();
         }
 
         const res = await fetch('/api/update-user', {
@@ -324,7 +307,7 @@ export default function EmployeeForm({
             ? 'EMS access revoked. You can register this employee again.'
             : isEditMode
               ? 'Employee profile updated successfully'
-              : 'Employee created with their initial salary'
+              : 'Employee created with salary profile'
         );
         if (result.warning) {
           toast.warning(String(result.warning));
@@ -342,15 +325,11 @@ export default function EmployeeForm({
   const salaryPreview = useMemo(() => {
     if (isEditMode) return null;
     return computeSalaryTotals({
-      salary: formik.values.baseSalary,
-      allowance: formik.values.allowance,
-      tax: formik.values.tax,
-      overtimePay: '',
-      performanceBonus: '',
-      contributions: '',
-      others: '',
+      salary: formik.values.salary || '',
+      allowance: formik.values.allowance || '',
+      tax: withholdingTaxFromSalaryFields(formik.values.salary),
     });
-  }, [formik.values.allowance, formik.values.baseSalary, formik.values.tax, isEditMode]);
+  }, [formik.values.allowance, formik.values.salary, isEditMode]);
 
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
@@ -367,7 +346,7 @@ export default function EmployeeForm({
     }`;
 
   if (rosterLoading) {
-    return <FormSkeleton fields={isEditMode ? 10 : 12} />;
+    return <FormSkeleton fields={isEditMode ? 10 : 16} />;
   }
 
   return (
@@ -560,26 +539,6 @@ export default function EmployeeForm({
             />
           </Field>
 
-          <Field
-            label="Base Salary (PKR)"
-            htmlFor="baseSalary"
-            error={showError('baseSalary')}
-            icon={<DollarSign className="h-4 w-4" />}
-          >
-            <input
-              id="baseSalary"
-              name="baseSalary"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="85000"
-              value={formik.values.baseSalary}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              className={fieldClass('baseSalary')}
-            />
-          </Field>
-
           <div className="flex flex-col gap-1">
             <label
               className="text-xs font-semibold uppercase tracking-wide text-ink"
@@ -591,7 +550,12 @@ export default function EmployeeForm({
               id="role"
               name="role"
               value={formik.values.role}
-              onChange={(val) => formik.setFieldValue('role', val)}
+              onChange={(val) => {
+                formik.setFieldValue('role', val);
+                if (normalizeRole(val) !== ROLES.HR_MANAGER) {
+                  formik.setFieldValue('hasFinanceAccess', false);
+                }
+              }}
               onBlur={() => formik.setFieldTouched('role', true)}
               options={roleOptions}
               icon={<Shield className="h-4 w-4" />}
@@ -600,6 +564,49 @@ export default function EmployeeForm({
             />
             {showError('role') && <p className="text-xs text-danger">{showError('role')}</p>}
           </div>
+
+          {Boolean(actorRole && canAssignDirectorFlag(actorRole)) && (
+            <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                checked={Boolean(formik.values.isDirector)}
+                onChange={(event) => formik.setFieldValue('isDirector', event.target.checked)}
+              />
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
+                  Director
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Marks this person as a company director for accounting accounts. This is not a
+                  login role. Only Super Admin can change this.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {normalizeRole(formik.values.role) === ROLES.HR_MANAGER &&
+            Boolean(actorRole && canAssignHrFinanceAccess(actorRole)) && (
+              <label className="flex items-start gap-3 rounded-lg border border-border bg-canvas/50 px-3 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  checked={Boolean(formik.values.hasFinanceAccess)}
+                  onChange={(event) =>
+                    formik.setFieldValue('hasFinanceAccess', event.target.checked)
+                  }
+                />
+                <span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-ink">
+                    Assign finance access
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    HR also receives Finance Manager permissions (salary slips and accounting).
+                    Only Super Admin and Admin can grant this.
+                  </span>
+                </span>
+              </label>
+            )}
 
           <div className="flex flex-col gap-1">
             <label
@@ -669,59 +676,108 @@ export default function EmployeeForm({
             />
           </Field>
 
-          {isEditMode ? (
-            <Field
-              label="Bank Account Details"
-              htmlFor="bankAccountDetails"
-              error={showError('bankAccountDetails')}
-              icon={<CreditCard className="h-4 w-4" />}
-              className="md:col-span-2"
-              iconTop
-            >
-              <textarea
-                id="bankAccountDetails"
-                name="bankAccountDetails"
-                rows={2}
-                placeholder="Alfalah Bank, Account No: 1234-56789-001, IBAN: PK00ALFA..."
-                value={formik.values.bankAccountDetails}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                className={`${fieldClass('bankAccountDetails')} resize-none`}
-              />
-            </Field>
-          ) : (
+          {!isEditMode && (
             <>
               <div className="md:col-span-2 rounded-lg border border-border bg-canvas/50 px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  Initial salary
+                  Salary profile
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Enter Base salary, Allowance and Tax to see the total salary breakdown. These
-                  values can be updated later in the payroll section.
+                  Saved only on the Salary sheet and salaries table. Withholding tax is calculated
+                  from base salary using FBR salaried slabs (FY 2026–27). You can update the
+                  profile later on the Salary page.
                 </p>
                 {salaryPreview && (
                   <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
                     <div>
                       <p className="text-muted">Total earning</p>
                       <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                        PKR {formatMoney(salaryPreview.totalearning)}
+                        PKR {salaryPreview.totalearning.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted">Total deduction</p>
                       <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                        PKR {formatMoney(salaryPreview.totaldeduction)}
+                        PKR {salaryPreview.totaldeduction.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted">Net salary</p>
                       <p className="mt-0.5 font-semibold tabular-nums text-ink">
-                        PKR {formatMoney(salaryPreview.netsalary)}
+                        PKR {salaryPreview.netsalary.toLocaleString('en-PK', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                   </div>
                 )}
               </div>
+
+              <Field
+                label="Base Salary (PKR)"
+                htmlFor="salary"
+                error={showError('salary')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="salary"
+                  name="salary"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="85000"
+                  value={formik.values.salary || ''}
+                  onChange={(event) => {
+                    formik.handleChange(event);
+                    void formik.setFieldValue(
+                      'tax',
+                      withholdingTaxFromSalaryFields(event.target.value),
+                      false
+                    );
+                  }}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('salary')}
+                />
+              </Field>
+
+              <Field
+                label="Allowance (PKR)"
+                htmlFor="allowance"
+                error={showError('allowance')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="allowance"
+                  name="allowance"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="0"
+                  value={formik.values.allowance || ''}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className={fieldClass('allowance')}
+                />
+              </Field>
+
+              <Field
+                label="Withholding tax (PKR)"
+                htmlFor="tax"
+                error={showError('tax')}
+                icon={<DollarSign className="h-4 w-4" />}
+              >
+                <input
+                  id="tax"
+                  name="tax"
+                  type="number"
+                  min="0"
+                  step="1"
+                  readOnly
+                  tabIndex={-1}
+                  value={formik.values.tax || '0'}
+                  className={`${fieldClass('tax')} cursor-not-allowed text-muted shadow-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]`}
+                  aria-readonly="true"
+                  title="Calculated from base salary using FBR salaried withholding tax slabs"
+                />
+              </Field>
 
               <Field
                 label="Bank Name"
@@ -765,51 +821,10 @@ export default function EmployeeForm({
               </Field>
 
               <Field
-                label="Tax (PKR)"
-                htmlFor="tax"
-                error={showError('tax')}
-                icon={<DollarSign className="h-4 w-4" />}
-              >
-                <input
-                  id="tax"
-                  name="tax"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                  value={formik.values.tax || ''}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={fieldClass('tax')}
-                />
-              </Field>
-
-              <Field
-                label="Allowance (PKR)"
-                htmlFor="allowance"
-                error={showError('allowance')}
-                icon={<DollarSign className="h-4 w-4" />}
-              >
-                <input
-                  id="allowance"
-                  name="allowance"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                  value={formik.values.allowance || ''}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={fieldClass('allowance')}
-                />
-              </Field>
-
-              <Field
                 label="Account Number"
                 htmlFor="accountNumber"
                 error={showError('accountNumber')}
                 icon={<CreditCard className="h-4 w-4" />}
-                className="md:col-span-2"
               >
                 <input
                   id="accountNumber"

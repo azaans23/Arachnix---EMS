@@ -115,9 +115,10 @@ async function optional<T>(enabled: boolean, load: () => Promise<T>): Promise<T 
 
 export async function buildDashboardOverview(
   role: AppRole | string,
-  month = currentMonth()
+  month = currentMonth(),
+  flags?: { hasFinanceAccess?: boolean; isDirector?: boolean }
 ): Promise<DashboardOverview> {
-  const sections = overviewSectionsForRole(role);
+  const sections = overviewSectionsForRole(role, flags);
 
   const [headcount, finance] = await Promise.all([
     optional(sections.headcount, async () => buildHeadcount(await listEmployeeDbRows(), month)),

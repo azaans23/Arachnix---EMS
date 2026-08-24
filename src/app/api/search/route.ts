@@ -7,7 +7,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const { role, errorResponse } = await verifyResourceAccess(request, 'search', 'read');
+    const { role, hasFinanceAccess, isDirector, errorResponse } = await verifyResourceAccess(
+      request,
+      'search',
+      'read'
+    );
     if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(request.url);
@@ -23,6 +27,8 @@ export async function GET(request: Request) {
     const data = await runGlobalSearch({
       query,
       role: role!,
+      hasFinanceAccess,
+      isDirector,
       sources: sources.length ? sources : undefined,
     });
 

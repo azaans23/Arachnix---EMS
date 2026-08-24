@@ -74,27 +74,25 @@ export const employeeValidationSchema = Yup.object({
   designation: Yup.string().trim().required('Designation is required'),
   employmentType: Yup.string().trim().required('Employment type is required'),
   joiningDate: Yup.string().trim().required('Joining date is required'),
-  baseSalary: Yup.string()
-    .trim()
-    .required('Base salary is required')
-    .test('is-number', 'Base salary must be a valid number', (value) => {
-      if (!value) return false;
-      return !Number.isNaN(Number(value)) && Number(value) > 0;
-    }),
-  bankAccountDetails: Yup.string().trim().required('Bank account details are required'),
   role: Yup.string()
     .trim()
     .required('Role is required')
     .oneOf([...KNOWN_ROLE_VALUES], 'Invalid role'),
   emsStatus: Yup.string().trim().required('EMS status is required'),
+  isDirector: Yup.boolean().optional(),
+  hasFinanceAccess: Yup.boolean().optional(),
   originalEmployeeId: Yup.string().trim().optional(),
   originalEmail: Yup.string().trim().optional(),
-  // Create-only salary fields (ignored on edit; required when creating).
-  tax: moneyOptional.when('originalEmployeeId', {
+  salary: moneyOptional.when('originalEmployeeId', {
     is: (value: string | undefined) => !String(value || '').trim(),
-    then: (schema) => schema.required('Tax is required'),
+    then: (schema) =>
+      schema.required('Base salary is required').test('is-positive', 'Base salary must be greater than 0', (value) => {
+        if (!value) return false;
+        return Number(value) > 0;
+      }),
     otherwise: (schema) => schema.optional(),
   }),
+  tax: moneyOptional,
   allowance: moneyOptional.when('originalEmployeeId', {
     is: (value: string | undefined) => !String(value || '').trim(),
     then: (schema) => schema.required('Allowance is required'),

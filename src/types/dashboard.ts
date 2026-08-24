@@ -21,18 +21,23 @@ export type DashboardSections = Record<DashboardSectionKey, boolean>;
  * Kept free of server-only imports so the client can skip the request entirely
  * for roles with nothing to show.
  */
-export function overviewSectionsForRole(role: AppRole | string): DashboardSections {
+export function overviewSectionsForRole(
+  role: AppRole | string,
+  flags?: { hasFinanceAccess?: boolean; isDirector?: boolean }
+): DashboardSections {
   const normalized = normalizeRole(role);
   return {
     headcount:
       normalized === ROLES.SUPER_ADMIN ||
       normalized === ROLES.ADMIN ||
       normalized === ROLES.HR_MANAGER ||
-      normalized === ROLES.DIRECTOR,
+      normalized === ROLES.DIRECTOR ||
+      Boolean(flags?.isDirector),
     finance:
       normalized === ROLES.SUPER_ADMIN ||
       normalized === ROLES.ADMIN ||
-      normalized === ROLES.FINANCE_MANAGER,
+      normalized === ROLES.FINANCE_MANAGER ||
+      Boolean(flags?.hasFinanceAccess),
   };
 }
 

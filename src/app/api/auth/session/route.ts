@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { resolveTrustedRole } from '@/lib/auth';
-import { getTrustedRole, hasTrustedAppRole, roleDisplayName } from '@/lib/rbac';
+import { resolveTrustedAccess } from '@/lib/auth';
+import { getTrustedAccess, hasTrustedAppRole, roleDisplayName } from '@/lib/rbac';
 import {
   clearCookieOptions,
   createGateToken,
@@ -49,12 +49,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const previousAppRole = hasTrustedAppRole(user) ? getTrustedRole(user) : null;
-    const role = await resolveTrustedRole(user, { reconcileWithSheet: true });
+    const previous = hasTrustedAppRole(user) ? getTrustedAccess(user) : null;
+    const access = await resolveTrustedAccess(user, { reconcileWithSheet: true });
+    const role = access.role;
     const jwtExp = readJwtExpiry(token) ?? undefined;
     const signed = await createGateToken({
       uid: user.id,
       role,
+      hasFinanceAccess: access.hasFinanceAccess,
+      isDirector: access.isDirector,
       exp: jwtExp,
     });
 
@@ -73,8 +76,14 @@ export async function POST(request: Request) {
       success: true,
       role,
       roleLabel: roleDisplayName(role),
+      hasFinanceAccess: Boolean(access.hasFinanceAccess),
+      isDirector: Boolean(access.isDirector),
       /** Client should refreshSession() so JWT picks up synced app_metadata */
-      metadataUpdated: previousAppRole === null || previousAppRole !== role,
+      metadataUpdated:
+        previous === null ||
+        previous.role !== access.role ||
+        Boolean(previous.hasFinanceAccess) !== Boolean(access.hasFinanceAccess) ||
+        Boolean(previous.isDirector) !== Boolean(access.isDirector),
       exp: signed.exp,
     });
 

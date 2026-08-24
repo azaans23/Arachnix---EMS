@@ -8,7 +8,11 @@ const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 
 export async function GET(request: Request) {
   try {
-    const { role, errorResponse } = await verifyResourceAccess(request, 'dashboard', 'read');
+    const { role, hasFinanceAccess, isDirector, errorResponse } = await verifyResourceAccess(
+      request,
+      'dashboard',
+      'read'
+    );
     if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(request.url);
@@ -17,7 +21,7 @@ export async function GET(request: Request) {
       ? requested
       : new Date().toISOString().slice(0, 7);
 
-    const data = await buildDashboardOverview(role!, month);
+    const data = await buildDashboardOverview(role!, month, { hasFinanceAccess, isDirector });
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load dashboard overview.';

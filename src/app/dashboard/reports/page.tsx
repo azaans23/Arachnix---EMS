@@ -77,13 +77,15 @@ export default function ReportsPage() {
       }
       localStorage.setItem('token', session.access_token);
       let role = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         role = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT */
       }
-      const canView = canAccess(role, 'reports');
+      const canView = canAccess(role, 'reports', flags);
       setAllowed(canView);
       if (!canView) return;
 

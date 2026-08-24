@@ -116,7 +116,11 @@ export async function POST(request: Request) {
         email,
         password,
         email_confirm: true,
-        app_metadata: { role: assignedRoleLabel },
+        app_metadata: {
+          role: assignedRoleLabel,
+          hasFinanceAccess: Boolean(previousEmployee?.hasFinanceAccess),
+          isDirector: Boolean(previousEmployee?.isDirector),
+        },
         user_metadata: { name },
       });
 
@@ -142,8 +146,6 @@ export async function POST(request: Request) {
                 designation: '',
                 employmentType: '',
                 joiningDate: '',
-                baseSalary: '',
-                bankAccountDetails: '',
                 role: assignedRoleLabel,
                 emsStatus: 'Active',
               }),

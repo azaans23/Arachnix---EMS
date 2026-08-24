@@ -7,11 +7,16 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const { role, errorResponse } = await verifyResourceAccess(request, 'dashboard', 'read');
+    const { role, isDirector, errorResponse } = await verifyResourceAccess(
+      request,
+      'dashboard',
+      'read'
+    );
     if (errorResponse) return errorResponse;
 
     const normalized = normalizeRole(role!);
     const allowed =
+      Boolean(isDirector) ||
       normalized === ROLES.DIRECTOR ||
       normalized === ROLES.SUPER_ADMIN ||
       normalized === ROLES.ADMIN ||

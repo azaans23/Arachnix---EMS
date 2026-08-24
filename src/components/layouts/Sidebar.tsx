@@ -30,9 +30,11 @@ import ThemeToggle from '@/components/theme/ThemeToggle';
 import {
   AppRole,
   getNavItemsForRole,
+  getTrustedAccess,
   getTrustedRole,
   NavItemConfig,
   roleDisplayName,
+  type AccessFlags,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useSearchPalette } from '@/hooks/useSearchPalette';
@@ -68,6 +70,7 @@ type TipState = { label: string; top: number; left: number } | null;
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [accessFlags, setAccessFlags] = useState<AccessFlags>({});
   const [tip, setTip] = useState<TipState>(null);
   const pathname = usePathname();
   const logoutMutation = useLogout();
@@ -83,8 +86,17 @@ export default function Sidebar() {
         try {
           const synced = await syncSessionCookies(session.access_token);
           setRole(synced.role);
+          setAccessFlags({
+            hasFinanceAccess: synced.hasFinanceAccess,
+            isDirector: synced.isDirector,
+          });
         } catch {
+          const access = getTrustedAccess(session.user);
           setRole(getTrustedRole(session.user));
+          setAccessFlags({
+            hasFinanceAccess: access.hasFinanceAccess,
+            isDirector: access.isDirector,
+          });
         }
       }
     };
@@ -119,7 +131,7 @@ export default function Sidebar() {
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
-  const navItems = role ? getNavItemsForRole(role) : [];
+  const navItems = role ? getNavItemsForRole(role, accessFlags) : [];
   const sections = (['overview', 'hr', 'finance', 'system', 'workspace'] as const).filter(
     (section) => navItems.some((item) => item.section === section)
   );

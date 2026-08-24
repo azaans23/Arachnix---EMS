@@ -30,6 +30,9 @@ export const ACCOUNTING_CURRENCIES = ['PKR', 'USD', 'EUR', 'GBP', 'AED'] as cons
  */
 export const ACCOUNTING_ARCHIVE_GRACE_MINUTES = 2;
 
+/** Stored in the sheet's FileName/DriveLink columns when a record has no document. */
+export const ACCOUNTING_NO_FILE_LABEL = 'No file uploaded';
+
 export const ACCOUNTING_ALLOWED_EXTENSIONS = [
   '.pdf',
   '.png',
@@ -62,6 +65,8 @@ export interface AccountingRecord {
   driveLink: string;
   uploadedBy: string;
   status: string;
+  /** Derived: a document was attached to this transaction. */
+  hasFile?: boolean;
   /** Derived: no driveLink yet and still inside the archival grace window. */
   pendingDrive?: boolean;
   /** Derived: grace window elapsed and no driveLink was ever written back. */

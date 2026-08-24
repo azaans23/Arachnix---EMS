@@ -1,4 +1,4 @@
-import type { AppRole } from '@/lib/rbac';
+import type { AccessFlags, AppRole, ResourceKey } from '@/lib/rbac';
 import { ROLES, normalizeRole, canAccess } from '@/lib/rbac';
 
 export const SEARCH_SOURCES = [
@@ -96,33 +96,71 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
   },
 ];
 
-export function reportsForRole(role: AppRole | string): ReportDefinition[] {
+export function reportsForRole(role: AppRole | string, flags?: AccessFlags): ReportDefinition[] {
   const normalized = normalizeRole(role);
-  return REPORT_DEFINITIONS.filter((report) => report.roles.includes(normalized));
+  return REPORT_DEFINITIONS.filter((report) => {
+    if (report.roles.includes(normalized)) return true;
+    if (flags?.isDirector && report.roles.includes(ROLES.DIRECTOR)) return true;
+    if (flags?.hasFinanceAccess && report.roles.includes(ROLES.FINANCE_MANAGER)) return true;
+    return false;
+  });
 }
 
-export function canRunReport(role: AppRole | string, type: ReportType): boolean {
-  return reportsForRole(role).some((report) => report.type === type);
+export function canRunReport(
+  role: AppRole | string,
+  type: ReportType,
+  flags?: AccessFlags
+): boolean {
+  return reportsForRole(role, flags).some((report) => report.type === type);
+}
+
+/**
+ * Sources whose rows carry bank details (account holder, account number, bank
+ * name). Reports deliberately omits those columns, so a search source over them
+ * is only granted when the viewer has RBAC access to the backing resource —
+ * being flagged as a director does not by itself unlock them.
+ */
+const SENSITIVE_SOURCE_RESOURCES: Partial<Record<SearchSource, ResourceKey>> = {
+  salary: 'salary',
+  accounting: 'accounting_records',
+};
+
+/** True when the viewer may see bank details on salary rows. */
+export function canSeeSalaryBankDetails(role: AppRole | string, flags?: AccessFlags): boolean {
+  return canAccess(role, 'salary', flags);
 }
 
 /** Search sources a role is allowed to query. */
-export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
+export function searchSourcesForRole(role: AppRole | string, flags?: AccessFlags): SearchSource[] {
   const normalized = normalizeRole(role);
-  switch (normalized) {
-    case ROLES.SUPER_ADMIN:
-    case ROLES.ADMIN:
-      return [...SEARCH_SOURCES];
-    case ROLES.HR_MANAGER:
-      return ['employee', 'leave_request', 'leave_balance', 'salary'];
-    case ROLES.FINANCE_MANAGER:
-      return ['accounting', 'salary'];
-    case ROLES.DIRECTOR:
-      // Directors may search people/payroll/leave for overview, but detail pages are
-      // blocked; hits link to Reports instead (see hrefForSearchHit).
-      return ['accounting', 'employee', 'salary', 'leave_request'];
-    default:
-      return [];
+  const sources = (() => {
+    switch (normalized) {
+      case ROLES.SUPER_ADMIN:
+      case ROLES.ADMIN:
+        return [...SEARCH_SOURCES];
+      case ROLES.HR_MANAGER:
+        return ['employee', 'leave_request', 'leave_balance', 'salary'] as SearchSource[];
+      case ROLES.FINANCE_MANAGER:
+        return ['accounting', 'salary'] as SearchSource[];
+      case ROLES.DIRECTOR:
+        return ['employee', 'leave_request'] as SearchSource[];
+      default:
+        return [] as SearchSource[];
+    }
+  })();
+
+  const extra: SearchSource[] = [];
+  if (flags?.hasFinanceAccess && normalized === ROLES.HR_MANAGER) {
+    extra.push('accounting');
   }
+  if (flags?.isDirector) {
+    extra.push('employee', 'leave_request');
+  }
+
+  return Array.from(new Set([...sources, ...extra])).filter((source) => {
+    const resource = SENSITIVE_SOURCE_RESOURCES[source];
+    return !resource || canAccess(normalized, resource, flags);
+  });
 }
 
 /**
@@ -132,35 +170,36 @@ export function searchSourcesForRole(role: AppRole | string): SearchSource[] {
 export function hrefForSearchHit(
   role: AppRole | string,
   source: SearchSource,
-  entityId?: string
+  entityId?: string,
+  flags?: AccessFlags
 ): string {
   const normalized = normalizeRole(role);
   switch (source) {
     case 'employee':
-      if (canAccess(normalized, 'employees') && entityId) {
+      if (canAccess(normalized, 'employees', flags) && entityId) {
         return `/dashboard/employees/${encodeURIComponent(entityId)}`;
       }
-      return canAccess(normalized, 'reports') ? '/dashboard/reports' : '/dashboard';
+      return canAccess(normalized, 'reports', flags) ? '/dashboard/reports' : '/dashboard';
     case 'accounting':
-      return canAccess(normalized, 'accounting_records')
+      return canAccess(normalized, 'accounting_records', flags)
         ? '/dashboard/accounting-records'
         : '/dashboard';
     case 'salary':
-      return canAccess(normalized, 'salary')
+      return canAccess(normalized, 'salary', flags)
         ? '/dashboard/salary'
-        : canAccess(normalized, 'reports')
+        : canAccess(normalized, 'reports', flags)
           ? '/dashboard/reports'
           : '/dashboard';
     case 'leave_request':
-      return canAccess(normalized, 'leave_requests')
+      return canAccess(normalized, 'leave_requests', flags)
         ? '/dashboard/leave-requests'
-        : canAccess(normalized, 'reports')
+        : canAccess(normalized, 'reports', flags)
           ? '/dashboard/reports'
           : '/dashboard';
     case 'leave_balance':
-      return canAccess(normalized, 'leave_balances')
+      return canAccess(normalized, 'leave_balances', flags)
         ? '/dashboard/leave-balances'
-        : canAccess(normalized, 'reports')
+        : canAccess(normalized, 'reports', flags)
           ? '/dashboard/reports'
           : '/dashboard';
     default:

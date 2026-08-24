@@ -35,6 +35,7 @@ import {
   ACCOUNTING_CATEGORIES,
   ACCOUNTING_COMPANY_ROOT,
   ACCOUNTING_CURRENCIES,
+  ACCOUNTING_NO_FILE_LABEL,
   ACCOUNTING_TRANSACTION_TYPES,
   buildAccountingDriveFileName,
   isAllowedAccountingFileName,
@@ -225,14 +226,16 @@ export default function AccountingRecordsPage() {
       }
       localStorage.setItem('token', session.access_token);
       let role = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         role = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT fallback */
       }
-      const canView = canAccess(role, 'accounting_records');
-      setCanEdit(canWrite(role, 'accounting_records'));
+      const canView = canAccess(role, 'accounting_records', flags);
+      setCanEdit(canWrite(role, 'accounting_records', flags));
       setAllowed(canView);
       if (canView) await load();
       else setLoading(false);
@@ -297,7 +300,7 @@ export default function AccountingRecordsPage() {
     file.size > 0 &&
     file.size <= MAX_FILE_MB * 1024 * 1024
   );
-  const canSubmit = amountValid && fileValid && !saving;
+  const canSubmit = amountValid && (!file || fileValid) && !saving;
 
   const driveFileNamePreview = useMemo(() => {
     if (!file) return '';
@@ -348,8 +351,8 @@ export default function AccountingRecordsPage() {
   };
 
   const submitUpload = async () => {
-    if (!file) {
-      toast.error('Attach a file before uploading.');
+    if (file && !fileValid) {
+      toast.error('Choose a supported file up to the size limit, or remove it.');
       return;
     }
     if (!amountValid) {
@@ -360,7 +363,7 @@ export default function AccountingRecordsPage() {
     setSaving(true);
     try {
       const body = new FormData();
-      body.append('file', file);
+      if (file) body.append('file', file);
       body.append('period', form.period);
       body.append('account', form.account);
       body.append('category', form.category);
@@ -424,7 +427,7 @@ export default function AccountingRecordsPage() {
         <EmptyState
           icon={<ShieldAlert className="h-5 w-5" />}
           title="Access restricted"
-          description="Accounting records are available to Finance Manager, Director, Admin, and Super Admin."
+          description="Accounting records are available to Finance Manager, Admin, and Super Admin."
         />
       </div>
     );
@@ -683,9 +686,9 @@ export default function AccountingRecordsPage() {
                           <div className="font-medium tabular-nums">#{row.recordId}</div>
                           <div
                             className="max-w-[15rem] truncate text-xs text-muted"
-                            title={row.fileName}
+                            title={row.fileName || ACCOUNTING_NO_FILE_LABEL}
                           >
-                            {row.fileName || '—'}
+                            {row.fileName || ACCOUNTING_NO_FILE_LABEL}
                           </div>
                         </td>
                         <td className="px-5 py-3.5">
@@ -717,7 +720,15 @@ export default function AccountingRecordsPage() {
                           ) : null}
                         </td>
                         <td className="px-5 py-3.5">
-                          {row.pendingDrive ? (
+                          {!row.fileName ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted"
+                              title="This transaction was filed without a document."
+                            >
+                              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                              {ACCOUNTING_NO_FILE_LABEL}
+                            </span>
+                          ) : row.pendingDrive ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Archiving…
@@ -995,7 +1006,8 @@ export default function AccountingRecordsPage() {
                       htmlFor="accounting-file"
                       className="block text-xs font-medium text-muted"
                     >
-                      Document <span className="text-danger">*</span>
+                      Document{' '}
+                      <span className="font-normal text-muted/80">(optional)</span>
                     </label>
                     <input
                       id="accounting-file"
@@ -1005,7 +1017,7 @@ export default function AccountingRecordsPage() {
                       className="mt-1.5 w-full cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-canvas file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
                     />
                     <p className="mt-1.5 text-[11px] text-muted">
-                      PDF, PNG, JPEG, CSV, Excel, or ZIP · up to {MAX_FILE_MB} MB
+                      Optional. PDF, PNG, JPEG, CSV, Excel, or ZIP · up to {MAX_FILE_MB} MB
                     </p>
 
                     {file && !fileValid && (
@@ -1054,7 +1066,9 @@ export default function AccountingRecordsPage() {
 
               <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
                 <p className="hidden text-[11px] text-muted sm:block">
-                  Drive archival runs in the background.
+                  {file
+                    ? 'Drive archival runs in the background.'
+                    : 'A document is optional. You can save this transaction without a file.'}
                 </p>
                 <div className="flex gap-2">
                   <button

@@ -7,10 +7,15 @@ import {
 } from '@/lib/auth';
 import {
   assertCanEditEmployee,
+  canAssignHrFinanceAccess,
+  canAssignDirectorFlag,
   canEditEmployeeRecord,
   normalizeRole,
   roleDisplayName,
+  ROLES,
 } from '@/lib/rbac';
+import type { EmployeeWriteInput } from '@/types/employee';
+import { parseToggle } from '@/types/employee';
 import {
   employeeInputToAuditValue,
   employeeRecordToAuditValue,
@@ -25,28 +30,16 @@ import { diffAuditValues, runAuditedMutation } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS } from '@/types/audit';
 import { updateSalaryDetails } from '@/lib/payroll/salary-details';
 import { computeSalaryTotals } from '@/lib/payroll/period';
+import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import type { SalaryDetailInput } from '@/types/salary-slip';
-import type { EmployeeWriteInput } from '@/types/employee';
 
 export const dynamic = 'force-dynamic';
 
-function composeBankAccountDetails(input: EmployeeWriteInput): string {
-  const parts = [input.bankName, input.accountName, input.accountNumber]
-    .map((part) => String(part || '').trim())
-    .filter(Boolean);
-  if (parts.length > 0) return parts.join(' · ');
-  return String(input.bankAccountDetails || '').trim();
-}
-
-function buildInitialSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput {
-  const salary = String(input.baseSalary || '').trim();
-  const allowance = String(input.allowance ?? '').trim();
-  const tax = String(input.tax ?? '').trim();
-  const totals = computeSalaryTotals({
-    salary,
-    allowance,
-    tax,
-  });
+function buildCreateSalaryDetail(input: EmployeeWriteInput): SalaryDetailInput {
+  const salary = String(input.salary || '').trim();
+  const allowance = String(input.allowance ?? '0').trim() || '0';
+  const tax = withholdingTaxFromSalaryFields(salary);
+  const totals = computeSalaryTotals({ salary, allowance, tax });
 
   return {
     employeeId: input.employeeId.trim(),
@@ -77,16 +70,6 @@ export async function POST(request: Request) {
 
     if (!editingExisting || !String(body.employeeId || '').trim()) {
       body.employeeId = getNextEmployeeId(existing);
-    }
-
-    // Create flow: structured bank fields also fill employees.bankAccountDetails.
-    if (!editingExisting) {
-      const draft = body as Partial<EmployeeWriteInput>;
-      if (!String(draft.accountName || '').trim() && String(draft.name || '').trim()) {
-        draft.accountName = String(draft.name).trim();
-      }
-      draft.bankAccountDetails = composeBankAccountDetails(draft as EmployeeWriteInput);
-      Object.assign(body, draft);
     }
 
     const validation = await validateEmployeeWrite(body, { existing });
@@ -159,6 +142,23 @@ export async function POST(request: Request) {
       validation.value.role = roleDisplayName(normalizeRole(previousRole));
     }
 
+    if (canAssignDirectorFlag(actorRole || '')) {
+      validation.value.isDirector = parseToggle(
+        body.isDirector ?? validation.value.isDirector ?? previous?.isDirector
+      );
+    } else {
+      validation.value.isDirector = Boolean(previous?.isDirector);
+    }
+    if (normalizeRole(validation.value.role) !== ROLES.HR_MANAGER) {
+      validation.value.hasFinanceAccess = false;
+    } else if (!canAssignHrFinanceAccess(actorRole || '')) {
+      validation.value.hasFinanceAccess = Boolean(previous?.hasFinanceAccess);
+    } else {
+      validation.value.hasFinanceAccess = parseToggle(
+        body.hasFinanceAccess ?? validation.value.hasFinanceAccess
+      );
+    }
+
     // EMS login is created by registration. Without an Auth user the status is
     // always Inactive (UI shows "Register"). Choosing Inactive while a login
     // exists revokes access: delete Auth and clear the Supabase user link.
@@ -201,22 +201,25 @@ export async function POST(request: Request) {
     }
 
     const isCreate = !previous;
-    let initialSalary: SalaryDetailInput | null = null;
+    let createSalary: SalaryDetailInput | null = null;
     if (isCreate) {
-      initialSalary = buildInitialSalaryDetail(validation.value);
-      if (!initialSalary.accountNumber || !initialSalary.accountName || !initialSalary.bankName) {
+      createSalary = buildCreateSalaryDetail(validation.value);
+      const fieldErrors: Record<string, string> = {};
+      if (!createSalary.salary || Number(createSalary.salary) <= 0) {
+        fieldErrors.salary = 'Base salary is required';
+      }
+      if (!createSalary.allowance && createSalary.allowance !== '0') {
+        fieldErrors.allowance = 'Allowance is required';
+      }
+      if (!createSalary.bankName) fieldErrors.bankName = 'Bank name is required';
+      if (!createSalary.accountName) fieldErrors.accountName = 'Account name is required';
+      if (!createSalary.accountNumber) fieldErrors.accountNumber = 'Account number is required';
+      if (Object.keys(fieldErrors).length > 0) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              'Account number, account name, and bank name are required for the initial salary.',
-            fieldErrors: {
-              ...(!initialSalary.accountNumber
-                ? { accountNumber: 'Account number is required' }
-                : {}),
-              ...(!initialSalary.accountName ? { accountName: 'Account name is required' } : {}),
-              ...(!initialSalary.bankName ? { bankName: 'Bank name is required' } : {}),
-            },
+            error: 'Salary profile fields are required when creating an employee.',
+            fieldErrors,
           },
           { status: 400 }
         );
@@ -249,13 +252,13 @@ export async function POST(request: Request) {
 
     let salarySaved = false;
     let salaryWarning = '';
-    if (isCreate && initialSalary) {
+    if (isCreate && createSalary) {
       try {
         await updateSalaryDetails(
           [
             {
-              ...initialSalary,
-              employeeId: saved.employeeId || initialSalary.employeeId,
+              ...createSalary,
+              employeeId: saved.employeeId || createSalary.employeeId,
             },
           ],
           { actorEmail: user?.email || '' }
@@ -265,9 +268,9 @@ export async function POST(request: Request) {
         const message =
           salaryError instanceof Error
             ? salaryError.message
-            : 'Failed to save the initial salary row.';
-        console.error('[POST /api/update-user] initial salary write failed:', message, salaryError);
-        salaryWarning = `Employee profile was saved, but the initial salary could not be written: ${message}`;
+            : 'Failed to save the salary profile.';
+        console.error('[POST /api/update-user] salary write failed:', message, salaryError);
+        salaryWarning = `Employee profile was saved, but the salary profile could not be written: ${message}`;
       }
     }
 
@@ -275,12 +278,19 @@ export async function POST(request: Request) {
     // until the employee has a login (use saved link — revoke clears it).
     const hasLogin = Boolean(saved.supabaseUserId);
 
+    const flagsChanging =
+      Boolean(previous) &&
+      (Boolean(previous?.isDirector) !== Boolean(validation.value.isDirector) ||
+        Boolean(previous?.hasFinanceAccess) !== Boolean(validation.value.hasFinanceAccess));
+
     let authRoleSynced = false;
-    if (roleChanging && hasLogin) {
+    if ((roleChanging || flagsChanging) && hasLogin) {
       const { synced } = await syncEmployeeAuthRole({
         supabaseUserId: saved.supabaseUserId,
         email: saved.email || previous?.email || validation.value.email,
         roleLabel: saved.role || validation.value.role,
+        hasFinanceAccess: saved.hasFinanceAccess,
+        isDirector: saved.isDirector,
       });
       authRoleSynced = synced;
     }

@@ -17,8 +17,13 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   try {
-    const { user, role, errorResponse } = await verifyResourceAccess(request, 'reports', 'read');
+    const { user, role, hasFinanceAccess, isDirector, errorResponse } = await verifyResourceAccess(
+      request,
+      'reports',
+      'read'
+    );
     if (errorResponse) return errorResponse;
+    const flags = { hasFinanceAccess, isDirector };
 
     const { searchParams } = new URL(request.url);
     const type = (searchParams.get('type') || '') as ReportType;
@@ -33,7 +38,7 @@ export async function GET(request: Request) {
       const directors = await listAccountingDirectorAccounts().catch(() => []);
       return NextResponse.json({
         success: true,
-        reports: reportsForRole(role!),
+        reports: reportsForRole(role!, flags),
         accounts: [ACCOUNTING_BANK_ACCOUNT, ...directors.map((director) => director.name)],
       });
     }
@@ -45,6 +50,8 @@ export async function GET(request: Request) {
     const report = await buildReport({
       type,
       role: role!,
+      hasFinanceAccess,
+      isDirector,
       month,
       year,
       account,

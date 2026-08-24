@@ -56,12 +56,14 @@ function isIncomeRow(row: { transactionType: string; category: string }) {
 export async function buildReport(params: {
   type: ReportType;
   role: AppRole | string;
+  hasFinanceAccess?: boolean;
+  isDirector?: boolean;
   month?: string;
   year?: string;
   account?: string;
   period?: string;
 }): Promise<ReportPayload> {
-  if (!canRunReport(params.role, params.type)) {
+  if (!canRunReport(params.role, params.type, params)) {
     throw new Error('You do not have access to this report.');
   }
 
@@ -77,7 +79,11 @@ export async function buildReport(params: {
     case 'leave':
       return buildLeaveReport({ year, generatedAt });
     case 'employee':
-      return buildEmployeeReport({ generatedAt, role: params.role });
+      return buildEmployeeReport({
+        generatedAt,
+        role: params.role,
+        isDirector: params.isDirector,
+      });
     case 'expense':
       return buildAccountingTypeReport({
         type: 'expense',
@@ -217,11 +223,15 @@ async function buildLeaveReport(params: {
 async function buildEmployeeReport(params: {
   generatedAt: string;
   role: AppRole | string;
+  isDirector?: boolean;
 }): Promise<ReportPayload> {
   const rows = await listEmployeeDbRows();
-  const isDirector = normalizeRole(params.role) === ROLES.DIRECTOR;
+  const isDirectorView =
+    Boolean(params.isDirector) &&
+    (normalizeRole(params.role) === ROLES.EMPLOYEE ||
+      normalizeRole(params.role) === ROLES.DIRECTOR);
 
-  const columns: ReportColumn[] = isDirector
+  const columns: ReportColumn[] = isDirectorView
     ? [
         { key: 'employeeId', label: 'Employee ID' },
         { key: 'name', label: 'Name' },
@@ -240,7 +250,7 @@ async function buildEmployeeReport(params: {
       ];
 
   const reportRows: ReportRow[] = rows.map((row) =>
-    isDirector
+    isDirectorView
       ? {
           employeeId: row.employeeid,
           name: row.fullname,

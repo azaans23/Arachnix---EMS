@@ -157,15 +157,17 @@ export default function HolidayCalendarPage() {
       }
       localStorage.setItem('token', session.access_token);
       let role = getTrustedRole(session.user);
+      let flags = { hasFinanceAccess: false, isDirector: false };
       try {
         const synced = await syncSessionCookies(session.access_token);
         role = synced.role;
+        flags = { hasFinanceAccess: synced.hasFinanceAccess, isDirector: synced.isDirector };
       } catch {
         /* keep JWT */
       }
-      const canView = canAccess(role, 'holiday_calendar');
+      const canView = canAccess(role, 'holiday_calendar', flags);
       setAllowed(canView);
-      setCanEdit(canWrite(role, 'holiday_calendar'));
+      setCanEdit(canWrite(role, 'holiday_calendar', flags));
       if (!canView) setLoading(false);
     };
     void boot();

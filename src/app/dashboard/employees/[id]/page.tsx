@@ -18,19 +18,16 @@ import {
 import { supabase } from '@/lib/supabase';
 import {
   canAccess,
-  canDeleteEmployee,
+  canDeleteEmployeeRecord,
   canEditEmployeeRecord,
-  canManageEmployeeRole,
-  emailsMatch,
   getTrustedRole,
-  isSuperAdminRole,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import { FormSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import type { SheetUser } from '@/types/employee';
-import { hasEmsLogin, supabaseUserIdOf } from '@/types/employee';
+import { hasEmsLogin, isDirectorOf, supabaseUserIdOf } from '@/types/employee';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -184,12 +181,15 @@ export default function EmployeeProfilePage({ params }: PageProps) {
       targetSupabaseUserId: supabaseUserIdOf(user),
     })
   );
-  const showDelete =
-    canDeleteEmployee(actorRole) &&
-    !emailsMatch(actorEmail, user.email) &&
-    !isSuperAdminRole(user.role) &&
-    !!actorRole &&
-    canManageEmployeeRole(actorRole, user.role);
+  const showDelete = canDeleteEmployeeRecord({
+    actorRole,
+    actorEmail,
+    actorUserId,
+    targetRole: user.role,
+    targetEmail: user.email,
+    targetSupabaseUserId: supabaseUserIdOf(user),
+    isDirector: isDirectorOf(user),
+  });
 
   const handleDelete = async () => {
     if (!user.employeeId) return;

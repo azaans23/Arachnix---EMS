@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import type { EmployeeWriteInput } from '@/types/employee';
+import type { EmployeeRecord, EmployeeWriteInput } from '@/types/employee';
 
 /** Matches public.employees columns (sheet schema, lowercased by Postgres). */
 export type EmployeeDbRow = {
@@ -13,11 +13,11 @@ export type EmployeeDbRow = {
   designation: string;
   employeetype: string;
   joiningdate: string;
-  basesalary: number;
-  bankaccountdetails: string | null;
   role: string;
   supabaseuserid: string | null;
   emsstatus: string;
+  isdirector: boolean;
+  hasfinanceaccess: boolean;
   createdat?: string;
   updatedat?: string;
 };
@@ -40,14 +40,6 @@ function toDateValue(value: string): string {
 
 function toDateOrNull(value: string): string | null {
   return emptyToNull(toDateValue(value));
-}
-
-function toSalary(value: string): number {
-  const n = Number(String(value ?? '').trim());
-  if (!Number.isFinite(n)) {
-    throw new Error(`Invalid base salary: ${value}`);
-  }
-  return n;
 }
 
 function toUuidOrNull(value: string | undefined): string | null {
@@ -73,11 +65,15 @@ export function toEmployeeDbRow(input: EmployeeWriteInput): EmployeeDbRow {
     designation: input.designation.trim(),
     employeetype: input.employmentType.trim(),
     joiningdate,
-    basesalary: toSalary(input.baseSalary),
-    bankaccountdetails: emptyToNull(input.bankAccountDetails),
     role: input.role.trim(),
     supabaseuserid: toUuidOrNull(input.supabaseUserId),
     emsstatus: (input.emsStatus || 'Active').trim() || 'Active',
+    isdirector: Boolean(input.isDirector),
+    hasfinanceaccess:
+      Boolean(input.hasFinanceAccess) &&
+      String(input.role || '')
+        .toLowerCase()
+        .includes('hr'),
     updatedat: new Date().toISOString(),
   };
 }
@@ -163,28 +159,9 @@ export async function findEmployeeDbRowByIdOrEmail(
 }
 
 /** Map a DB row into the app's EmployeeRecord + sheet-shaped raw for UI passthrough. */
-export function dbRowToEmployeeRecord(row: EmployeeDbRow): {
-  employeeId: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  dob: string;
-  address: string;
-  department: string;
-  designation: string;
-  employeeType: string;
-  joiningDate: string;
-  baseSalary: string;
-  bankAccountDetails: string;
-  role: string;
-  supabaseUserId: string;
-  emsStatus: string;
-  raw: Record<string, unknown>;
-} {
+export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
   const dob = row.dob ? String(row.dob).slice(0, 10) : '';
   const joiningDate = row.joiningdate ? String(row.joiningdate).slice(0, 10) : '';
-  const baseSalary =
-    row.basesalary === null || row.basesalary === undefined ? '' : String(row.basesalary);
   const supabaseUserId = row.supabaseuserid ? String(row.supabaseuserid) : '';
 
   const raw: Record<string, unknown> = {
@@ -198,12 +175,14 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): {
     Designation: row.designation,
     EmployeeType: row.employeetype,
     JoiningDate: joiningDate,
-    BaseSalary: baseSalary,
-    BankAccountDetails: row.bankaccountdetails || '',
     Role: row.role,
     SupabaseUserID: supabaseUserId,
     EMSStatus: row.emsstatus || 'Inactive',
+    IsDirector: row.isdirector ? 'TRUE' : 'FALSE',
+    HasFinanceAccess: row.hasfinanceaccess ? 'TRUE' : 'FALSE',
   };
+
+  const roleLabel = String(row.role || 'Employee');
 
   return {
     employeeId: String(row.employeeid || ''),
@@ -216,11 +195,11 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): {
     designation: String(row.designation || ''),
     employeeType: String(row.employeetype || ''),
     joiningDate,
-    baseSalary,
-    bankAccountDetails: String(row.bankaccountdetails || ''),
-    role: String(row.role || 'Employee'),
+    role: roleLabel,
     supabaseUserId,
     emsStatus: String(row.emsstatus || 'Inactive'),
+    isDirector: Boolean(row.isdirector),
+    hasFinanceAccess: Boolean(row.hasfinanceaccess),
     raw,
   };
 }
