@@ -177,6 +177,7 @@ export async function startAccountingUpload(params: {
         account: record.account,
         category: record.category,
         transactionType: record.transactionType,
+        statementCategory: record.statementCategory,
         amount: record.amount,
         currency: record.currency,
         clientVendor: record.clientVendor,

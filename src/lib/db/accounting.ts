@@ -6,6 +6,7 @@ import {
   ACCOUNTING_COMPANY_ROOT,
   ACCOUNTING_BANK_ACCOUNT,
   ACCOUNTING_NO_FILE_LABEL,
+  ACCOUNTING_STATEMENT_CATEGORIES,
   nextAccountingInvoiceReference,
   type AccountingRecord,
   type AccountingUploadInput,
@@ -18,6 +19,7 @@ type AccountingDbRow = {
   account: string;
   category: string;
   transactiontype: string;
+  statementcategory: string | null;
   amount: number | string | null;
   currency: string | null;
   clientvendor: string | null;
@@ -33,6 +35,7 @@ type AccountingDbRow = {
 
 const TABLE = 'accountingrecords';
 const ALLOWED_TYPES = new Set(['Income', 'Expense', 'Transfer']);
+const ALLOWED_STATEMENT_CATEGORIES = new Set<string>(ACCOUNTING_STATEMENT_CATEGORIES);
 
 function requiredText(value: unknown, label: string) {
   const text = String(value ?? '').trim();
@@ -76,6 +79,7 @@ export function mapAccountingRow(row: AccountingDbRow): AccountingRecord {
     account: row.account || '',
     category: row.category || '',
     transactionType: row.transactiontype || '',
+    statementCategory: row.statementcategory || '',
     amount: Number(row.amount ?? 0),
     currency: row.currency || 'PKR',
     clientVendor: row.clientvendor || '',
@@ -141,6 +145,7 @@ export function toWebhookAccountingRow(record: AccountingRecord, period?: string
     Account: record.account,
     Category: record.category,
     TransactionType: record.transactionType,
+    StatementCategory: record.statementCategory || '',
     Amount: record.amount,
     Currency: record.currency,
     ClientVendor: record.clientVendor || '',
@@ -176,11 +181,26 @@ export function normalizeAccountingUploadInput(
     throw new Error('Transaction type must be Income, Expense, or Transfer.');
   }
 
+  const category = requiredText(raw.category ?? raw.Category, 'Folder');
+  let statementCategory = String(
+    raw.statementCategory ?? raw.StatementCategory ?? ''
+  ).trim();
+  if (category === 'Statements') {
+    statementCategory = statementCategory || 'Excluded';
+  }
+  if (!statementCategory) {
+    throw new Error('Statement category is required.');
+  }
+  if (!ALLOWED_STATEMENT_CATEGORIES.has(statementCategory)) {
+    throw new Error('Statement category is not recognized.');
+  }
+
   return {
     period,
     account: requiredText(raw.account ?? raw.Account, 'Account'),
-    category: requiredText(raw.category ?? raw.Category, 'Category'),
+    category,
     transactionType,
+    statementCategory,
     amount: toAmount(raw.amount ?? raw.Amount),
     currency:
       String(raw.currency ?? raw.Currency ?? 'PKR')
@@ -255,6 +275,7 @@ export async function createAccountingRecord(input: {
     account: input.meta.account,
     category: input.meta.category,
     transactiontype: input.meta.transactionType,
+    statementcategory: input.meta.statementCategory || null,
     amount: input.meta.amount,
     currency: input.meta.currency,
     clientvendor: input.meta.clientVendor || null,
