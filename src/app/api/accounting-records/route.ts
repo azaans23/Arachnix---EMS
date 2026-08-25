@@ -71,6 +71,7 @@ export async function POST(request: Request) {
       'account',
       'category',
       'transactionType',
+      'statementCategory',
       'amount',
       'currency',
       'clientVendor',

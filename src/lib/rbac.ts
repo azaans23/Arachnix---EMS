@@ -47,6 +47,7 @@ export type ResourceKey =
   | 'leave_balances'
   | 'holiday_calendar'
   | 'accounting_records'
+  | 'financial_statements'
   | 'search'
   | 'reports'
   | 'settings';
@@ -443,6 +444,12 @@ const PERMISSIONS: Record<ResourceKey, Partial<Record<AppRole, AccessLevel>>> = 
     [ROLES.ADMIN]: 'write',
     [ROLES.FINANCE_MANAGER]: 'write',
   },
+  financial_statements: {
+    [ROLES.SUPER_ADMIN]: 'write',
+    [ROLES.ADMIN]: 'write',
+    [ROLES.FINANCE_MANAGER]: 'write',
+    [ROLES.DIRECTOR]: 'read',
+  },
   search: {
     [ROLES.SUPER_ADMIN]: 'read',
     [ROLES.ADMIN]: 'read',
@@ -533,6 +540,8 @@ export const ROUTE_RESOURCES: { prefix: string; resource: ResourceKey }[] = [
   { prefix: '/dashboard/leave-balances', resource: 'leave_balances' },
   { prefix: '/dashboard/holiday-calendar', resource: 'holiday_calendar' },
   { prefix: '/dashboard/accounting-records', resource: 'accounting_records' },
+  { prefix: '/dashboard/accounting-balances', resource: 'accounting_records' },
+  { prefix: '/dashboard/financial-statements', resource: 'financial_statements' },
   { prefix: '/dashboard/search', resource: 'search' },
   { prefix: '/dashboard/reports', resource: 'reports' },
   { prefix: '/dashboard/settings', resource: 'settings' },
@@ -610,6 +619,18 @@ export const NAV_ITEMS: NavItemConfig[] = [
     href: '/dashboard/accounting-records',
     label: 'Accounting Records',
     resource: 'accounting_records',
+    section: 'finance',
+  },
+  {
+    href: '/dashboard/accounting-balances',
+    label: 'Monthly Balances',
+    resource: 'accounting_records',
+    section: 'finance',
+  },
+  {
+    href: '/dashboard/financial-statements',
+    label: 'Financial Statements',
+    resource: 'financial_statements',
     section: 'finance',
   },
   { href: '/dashboard/reports', label: 'Reports', resource: 'reports', section: 'finance' },

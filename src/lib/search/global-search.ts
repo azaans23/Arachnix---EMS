@@ -146,6 +146,7 @@ async function searchAccounting(query: string, viewer: SearchViewer): Promise<Se
       { label: 'Account', value: row.account },
       { label: 'Category', value: row.category },
       { label: 'Transaction type', value: row.transactionType },
+      { label: 'Statement category', value: row.statementCategory },
       { label: 'Document type', value: row.category },
       { label: 'File name', value: row.fileName || ACCOUNTING_NO_FILE_LABEL },
       { label: 'Notes', value: row.notes },

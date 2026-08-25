@@ -37,6 +37,8 @@ import {
   ACCOUNTING_CURRENCIES,
   ACCOUNTING_NO_FILE_LABEL,
   ACCOUNTING_TRANSACTION_TYPES,
+  ACCOUNTING_STATEMENT_CATEGORY_OPTIONS,
+  suggestedStatementCategory,
   buildAccountingDriveFileName,
   isAllowedAccountingFileName,
   nextAccountingInvoiceReference,
@@ -121,6 +123,7 @@ type UploadForm = {
   account: string;
   category: string;
   transactionType: string;
+  statementCategory: string;
   amount: string;
   currency: string;
   clientVendor: string;
@@ -135,6 +138,7 @@ const emptyForm = (period: string): UploadForm => ({
   account: ACCOUNTING_BANK_ACCOUNT,
   category: ACCOUNTING_CATEGORIES[0],
   transactionType: ACCOUNTING_TRANSACTION_TYPES[0],
+  statementCategory: suggestedStatementCategory(ACCOUNTING_CATEGORIES[0]),
   amount: '',
   currency: 'PKR',
   clientVendor: '',
@@ -276,6 +280,7 @@ export default function AccountingRecordsPage() {
         row.account,
         row.category,
         row.transactionType,
+        row.statementCategory,
         row.clientVendor,
         row.reference,
         row.fileName,
@@ -300,7 +305,10 @@ export default function AccountingRecordsPage() {
     file.size > 0 &&
     file.size <= MAX_FILE_MB * 1024 * 1024
   );
-  const canSubmit = amountValid && (!file || fileValid) && !saving;
+  const statementCategoryRequired = form.category !== 'Statements';
+  const statementCategoryValid =
+    !statementCategoryRequired || Boolean(form.statementCategory.trim());
+  const canSubmit = amountValid && (!file || fileValid) && statementCategoryValid && !saving;
 
   const driveFileNamePreview = useMemo(() => {
     if (!file) return '';
@@ -355,6 +363,10 @@ export default function AccountingRecordsPage() {
       toast.error('Choose a supported file up to the size limit, or remove it.');
       return;
     }
+    if (!statementCategoryValid) {
+      toast.error('Pick a statement category.');
+      return;
+    }
     if (!amountValid) {
       toast.error('Enter an amount of zero or more.');
       return;
@@ -368,6 +380,7 @@ export default function AccountingRecordsPage() {
       body.append('account', form.account);
       body.append('category', form.category);
       body.append('transactionType', form.transactionType);
+      body.append('statementCategory', form.statementCategory);
       body.append('amount', String(amountNumber));
       body.append('currency', form.currency);
       body.append('clientVendor', form.clientVendor);
@@ -890,7 +903,16 @@ export default function AccountingRecordsPage() {
                           value: category,
                         }))}
                         value={form.category}
-                        onChange={(value) => setForm((prev) => ({ ...prev, category: value }))}
+                        onChange={(value) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            category: value,
+                            statementCategory:
+                              value === 'Statements'
+                                ? 'Excluded'
+                                : suggestedStatementCategory(value),
+                          }))
+                        }
                         onBlur={() => {}}
                       />
                     </div>
@@ -908,6 +930,31 @@ export default function AccountingRecordsPage() {
                         value={form.transactionType}
                         onChange={(value) =>
                           setForm((prev) => ({ ...prev, transactionType: value }))
+                        }
+                        onBlur={() => {}}
+                      />
+                    </div>
+                  </label>
+                  <label className="text-xs font-medium text-muted">
+                    Statement category{' '}
+                    {statementCategoryRequired ? <span className="text-danger">*</span> : null}
+                    <div className="mt-1.5">
+                      <CustomDropdown
+                        id="upload-statement-category"
+                        name="statementCategory"
+                        options={
+                          form.category === 'Statements'
+                            ? [{ label: 'Excluded from statements', value: 'Excluded' }]
+                            : ACCOUNTING_STATEMENT_CATEGORY_OPTIONS.filter(
+                                (option) => option.value
+                              ).map((option) => ({
+                                label: option.label,
+                                value: option.value,
+                              }))
+                        }
+                        value={form.statementCategory}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, statementCategory: value }))
                         }
                         onBlur={() => {}}
                       />

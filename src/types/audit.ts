@@ -23,6 +23,8 @@ export const AUDIT_RECORD_TYPES = {
   LEAVE_BALANCE: 'LeaveBalance',
   HOLIDAY: 'Holiday',
   ACCOUNTING_RECORD: 'AccountingRecord',
+  ACCOUNTING_BALANCE: 'AccountingBalance',
+  FINANCIAL_STATEMENT: 'FinancialStatement',
 } as const;
 
 export type AuditRecordType =

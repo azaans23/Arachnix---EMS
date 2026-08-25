@@ -21,6 +21,47 @@ export const ACCOUNTING_CATEGORIES = [
 /** Matches DB CHECK on accountingrecords.transactiontype */
 export const ACCOUNTING_TRANSACTION_TYPES = ['Income', 'Expense', 'Transfer'] as const;
 
+/** P&L / cash-flow classification on each transaction. Independent of Folder. */
+export const ACCOUNTING_STATEMENT_CATEGORIES = [
+  'Revenue',
+  'CostOfServices',
+  'OperatingExpense',
+  'AssetPurchase',
+  'LiabilityPayment',
+  'Financing',
+  'Investing',
+  'Excluded',
+] as const;
+
+export const ACCOUNTING_STATEMENT_CATEGORY_OPTIONS: Array<{
+  value: (typeof ACCOUNTING_STATEMENT_CATEGORIES)[number] | '';
+  label: string;
+}> = [
+  { value: 'Revenue', label: 'Revenue' },
+  { value: 'CostOfServices', label: 'Cost of Services' },
+  { value: 'OperatingExpense', label: 'Operating Expense' },
+  { value: 'AssetPurchase', label: 'Asset Purchase' },
+  { value: 'LiabilityPayment', label: 'Liability Payment' },
+  { value: 'Financing', label: 'Financing' },
+  { value: 'Investing', label: 'Investing' },
+];
+
+/** Prefill Statement Category from Folder. Empty = user must pick. */
+export const FOLDER_TO_STATEMENT_CATEGORY: Record<string, string> = {
+  Income: 'Revenue',
+  Payroll: 'CostOfServices',
+  Expenses: 'OperatingExpense',
+  Taxes: 'LiabilityPayment',
+  Receipts: 'Revenue',
+  Transfers: 'Financing',
+  Miscellaneous: '',
+  Statements: 'Excluded',
+};
+
+export function suggestedStatementCategory(folder: string): string {
+  return FOLDER_TO_STATEMENT_CATEGORY[folder] ?? '';
+}
+
 export const ACCOUNTING_CURRENCIES = ['PKR', 'USD', 'EUR', 'GBP', 'AED'] as const;
 
 /**
@@ -47,6 +88,9 @@ export const ACCOUNTING_ALLOWED_EXTENSIONS = [
 export type AccountingAccount = (typeof ACCOUNTING_ACCOUNTS)[number] | string;
 export type AccountingCategory = (typeof ACCOUNTING_CATEGORIES)[number] | string;
 export type AccountingTransactionType = (typeof ACCOUNTING_TRANSACTION_TYPES)[number] | string;
+export type AccountingStatementCategory =
+  | (typeof ACCOUNTING_STATEMENT_CATEGORIES)[number]
+  | string;
 
 export interface AccountingRecord {
   recordId: string;
@@ -54,6 +98,7 @@ export interface AccountingRecord {
   account: AccountingAccount;
   category: AccountingCategory;
   transactionType: AccountingTransactionType;
+  statementCategory: AccountingStatementCategory;
   amount: number;
   currency: string;
   clientVendor: string;
@@ -80,6 +125,7 @@ export interface AccountingUploadInput {
   account: AccountingAccount;
   category: AccountingCategory;
   transactionType: AccountingTransactionType;
+  statementCategory?: AccountingStatementCategory;
   amount: number;
   currency: string;
   clientVendor?: string;
