@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { listEmployeeDbRows } from '@/lib/db/employees';
+import { attachDepartmentLeaveConflicts } from '@/lib/leave/conflicts';
 import {
   countLeaveDays,
   type LeaveRequest,
@@ -133,16 +134,18 @@ export async function listLeaveRequests(filters?: {
     employees.map((employee) => [employee.employeeid.trim().toLowerCase(), employee])
   );
 
-  return requests.map((request) => {
-    const employee = byId.get(request.employeeId.trim().toLowerCase());
-    return {
-      ...request,
-      fullName: employee?.fullname || '',
-      email: employee?.email || '',
-      department: employee?.department || '',
-      designation: employee?.designation || '',
-    };
-  });
+  return attachDepartmentLeaveConflicts(
+    requests.map((request) => {
+      const employee = byId.get(request.employeeId.trim().toLowerCase());
+      return {
+        ...request,
+        fullName: employee?.fullname || '',
+        email: employee?.email || '',
+        department: employee?.department || '',
+        designation: employee?.designation || '',
+      };
+    })
+  );
 }
 
 export async function getLeaveRequest(requestId: string): Promise<LeaveRequest | null> {

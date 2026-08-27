@@ -39,6 +39,19 @@ export interface LeaveRequest {
   email?: string;
   department?: string;
   designation?: string;
+  /** Other people in the same department with overlapping dates (Pending or Approved). */
+  departmentConflicts?: LeaveDepartmentConflict[];
+}
+
+export interface LeaveDepartmentConflict {
+  requestId: string;
+  employeeId: string;
+  fullName: string;
+  department: string;
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  status: LeaveRequestStatus;
 }
 
 /** Inclusive calendar-day count between two YYYY-MM-DD dates. */
