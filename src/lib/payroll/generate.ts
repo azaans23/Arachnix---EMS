@@ -65,13 +65,20 @@ export function payrollEligibilityReason(
   if (!hasPayrollSalary(employee, salaryIds)) {
     return 'No salary record — create one on the Salary page first';
   }
+  if (String(employee.emsStatus || '').trim().toLowerCase() !== 'active') {
+    return 'Employee is not Active — complete or skip offboarding first';
+  }
   return null;
 }
 
 export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<EmployeeRecord[]> {
   const [all, salaryRows] = await Promise.all([fetchEmployees(), fetchSalaryDetails()]);
   const salaryIds = new Set(salaryRows.map((row) => row.employeeId.trim().toLowerCase()));
-  const eligible = all.filter((employee) => hasPayrollSalary(employee, salaryIds));
+  const eligible = all.filter(
+    (employee) =>
+      hasPayrollSalary(employee, salaryIds) &&
+      String(employee.emsStatus || '').trim().toLowerCase() === 'active'
+  );
 
   if (!employeeIds || employeeIds.length === 0) return eligible;
 

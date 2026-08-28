@@ -1,4 +1,5 @@
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { postSheetWebhook } from '@/lib/sheets/webhook';
 import {
   compensationChanged,
   dbRowToSalaryHistoryRecord,
@@ -29,23 +30,11 @@ export function toWebhookSalaryHistoryRow(record: SalaryHistoryRecord) {
 }
 
 async function postSalaryHistoryWebhook(record: SalaryHistoryRecord): Promise<void> {
-  const url = SHEETS_WEBHOOKS.createSalaryHistory;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(toWebhookSalaryHistoryRow(record)),
-    cache: 'no-store',
+  await postSheetWebhook({
+    url: SHEETS_WEBHOOKS.createSalaryHistory,
+    label: 'create-salary-history',
+    payload: toWebhookSalaryHistoryRow(record),
   });
-
-  const text = await response.text();
-  if (response.ok) return;
-
-  if (response.status === 404) {
-    throw new Error(
-      'create-salary-history webhook not found (404). Activate the n8n workflow and use /webhook/ (not /webhook-test/).'
-    );
-  }
-  throw new Error(text || `create-salary-history webhook returned status ${response.status}.`);
 }
 
 /**

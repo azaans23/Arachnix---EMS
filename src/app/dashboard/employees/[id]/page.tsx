@@ -13,6 +13,7 @@ import {
   UserCheck,
   RefreshCw,
   Trash2,
+  LogOut,
   Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -21,6 +22,7 @@ import {
   canDeleteEmployeeRecord,
   canEditEmployeeRecord,
   getTrustedRole,
+  isSuperAdminRole,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
@@ -240,6 +242,14 @@ export default function EmployeeProfilePage({ params }: PageProps) {
               <UserCheck className="h-3.5 w-3.5" /> Register
             </button>
           )}
+          {canEdit && user && !isSuperAdminRole(user.role) ? (
+            <Link
+              href={`/dashboard/employees/${encodeURIComponent(id)}/offboard`}
+              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Offboard
+            </Link>
+          ) : null}
           {showDelete ? (
             <button
               type="button"
