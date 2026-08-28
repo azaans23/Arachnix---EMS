@@ -119,6 +119,37 @@ export async function deleteSalaryHistoryDbRow(historyId: number | string): Prom
   }
 }
 
+/**
+ * Remove an employee's compensation log and hand back the rows, so a failed
+ * delete-employee dual-write can put them back.
+ */
+export async function deleteSalaryHistoryByEmployeeId(
+  employeeId: string
+): Promise<SalaryHistoryDbRow[]> {
+  const id = employeeId.trim();
+  if (!id) return [];
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(TABLE)
+    .delete()
+    .eq('employeeid', id)
+    .select('*');
+  if (error) {
+    throw new Error(`Supabase salaryhistory delete failed: ${error.message}`);
+  }
+  return (data as SalaryHistoryDbRow[]) || [];
+}
+
+/** Restore requires the employee and salary rows to exist again first. */
+export async function restoreSalaryHistoryRows(rows: SalaryHistoryDbRow[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  const { error } = await getSupabaseAdmin().from(TABLE).insert(rows);
+  if (error) {
+    throw new Error(`Supabase salaryhistory restore failed: ${error.message}`);
+  }
+}
+
 export async function listSalaryHistoryDbRows(options?: {
   employeeId?: string;
 }): Promise<SalaryHistoryDbRow[]> {

@@ -28,6 +28,14 @@ import { syncSessionCookies } from '@/lib/session-cookies';
 import { useModal } from '@/hooks/useModal';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import { FormSkeleton, Skeleton } from '@/components/ui/Skeleton';
+import {
+  NO_OFFBOARDING,
+  offboardingBadgeClasses,
+  offboardingLabel,
+  summarizeOffboarding,
+  type OffboardingSummary,
+} from '@/lib/offboarding/status';
+import type { OffboardingRecord } from '@/types/offboarding';
 import type { SheetUser } from '@/types/employee';
 import { hasEmsLogin, isDirectorOf, supabaseUserIdOf } from '@/types/employee';
 
@@ -49,15 +57,35 @@ export default function EmployeeProfilePage({ params }: PageProps) {
   const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [offboarding, setOffboarding] = useState<OffboardingSummary>(NO_OFFBOARDING);
+
+  /** Best effort: the profile must still render if the exit case fails to load. */
+  const loadOffboarding = useCallback(async (token: string | null) => {
+    try {
+      const res = await fetch(`/api/offboarding?employeeId=${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) return;
+      const history = (result.data?.history || []) as OffboardingRecord[];
+      setOffboarding(summarizeOffboarding(history));
+    } catch {
+      /* leave the profile unannotated */
+    }
+  }, [id]);
 
   const loadEmployee = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/get-users/${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [res] = await Promise.all([
+        fetch(`/api/get-users/${encodeURIComponent(id)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        loadOffboarding(token),
+      ]);
       const result = await res.json();
       if (!res.ok || !result.success) {
         throw new Error(result.error || 'Failed to load employee.');
@@ -70,7 +98,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, loadOffboarding]);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +200,8 @@ export default function EmployeeProfilePage({ params }: PageProps) {
 
   const raw = user.raw || {};
   const registered = hasEmsLogin(user);
+  const exited = offboarding.state === 'offboarded';
+  const exitCase = offboarding.record;
   const canEdit = Boolean(
     actorRole &&
     canEditEmployeeRecord({
@@ -225,7 +255,7 @@ export default function EmployeeProfilePage({ params }: PageProps) {
           <ArrowLeft className="h-4 w-4" /> Back to employees
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          {!registered && canEdit && (
+          {!registered && canEdit && !exited && (
             <button
               type="button"
               onClick={() =>
@@ -247,7 +277,12 @@ export default function EmployeeProfilePage({ params }: PageProps) {
               href={`/dashboard/employees/${encodeURIComponent(id)}/offboard`}
               className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-canvas"
             >
-              <LogOut className="h-3.5 w-3.5" /> Offboard
+              <LogOut className="h-3.5 w-3.5" />
+              {offboarding.state === 'none'
+                ? 'Offboard'
+                : offboarding.state === 'in_progress'
+                  ? 'Resume offboarding'
+                  : 'View exit record'}
             </Link>
           ) : null}
           {showDelete ? (
@@ -280,19 +315,73 @@ export default function EmployeeProfilePage({ params }: PageProps) {
             </p>
           </div>
         </div>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold ${
-            registered ? 'border-border bg-canvas text-ink' : 'border-border bg-surface text-muted'
+        {offboarding.state === 'none' ? (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold ${
+              registered ? 'border-border bg-canvas text-ink' : 'border-border bg-surface text-muted'
+            }`}
+          >
+            {registered ? (
+              <CheckCircle className="h-3.5 w-3.5" />
+            ) : (
+              <ShieldAlert className="h-3.5 w-3.5" />
+            )}
+            {registered ? 'EMS Active' : 'Register'}
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold ${offboardingBadgeClasses(offboarding.state)}`}
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            {offboardingLabel(offboarding.state)}
+          </span>
+        )}
+      </header>
+
+      {exitCase ? (
+        <div
+          className={`mb-8 rounded-lg border px-5 py-4 ${
+            exited ? 'border-danger-border bg-danger-bg' : 'border-warning/30 bg-warning/10'
           }`}
         >
-          {registered ? (
-            <CheckCircle className="h-3.5 w-3.5" />
-          ) : (
-            <ShieldAlert className="h-3.5 w-3.5" />
-          )}
-          {registered ? 'EMS Active' : 'Register'}
-        </span>
-      </header>
+          <p
+            className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
+              exited ? 'text-danger' : 'text-warning'
+            }`}
+          >
+            {exited ? 'Offboarded' : 'Offboarding in progress'}
+          </p>
+          <p className="mt-1.5 text-sm text-ink">
+            {exited
+              ? 'This employee has left. EMS access was revoked, documents were archived, and they are excluded from payroll.'
+              : 'An exit case is open. Access stays active until the offboarding is completed.'}
+          </p>
+          <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            <div>
+              <dt className="text-xs text-muted">Last working date</dt>
+              <dd className="font-medium text-ink">{exitCase.lastWorkingDate || 'Not set'}</dd>
+            </div>
+            {exitCase.reason ? (
+              <div>
+                <dt className="text-xs text-muted">Reason</dt>
+                <dd className="font-medium text-ink">{exitCase.reason}</dd>
+              </div>
+            ) : null}
+            {exited && exitCase.completedBy ? (
+              <div>
+                <dt className="text-xs text-muted">Completed by</dt>
+                <dd className="font-medium text-ink">{exitCase.completedBy}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <Link
+            href={`/dashboard/employees/${encodeURIComponent(id)}/offboard`}
+            className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink underline-offset-4 hover:underline"
+          >
+            View settlement and checklist
+          </Link>
+        </div>
+      ) : null}
 
       {canEdit ? (
         <div className="rounded-lg border border-border bg-surface p-6 shadow-panel">

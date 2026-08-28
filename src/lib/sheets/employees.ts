@@ -14,6 +14,11 @@ import {
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
 import { deleteSalaryDbRow, getSalaryDbRow, restoreSalaryDbRow } from '@/lib/db/salaries';
+import {
+  deleteSalaryHistoryByEmployeeId,
+  restoreSalaryHistoryRows,
+  type SalaryHistoryDbRow,
+} from '@/lib/db/salary-history';
 import { deleteLeaveBalancesByEmployeeId, restoreLeaveBalanceRows } from '@/lib/db/leave-balances';
 import { deleteLeaveRequestsByEmployeeId, restoreLeaveRequestRows } from '@/lib/db/leave-requests';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
@@ -402,7 +407,8 @@ export async function upsertEmployee(
 
 /**
  * Permanently delete an employee from Supabase, then from the Sheet via n8n.
- * Related salary / leave rows are removed first so FKs do not block the delete.
+ * Related salary history / salary / leave rows are removed first so FKs do not
+ * block the delete.
  * On webhook failure the employee row (and related snapshots) are restored.
  */
 export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord> {
@@ -416,10 +422,12 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
 
   const employee = dbRowToEmployeeRecord(previousDbRow);
   const previousSalary = await getSalaryDbRow(id);
+  let previousHistory: SalaryHistoryDbRow[] = [];
   let previousBalances: Awaited<ReturnType<typeof deleteLeaveBalancesByEmployeeId>> = [];
   let previousRequests: Awaited<ReturnType<typeof deleteLeaveRequestsByEmployeeId>> = [];
 
   // Clear dependents before the employee row so FKs cannot block the delete.
+  previousHistory = await deleteSalaryHistoryByEmployeeId(id);
   if (previousSalary) {
     await deleteSalaryDbRow(id);
   }
@@ -454,6 +462,8 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
     try {
       await restoreEmployeeDbRow(previousDbRow);
       if (previousSalary) await restoreSalaryDbRow(previousSalary);
+      // History references both rows above, so it goes back last.
+      if (previousHistory.length > 0) await restoreSalaryHistoryRows(previousHistory);
       if (previousBalances.length > 0) await restoreLeaveBalanceRows(previousBalances);
       if (previousRequests.length > 0) await restoreLeaveRequestRows(previousRequests);
     } catch (rollbackError) {

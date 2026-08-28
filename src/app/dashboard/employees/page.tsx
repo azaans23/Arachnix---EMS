@@ -22,6 +22,7 @@ import {
   X,
   Trash2,
   Loader2,
+  LogOut,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
@@ -38,6 +39,14 @@ import {
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
+import {
+  buildOffboardingIndex,
+  offboardingBadgeClasses,
+  offboardingLabel,
+  offboardingStateFor,
+  type OffboardingSummary,
+} from '@/lib/offboarding/status';
+import type { OffboardingRecord } from '@/types/offboarding';
 import type { SheetUser } from '@/types/employee';
 import {
   emsStatusOf,
@@ -59,6 +68,8 @@ const STATUS_OPTIONS = [
   { label: 'All statuses', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Register', value: 'register' },
+  { label: 'Offboarding', value: 'offboarding' },
+  { label: 'Offboarded', value: 'offboarded' },
 ];
 
 const PAGE_SIZE_OPTIONS = [
@@ -115,6 +126,7 @@ const SortableHeader = ({ column, label, sortKey, sortDir, onSort }: SortableHea
 
 export default function EmployeesPage() {
   const [users, setUsers] = useState<SheetUser[]>([]);
+  const [offboardings, setOffboardings] = useState<Map<string, OffboardingSummary>>(new Map());
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [canViewEmployees, setCanViewEmployees] = useState<boolean | null>(null);
@@ -191,16 +203,34 @@ export default function EmployeesPage() {
     }
   };
 
+  /** Best effort: the roster must still render if offboarding cases fail to load. */
+  const loadOffboardings = async (token: string | null) => {
+    try {
+      const response = await fetch('/api/offboarding', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) return;
+      setOffboardings(buildOffboardingIndex((result.data || []) as OffboardingRecord[]));
+    } catch {
+      /* leave the roster unannotated */
+    }
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     setErrorText(null);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const response = await fetch('/api/get-users', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [response] = await Promise.all([
+        fetch('/api/get-users', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+        loadOffboardings(token),
+      ]);
       const result = await response.json();
 
       if (!response.ok || !result.success) {
@@ -297,10 +327,18 @@ export default function EmployeesPage() {
       list = list.filter((u) => normalizeRole(u.role) === normalizeRole(roleFilter));
     }
 
+    const stateOf = (u: SheetUser) => offboardingStateFor(offboardings, u.employeeId).state;
+
     if (statusFilter === 'active') {
-      list = list.filter((u) => hasEmsLogin(u) && getEmsStatus(u) === 'active');
+      list = list.filter(
+        (u) => hasEmsLogin(u) && getEmsStatus(u) === 'active' && stateOf(u) === 'none'
+      );
     } else if (statusFilter === 'register') {
-      list = list.filter((u) => !hasEmsLogin(u));
+      list = list.filter((u) => !hasEmsLogin(u) && stateOf(u) !== 'offboarded');
+    } else if (statusFilter === 'offboarding') {
+      list = list.filter((u) => stateOf(u) === 'in_progress');
+    } else if (statusFilter === 'offboarded') {
+      list = list.filter((u) => stateOf(u) === 'offboarded');
     }
 
     list.sort((a, b) => {
@@ -311,7 +349,7 @@ export default function EmployeesPage() {
     });
 
     return list;
-  }, [users, search, roleFilter, statusFilter, sortKey, sortDir]);
+  }, [users, offboardings, search, roleFilter, statusFilter, sortKey, sortDir]);
 
   const pageSizeNum = Number(pageSize) || 10;
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSizeNum));
@@ -359,7 +397,7 @@ export default function EmployeesPage() {
           <Skeleton className="h-9 w-48" />
           <Skeleton className="h-4 w-32" />
         </div>
-        <TableSkeleton columns={4} rows={8} />
+        <TableSkeleton columns={5} rows={8} />
       </div>
     );
   }
@@ -430,7 +468,7 @@ export default function EmployeesPage() {
             <Skeleton className="h-10 w-full sm:w-40" />
             <Skeleton className="h-10 w-full sm:w-40" />
           </div>
-          <TableSkeleton columns={4} rows={8} />
+          <TableSkeleton columns={5} rows={8} />
         </div>
       ) : users.length === 0 ? (
         <EmptyState
@@ -536,12 +574,14 @@ export default function EmployeesPage() {
                           sortDir={sortDir}
                           onSort={handleSort}
                         />
+                        <th className="px-5 py-3.5 font-semibold">Status</th>
                         <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
                       {pagedUsers.map((user, idx) => {
                         const registered = hasEmsLogin(user);
+                        const offboarding = offboardingStateFor(offboardings, user.employeeId);
                         const canEdit = canEditUser(user);
                         const canRemove = canDeleteUser(user);
                         const canRegister = Boolean(
@@ -568,51 +608,57 @@ export default function EmployeesPage() {
                                 {user.role}
                               </span>
                             </td>
+                            <td className="px-5 py-3.5">
+                              {offboarding.state !== 'none' ? (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${offboardingBadgeClasses(offboarding.state)}`}
+                                  title={
+                                    offboarding.record?.lastWorkingDate
+                                      ? `Last working date ${offboarding.record.lastWorkingDate}`
+                                      : undefined
+                                  }
+                                >
+                                  <LogOut className="h-3 w-3" />
+                                  {offboardingLabel(offboarding.state)}
+                                </span>
+                              ) : registered ? (
+                                <span
+                                  className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                  title="Login access is active"
+                                >
+                                  Active
+                                </span>
+                              ) : canRegister ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openModal('registerEmployee', {
+                                      user,
+                                      onSuccess: fetchUsers,
+                                    });
+                                  }}
+                                  className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
+                                  title="Create login credentials for this employee"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                  Register
+                                </button>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
+                                  title={
+                                    isHrActor
+                                      ? 'You cannot grant EMS access for this role'
+                                      : 'Login has not been created yet'
+                                  }
+                                >
+                                  Register
+                                </span>
+                              )}
+                            </td>
                             <td className="px-5 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {registered ? (
-                                  <span
-                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
-                                    title="Login access is active"
-                                  >
-                                    Active
-                                  </span>
-                                ) : canRegister ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openModal('registerEmployee', {
-                                        user,
-                                        onSuccess: fetchUsers,
-                                      });
-                                    }}
-                                    className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors duration-150 hover:border-ink/30 hover:bg-canvas"
-                                    title="Create login credentials for this employee"
-                                  >
-                                    <UserPlus className="h-3.5 w-3.5" />
-                                    Register
-                                  </button>
-                                ) : isHrActor ? (
-                                  <button
-                                    type="button"
-                                    disabled
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-semibold text-muted opacity-50"
-                                    title="You cannot grant EMS access for this role"
-                                  >
-                                    <UserPlus className="h-3.5 w-3.5" />
-                                    Register
-                                  </button>
-                                ) : (
-                                  <span
-                                    className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted"
-                                    title="You cannot grant EMS access for this role"
-                                  >
-                                    Restricted
-                                  </span>
-                                )}
-
                                 {canEdit ? (
                                   <button
                                     type="button"
