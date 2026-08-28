@@ -81,6 +81,8 @@ function emptyValues(employeeId: string): EmployeeWriteInput {
     designation: '',
     employmentType: '',
     joiningDate: '',
+    probationEndDate: '',
+    contractEndDate: '',
     role: 'Employee',
     emsStatus: 'Active',
     supabaseUserId: '',
@@ -334,7 +336,10 @@ export default function EmployeeForm({
   const showError = (name: keyof EmployeeWriteInput) =>
     formik.submitCount > 0 && formik.errors[name] ? String(formik.errors[name]) : null;
 
-  const handleDateFieldChange = (name: 'dob' | 'joiningDate', value: string) => {
+  const handleDateFieldChange = (
+    name: 'dob' | 'joiningDate' | 'probationEndDate' | 'contractEndDate',
+    value: string
+  ) => {
     void formik.setFieldValue(name, value, false);
   };
 
@@ -465,7 +470,12 @@ export default function EmployeeForm({
               name="employmentType"
               placeholder="Select employment type"
               value={formik.values.employmentType}
-              onChange={(val) => void formik.setFieldValue('employmentType', val)}
+              onChange={(val) => {
+                void formik.setFieldValue('employmentType', val);
+                if (val !== 'Contract') {
+                  void formik.setFieldValue('contractEndDate', '', false);
+                }
+              }}
               onBlur={() => void formik.setFieldTouched('employmentType', true)}
               options={employmentTypeFieldOptions}
               icon={<Clock className="h-4 w-4" />}
@@ -538,6 +548,56 @@ export default function EmployeeForm({
               className="pl-10"
             />
           </Field>
+
+          <Field
+            label="Probation End Date (Optional)"
+            htmlFor="probationEndDate"
+            error={showError('probationEndDate')}
+            icon={<Calendar className="h-4 w-4" />}
+          >
+            <DatePicker
+              id="probationEndDate"
+              name="probationEndDate"
+              ariaLabel="Probation end date"
+              hideIcon
+              min={String(formik.values.joiningDate || '') || undefined}
+              value={String(formik.values.probationEndDate || '')}
+              onChange={(next) => {
+                handleDateFieldChange('probationEndDate', next);
+              }}
+              onBlur={() => {
+                void formik.setFieldTouched('probationEndDate', true, false);
+              }}
+              invalid={!!showError('probationEndDate')}
+              className="pl-10"
+            />
+          </Field>
+
+          {formik.values.employmentType === 'Contract' ? (
+            <Field
+              label="Contract End Date (Optional)"
+              htmlFor="contractEndDate"
+              error={showError('contractEndDate')}
+              icon={<Calendar className="h-4 w-4" />}
+            >
+              <DatePicker
+                id="contractEndDate"
+                name="contractEndDate"
+                ariaLabel="Contract end date"
+                hideIcon
+                min={String(formik.values.joiningDate || '') || undefined}
+                value={String(formik.values.contractEndDate || '')}
+                onChange={(next) => {
+                  handleDateFieldChange('contractEndDate', next);
+                }}
+                onBlur={() => {
+                  void formik.setFieldTouched('contractEndDate', true, false);
+                }}
+                invalid={!!showError('contractEndDate')}
+                className="pl-10"
+              />
+            </Field>
+          ) : null}
 
           <div className="flex flex-col gap-1">
             <label

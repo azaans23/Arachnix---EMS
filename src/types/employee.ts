@@ -30,6 +30,8 @@ export interface EmployeeRecord {
   designation: string;
   employeeType: string;
   joiningDate: string;
+  probationEndDate: string;
+  contractEndDate: string;
   role: string;
   supabaseUserId: string;
   emsStatus: string;
@@ -53,6 +55,8 @@ export interface EmployeeWriteInput {
   designation: string;
   employmentType: string;
   joiningDate: string;
+  probationEndDate: string;
+  contractEndDate: string;
   role: string;
   emsStatus: string;
   isDirector?: boolean;

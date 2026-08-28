@@ -83,6 +83,12 @@ export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
     designation: pick(raw, 'Designation', 'designation'),
     employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
     joiningDate: toDateInputValue(raw.JoiningDate ?? raw.joiningDate),
+    probationEndDate: toDateInputValue(
+      raw.ProbationEndDate ?? raw.probationEndDate ?? raw.probationenddate ?? raw.Probation
+    ),
+    contractEndDate: toDateInputValue(
+      raw.ContractEndDate ?? raw.contractEndDate ?? raw.contractenddate
+    ),
     role,
     supabaseUserId: pick(raw, 'SupabaseUserID', 'supabaseUserId', 'SupabaseUserId'),
     emsStatus: pick(raw, 'EMSStatus', 'emsStatus') || 'Inactive',
@@ -132,6 +138,8 @@ export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, s
     Designation: input.designation.trim(),
     EmployeeType: input.employmentType.trim(),
     JoiningDate: toDateInputValue(input.joiningDate),
+    ProbationEndDate: toDateInputValue(input.probationEndDate),
+    ContractEndDate: toDateInputValue(input.contractEndDate),
     Role: input.role.trim(),
     IsDirector: formatToggle(Boolean(input.isDirector)),
     HasFinanceAccess: formatToggle(
@@ -155,6 +163,8 @@ export function mergeEmployeeWriteInput(
       ...input,
       dob: toDateInputValue(input.dob),
       joiningDate: toDateInputValue(input.joiningDate),
+      probationEndDate: toDateInputValue(input.probationEndDate),
+      contractEndDate: toDateInputValue(input.contractEndDate),
       emsStatus: input.emsStatus.trim() || 'Active',
       supabaseUserId: input.supabaseUserId || '',
       isDirector: Boolean(input.isDirector),
@@ -173,6 +183,15 @@ export function mergeEmployeeWriteInput(
     designation: prefer(input.designation, previous.designation),
     employmentType: prefer(input.employmentType, previous.employeeType),
     joiningDate: prefer(toDateInputValue(input.joiningDate), previous.joiningDate),
+    // An explicit blank clears a date; an omitted legacy-client field preserves it.
+    probationEndDate:
+      input.probationEndDate !== undefined
+        ? toDateInputValue(input.probationEndDate)
+        : previous.probationEndDate,
+    contractEndDate:
+      input.contractEndDate !== undefined
+        ? toDateInputValue(input.contractEndDate)
+        : previous.contractEndDate,
     role: prefer(input.role, previous.role),
     isDirector: input.isDirector ?? previous.isDirector,
     hasFinanceAccess: input.hasFinanceAccess ?? previous.hasFinanceAccess,
@@ -199,6 +218,8 @@ export function employeeRecordToAuditValue(employee: EmployeeRecord): Record<str
     Designation: employee.designation,
     EmployeeType: employee.employeeType,
     JoiningDate: employee.joiningDate,
+    ProbationEndDate: employee.probationEndDate,
+    ContractEndDate: employee.contractEndDate,
     Role: employee.role,
     IsDirector: formatToggle(employee.isDirector),
     HasFinanceAccess: formatToggle(employee.hasFinanceAccess),
@@ -490,6 +511,8 @@ export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInp
     designation: employee.designation,
     employmentType: employee.employeeType,
     joiningDate: toDateInputValue(employee.joiningDate),
+    probationEndDate: toDateInputValue(employee.probationEndDate),
+    contractEndDate: toDateInputValue(employee.contractEndDate),
     role: employee.role || 'Employee',
     isDirector: employee.isDirector,
     hasFinanceAccess: employee.hasFinanceAccess,
