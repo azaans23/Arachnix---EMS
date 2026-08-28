@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -22,6 +22,7 @@ import {
   isSuperAdminRole,
 } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
+import { calculateOffboardingSettlement } from '@/lib/offboarding/settlement';
 import type { EmployeeRecord } from '@/types/employee';
 import type { OffboardingChecklistItem, OffboardingRecord } from '@/types/offboarding';
 import { OFFBOARDING_STATUSES } from '@/types/offboarding';
@@ -164,6 +165,24 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
     })();
   }, [employee]);
 
+  const completed = history.find((row) => row.status === OFFBOARDING_STATUSES.COMPLETED);
+  const display = open || completed;
+  const locked = !open || !canEdit;
+
+  /** Open cases recompute as HR types; a completed case shows its stored snapshot. */
+  const liveSettlement = useMemo(() => {
+    if (!display) return null;
+    if (!open) return display;
+    return calculateOffboardingSettlement({
+      monthlySalary: display.monthlySalary,
+      unusedLeaveDays: display.unusedLeaveDays,
+      lastWorkingDate,
+      unpaidDays: Number(unpaidDays) || 0,
+      otherAdditions: Number(otherAdditions) || 0,
+      otherDeductions: Number(otherDeductions) || 0,
+    });
+  }, [display, open, lastWorkingDate, unpaidDays, otherAdditions, otherDeductions]);
+
   const patch = async (action: 'save' | 'complete' | 'cancel') => {
     if (!open) return;
     setSaving(true);
@@ -244,10 +263,6 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
     );
   }
 
-  const completed = history.find((row) => row.status === OFFBOARDING_STATUSES.COMPLETED);
-  const display = open || completed;
-  const locked = !open || !canEdit;
-
   return (
     <div className="mx-auto max-w-3xl animate-fade-in-up">
       <Link
@@ -309,7 +324,7 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      {display ? (
+      {display && liveSettlement ? (
         <div className="space-y-5">
           <div className="rounded-lg border border-border bg-surface p-5 shadow-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -346,7 +361,7 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
               <h2 className="text-sm font-semibold text-ink">Final settlement</h2>
               <p className="mt-1 text-xs text-muted">
                 Pro-rated salary through last working date, plus unused annual leave at monthly
-                salary / 30. Save to refresh from current salary and leave balances.
+                salary / 30. Figures below update as you type. Save draft to store them.
               </p>
             </div>
             <div className="grid gap-4 p-5 sm:grid-cols-3">
@@ -385,20 +400,28 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
               </label>
             </div>
             <dl className="divide-y divide-border border-t border-border">
-              <SettlementRow label="Monthly salary" value={money(display.monthlySalary)} />
+              <SettlementRow label="Monthly salary" value={money(liveSettlement.monthlySalary)} />
               <SettlementRow
                 label="Days worked this month"
-                value={`${display.daysWorked} of ${display.daysInMonth || '—'}`}
+                value={`${liveSettlement.daysWorked} of ${liveSettlement.daysInMonth || '—'}`}
               />
-              <SettlementRow label="Pro-rated salary" value={money(display.proratedSalary)} />
+              <SettlementRow label="Pro-rated salary" value={money(liveSettlement.proratedSalary)} />
               <SettlementRow
                 label="Unused annual leave"
-                value={`${display.unusedLeaveDays} days`}
+                value={`${liveSettlement.unusedLeaveDays} days`}
               />
-              <SettlementRow label="Daily rate" value={money(display.dailyRate)} muted />
-              <SettlementRow label="Leave encashment" value={money(display.leaveEncashment)} />
-              <SettlementRow label="Unpaid deduction" value={money(display.unpaidDeduction)} />
-              <SettlementRow label="Net settlement" value={money(display.netSettlement)} />
+              <SettlementRow label="Daily rate" value={money(liveSettlement.dailyRate)} muted />
+              <SettlementRow label="Leave encashment" value={money(liveSettlement.leaveEncashment)} />
+              <SettlementRow label="Unpaid deduction" value={money(liveSettlement.unpaidDeduction)} />
+              <SettlementRow
+                label="Other additions"
+                value={money(liveSettlement.otherAdditions)}
+              />
+              <SettlementRow
+                label="Other deductions"
+                value={money(liveSettlement.otherDeductions)}
+              />
+              <SettlementRow label="Net settlement" value={money(liveSettlement.netSettlement)} />
             </dl>
           </div>
 

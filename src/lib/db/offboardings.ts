@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type {
   OffboardingChecklistItem,
   OffboardingRecord,
+  OffboardingSettlement,
   OffboardingStatus,
 } from '@/types/offboarding';
 import { OFFBOARDING_CHECKLIST_ITEMS, OFFBOARDING_STATUSES } from '@/types/offboarding';
@@ -83,7 +84,10 @@ export async function insertOffboardingDbRow(input: {
   reason?: string;
   lastWorkingDate?: string;
   checklist: OffboardingChecklistItem[];
+  /** Seeded on create so the case opens with real figures instead of zeros. */
+  settlement?: OffboardingSettlement;
 }): Promise<OffboardingDbRow> {
+  const { settlement } = input;
   const { data, error } = await getSupabaseAdmin()
     .from(TABLE)
     .insert({
@@ -93,6 +97,21 @@ export async function insertOffboardingDbRow(input: {
       reason: input.reason?.trim() || null,
       lastworkingdate: input.lastWorkingDate?.trim() || null,
       checklist: input.checklist,
+      ...(settlement
+        ? {
+            monthlysalary: settlement.monthlySalary,
+            unusedleavedays: settlement.unusedLeaveDays,
+            dailyrate: settlement.dailyRate,
+            leaveencashment: settlement.leaveEncashment,
+            daysworked: settlement.daysWorked,
+            proratedsalary: settlement.proratedSalary,
+            unpaiddays: settlement.unpaidDays,
+            unpaiddeduction: settlement.unpaidDeduction,
+            otheradditions: settlement.otherAdditions,
+            otherdeductions: settlement.otherDeductions,
+            netsettlement: settlement.netSettlement,
+          }
+        : {}),
     })
     .select('*')
     .single();

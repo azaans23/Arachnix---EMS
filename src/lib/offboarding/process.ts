@@ -134,12 +134,19 @@ export async function startOffboarding(options: {
   const existing = await getOpenOffboardingForEmployee(options.employeeId);
   if (existing) return enrich(existing);
 
+  const lastWorkingDate = (options.lastWorkingDate || '').trim();
+  const settlement = await previewOffboardingSettlement({
+    employeeId: options.employeeId,
+    lastWorkingDate,
+  });
+
   const row = await insertOffboardingDbRow({
     employeeId: options.employeeId,
     initiatedBy: options.actorEmail,
     reason: options.reason,
-    lastWorkingDate: options.lastWorkingDate,
+    lastWorkingDate,
     checklist: defaultOffboardingChecklist(),
+    settlement,
   });
   const record = await enrich(row);
 
