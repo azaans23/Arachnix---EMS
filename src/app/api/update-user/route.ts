@@ -208,9 +208,6 @@ export async function POST(request: Request) {
       if (!createSalary.salary || Number(createSalary.salary) <= 0) {
         fieldErrors.salary = 'Base salary is required';
       }
-      if (!createSalary.allowance && createSalary.allowance !== '0') {
-        fieldErrors.allowance = 'Allowance is required';
-      }
       if (!createSalary.bankName) fieldErrors.bankName = 'Bank name is required';
       if (!createSalary.accountName) fieldErrors.accountName = 'Account name is required';
       if (!createSalary.accountNumber) fieldErrors.accountNumber = 'Account number is required';

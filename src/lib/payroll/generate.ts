@@ -7,6 +7,9 @@ import {
   buildRunDetailId,
 } from '@/lib/db/salary-slips';
 import { formatAmountWithCommas, formatSalaryPeriod } from '@/lib/payroll/period';
+import { isPayrollEligible, payrollEligibilityReason } from '@/lib/payroll/eligibility';
+import { listOffboardings } from '@/lib/offboarding/process';
+import { buildOffboardingIndex } from '@/lib/offboarding/status';
 import { logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type { EmployeeRecord } from '@/types/employee';
@@ -43,42 +46,15 @@ export function monthName(month: number): string {
   return MONTH_NAMES[month - 1] || String(month);
 }
 
-/** Parses salary strings like "99999", "99,999", "PKR 50000". */
-export function parseBaseSalary(value: unknown): number {
-  const cleaned = String(value ?? '')
-    .replace(/[^0-9.-]/g, '')
-    .trim();
-  if (!cleaned) return NaN;
-  const salary = Number(cleaned);
-  return Number.isFinite(salary) ? salary : NaN;
-}
-
-export function hasPayrollSalary(employee: EmployeeRecord, salaryIds?: Set<string>): boolean {
-  if (!salaryIds) return false;
-  return salaryIds.has(employee.employeeId.trim().toLowerCase());
-}
-
-export function payrollEligibilityReason(
-  employee: EmployeeRecord,
-  salaryIds?: Set<string>
-): string | null {
-  if (!hasPayrollSalary(employee, salaryIds)) {
-    return 'No salary record — create one on the Salary page first';
-  }
-  if (String(employee.emsStatus || '').trim().toLowerCase() !== 'active') {
-    return 'Employee is not Active — complete or skip offboarding first';
-  }
-  return null;
-}
-
 export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<EmployeeRecord[]> {
-  const [all, salaryRows] = await Promise.all([fetchEmployees(), fetchSalaryDetails()]);
+  const [all, salaryRows, offboardingRows] = await Promise.all([
+    fetchEmployees(),
+    fetchSalaryDetails(),
+    listOffboardings(),
+  ]);
   const salaryIds = new Set(salaryRows.map((row) => row.employeeId.trim().toLowerCase()));
-  const eligible = all.filter(
-    (employee) =>
-      hasPayrollSalary(employee, salaryIds) &&
-      String(employee.emsStatus || '').trim().toLowerCase() === 'active'
-  );
+  const offboardings = buildOffboardingIndex(offboardingRows);
+  const eligible = all.filter((employee) => isPayrollEligible(employee, salaryIds, offboardings));
 
   if (!employeeIds || employeeIds.length === 0) return eligible;
 
@@ -88,7 +64,16 @@ export async function resolvePayrollEmployees(employeeIds?: string[]): Promise<E
   );
 
   if (selected.length === 0) {
-    throw new Error('No eligible employees matched the selection (need a salary record).');
+    const reasons = employeeIds.slice(0, 5).map((id) => {
+      const employee = all.find(
+        (row) => row.employeeId.trim().toLowerCase() === id.trim().toLowerCase()
+      );
+      if (!employee) return `${id} — employee not found`;
+      return `${employee.employeeId} — ${
+        payrollEligibilityReason(employee, salaryIds, offboardings) || 'not eligible'
+      }`;
+    });
+    throw new Error(`No eligible employees in this selection. ${reasons.join('; ')}`);
   }
 
   return selected;

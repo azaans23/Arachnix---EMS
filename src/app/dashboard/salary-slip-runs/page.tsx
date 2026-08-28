@@ -26,10 +26,12 @@ import { syncSessionCookies } from '@/lib/session-cookies';
 import { mapRawToEmployee } from '@/lib/sheets/employees';
 import { formatSalaryPeriod } from '@/lib/payroll/period';
 import {
-  hasPayrollSalary,
+  isPayrollEligible,
   parseBaseSalary,
   payrollEligibilityReason,
-} from '@/lib/payroll/generate';
+} from '@/lib/payroll/eligibility';
+import { buildOffboardingIndex } from '@/lib/offboarding/status';
+import type { OffboardingRecord } from '@/types/offboarding';
 import { toSheetUser, type SheetUser } from '@/types/employee';
 import {
   SALARY_DETAIL_FIELDS,
@@ -256,14 +258,16 @@ export default function SalarySlipRunsPage() {
     if (!options.silent) setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${token()}` };
-      const [runsRes, usersRes, salariesRes] = await Promise.all([
+      const [runsRes, usersRes, salariesRes, offboardingRes] = await Promise.all([
         fetch('/api/salary-slip-runs', { headers, cache: 'no-store' }),
         fetch('/api/get-users', { headers, cache: 'no-store' }),
         fetch('/api/salary-details', { headers, cache: 'no-store' }),
+        fetch('/api/offboarding', { headers, cache: 'no-store' }).catch(() => null),
       ]);
       const runsJson = await runsRes.json();
       const usersJson = await usersRes.json();
       const salariesJson = await salariesRes.json();
+      const offboardingJson = offboardingRes ? await offboardingRes.json().catch(() => null) : null;
 
       if (!runsRes.ok || !runsJson.success) {
         throw new Error(runsJson.error || 'Failed to load salary slip runs.');
@@ -279,6 +283,11 @@ export default function SalarySlipRunsPage() {
           salaryRows.map((row) => [row.employeeId.trim().toLowerCase(), row])
         );
         const salaryIds = new Set(salaryById.keys());
+        const offboardings = buildOffboardingIndex(
+          offboardingJson?.success && Array.isArray(offboardingJson.data)
+            ? (offboardingJson.data as OffboardingRecord[])
+            : []
+        );
         const raw = Array.isArray(usersJson.data)
           ? usersJson.data
           : usersJson.data
@@ -292,8 +301,8 @@ export default function SalarySlipRunsPage() {
             const salary = parseBaseSalary(salaryDetail?.salary);
             return {
               ...sheetUser,
-              eligible: hasPayrollSalary(record, salaryIds),
-              reason: payrollEligibilityReason(record, salaryIds),
+              eligible: isPayrollEligible(record, salaryIds, offboardings),
+              reason: payrollEligibilityReason(record, salaryIds, offboardings),
               salaryLabel: salary > 0 ? String(salary) : '—',
             };
           })

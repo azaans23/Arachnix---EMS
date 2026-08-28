@@ -109,11 +109,8 @@ export const employeeValidationSchema = Yup.object({
     otherwise: (schema) => schema.optional(),
   }),
   tax: moneyOptional,
-  allowance: moneyOptional.when('originalEmployeeId', {
-    is: (value: string | undefined) => !String(value || '').trim(),
-    then: (schema) => schema.required('Allowance is required'),
-    otherwise: (schema) => schema.optional(),
-  }),
+  /** Blank means no allowance; the salary row stores 0. */
+  allowance: moneyOptional.optional(),
   accountNumber: Yup.string()
     .trim()
     .when('originalEmployeeId', {

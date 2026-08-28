@@ -21,12 +21,12 @@ import type {
   SalaryDetailRecord,
   SalarySlipExtrasInput,
 } from '@/types/salary-slip';
-import { SALARY_DETAIL_FIELDS } from '@/types/salary-slip';
 
 /** Fields required before a salary slip can be generated. */
 const REQUIRED_FIELDS = ['Base Salary', 'Account Number', 'Account Name', 'Bank Name'] as const;
 
-const ALL_FORM_MISSING_LABELS = SALARY_DETAIL_FIELDS.map((field) => field.missing);
+/** Allowance and tax may legitimately be 0/blank, so only blocking fields are reported. */
+const ALL_FORM_MISSING_LABELS = [...REQUIRED_FIELDS];
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
