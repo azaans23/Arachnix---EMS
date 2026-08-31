@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       message: result.message,
       data: details,
       auditLogged: result.auditLogged,
+      historyLogged: result.historyLogged,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to update salary details.';

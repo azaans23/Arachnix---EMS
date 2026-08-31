@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyResourceAccess } from '@/lib/auth';
-import { getLeaveRequest } from '@/lib/db/leave-requests';
+import { listLeaveRequests } from '@/lib/db/leave-requests';
 import { processLeaveRequestAction } from '@/lib/leave/process-request';
 import type { LeaveRequestAction } from '@/types/leave-request';
 
@@ -18,7 +18,8 @@ export async function GET(request: Request, context: RouteContext) {
     if (errorResponse) return errorResponse;
 
     const { requestId } = await context.params;
-    const leaveRequest = await getLeaveRequest(requestId);
+    const requests = await listLeaveRequests();
+    const leaveRequest = requests.find((row) => row.requestId === String(requestId).trim());
     if (!leaveRequest) {
       return NextResponse.json(
         { success: false, error: 'Leave request not found.' },

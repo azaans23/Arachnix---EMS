@@ -1,5 +1,7 @@
 export const SALARY_SLIP_RUN_STATUSES = {
   PROCESSING: 'Processing',
+  AWAITING_APPROVAL: 'Awaiting Approval',
+  APPROVED: 'Approved',
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   PARTIAL: 'Partial',
@@ -26,6 +28,8 @@ export interface SalarySlipRun {
   status: SalarySlipRunStatus;
   successCount: number;
   failCount: number;
+  approvedBy: string;
+  approvedAt: string;
 }
 
 export interface SalarySlipRunDetail {

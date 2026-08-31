@@ -13,6 +13,8 @@ export type EmployeeDbRow = {
   designation: string;
   employeetype: string;
   joiningdate: string;
+  probationenddate: string | null;
+  contractenddate: string | null;
   role: string;
   supabaseuserid: string | null;
   emsstatus: string;
@@ -65,6 +67,8 @@ export function toEmployeeDbRow(input: EmployeeWriteInput): EmployeeDbRow {
     designation: input.designation.trim(),
     employeetype: input.employmentType.trim(),
     joiningdate,
+    probationenddate: toDateOrNull(input.probationEndDate),
+    contractenddate: toDateOrNull(input.contractEndDate),
     role: input.role.trim(),
     supabaseuserid: toUuidOrNull(input.supabaseUserId),
     emsstatus: (input.emsStatus || 'Active').trim() || 'Active',
@@ -162,6 +166,10 @@ export async function findEmployeeDbRowByIdOrEmail(
 export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
   const dob = row.dob ? String(row.dob).slice(0, 10) : '';
   const joiningDate = row.joiningdate ? String(row.joiningdate).slice(0, 10) : '';
+  const probationEndDate = row.probationenddate
+    ? String(row.probationenddate).slice(0, 10)
+    : '';
+  const contractEndDate = row.contractenddate ? String(row.contractenddate).slice(0, 10) : '';
   const supabaseUserId = row.supabaseuserid ? String(row.supabaseuserid) : '';
 
   const raw: Record<string, unknown> = {
@@ -175,6 +183,8 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
     Designation: row.designation,
     EmployeeType: row.employeetype,
     JoiningDate: joiningDate,
+    ProbationEndDate: probationEndDate,
+    ContractEndDate: contractEndDate,
     Role: row.role,
     SupabaseUserID: supabaseUserId,
     EMSStatus: row.emsstatus || 'Inactive',
@@ -195,6 +205,8 @@ export function dbRowToEmployeeRecord(row: EmployeeDbRow): EmployeeRecord {
     designation: String(row.designation || ''),
     employeeType: String(row.employeetype || ''),
     joiningDate,
+    probationEndDate,
+    contractEndDate,
     role: roleLabel,
     supabaseUserId,
     emsStatus: String(row.emsstatus || 'Inactive'),

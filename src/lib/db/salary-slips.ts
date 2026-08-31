@@ -10,6 +10,8 @@ type RunRow = {
   status: string;
   successcount: number;
   failcount: number;
+  approvedby: string | null;
+  approvedat: string | null;
 };
 
 type DetailRow = {
@@ -63,6 +65,8 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
     status: row.status,
     successCount: Number(row.successcount ?? 0),
     failCount: Number(row.failcount ?? 0),
+    approvedBy: row.approvedby || '',
+    approvedAt: row.approvedat || '',
   };
 }
 
@@ -226,6 +230,8 @@ export async function updateSalarySlipRun(
     status?: SalarySlipRunStatus;
     successCount?: number;
     failCount?: number;
+    approvedBy?: string | null;
+    approvedAt?: string | null;
   }
 ): Promise<SalarySlipRun> {
   const id = Number(runId);
@@ -233,6 +239,8 @@ export async function updateSalarySlipRun(
   if (patch.status !== undefined) payload.status = patch.status;
   if (patch.successCount !== undefined) payload.successcount = patch.successCount;
   if (patch.failCount !== undefined) payload.failcount = patch.failCount;
+  if (patch.approvedBy !== undefined) payload.approvedby = patch.approvedBy;
+  if (patch.approvedAt !== undefined) payload.approvedat = patch.approvedAt;
 
   const { data, error } = await getSupabaseAdmin()
     .from(RUNS_TABLE)
@@ -243,6 +251,52 @@ export async function updateSalarySlipRun(
 
   if (error) throw new Error(`Failed to update salary slip run: ${error.message}`);
   return mapRunRow(data as RunRow);
+}
+
+/**
+ * Claim approval with a status guard. Two simultaneous clicks cannot both
+ * dispatch employee emails because only Awaiting Approval may transition.
+ */
+export async function approveSalarySlipRunDb(
+  runId: string,
+  approvedBy: string
+): Promise<SalarySlipRun | null> {
+  const id = Number(runId);
+  if (!Number.isFinite(id)) return null;
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(RUNS_TABLE)
+    .update({
+      status: 'Approved',
+      approvedby: approvedBy.trim().toLowerCase(),
+      approvedat: new Date().toISOString(),
+    })
+    .eq('runid', id)
+    .eq('status', 'Awaiting Approval')
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to approve salary slip run: ${error.message}`);
+  return data ? mapRunRow(data as RunRow) : null;
+}
+
+export async function rollbackSalarySlipRunApproval(runId: string): Promise<void> {
+  const id = Number(runId);
+  if (!Number.isFinite(id)) return;
+
+  const { error } = await getSupabaseAdmin()
+    .from(RUNS_TABLE)
+    .update({
+      status: 'Awaiting Approval',
+      approvedby: null,
+      approvedat: null,
+    })
+    .eq('runid', id)
+    .eq('status', 'Approved');
+
+  if (error) {
+    throw new Error(`Failed to roll back salary slip approval: ${error.message}`);
+  }
 }
 
 export async function upsertSalarySlipRunDetail(input: {

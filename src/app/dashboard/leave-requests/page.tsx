@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  TriangleAlert,
   X,
   XCircle,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ import {
   type LeaveRequest,
   type LeaveRequestAction,
 } from '@/types/leave-request';
+import { findDepartmentLeaveConflicts } from '@/lib/leave/conflicts';
 
 type EmployeeOption = SheetUser & {
   department: string;
@@ -42,7 +44,7 @@ type EmployeeOption = SheetUser & {
 type CreateStep = 'pick' | 'form';
 type ActionModal = {
   request: LeaveRequest;
-  action: 'reject' | 'request_changes';
+  action: 'reject' | 'request_changes' | 'approve';
 };
 
 const PAGE_SIZE_OPTIONS = [
@@ -433,6 +435,25 @@ export default function LeaveRequestsPage() {
     );
   }, [employees, employeeSearch]);
 
+  const createConflicts = useMemo(() => {
+    if (!selectedEmployee || !createForm.startDate || !createForm.endDate) return [];
+    return findDepartmentLeaveConflicts(
+      {
+        requestId: '',
+        employeeId: selectedEmployee.employeeId,
+        department: selectedEmployee.department,
+        startDate: createForm.startDate,
+        endDate: createForm.endDate,
+      },
+      rows
+    );
+  }, [
+    selectedEmployee,
+    createForm.startDate,
+    createForm.endDate,
+    rows,
+  ]);
+
   if (allowed === null) {
     return (
       <div className="mx-auto max-w-6xl animate-fade-in-up">
@@ -462,225 +483,244 @@ export default function LeaveRequestsPage() {
 
   const createModal = createOpen
     ? createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+        onClick={closeCreate}
+      >
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-          onClick={closeCreate}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-leave-request-title"
+          onClick={(event) => event.stopPropagation()}
+          className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-leave-request-title"
-            onClick={(event) => event.stopPropagation()}
-            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h2
-                  id="create-leave-request-title"
-                  className="text-lg font-semibold tracking-tight text-ink"
-                >
-                  {createStep === 'pick' ? 'Select employee' : 'Create leave request'}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {createStep === 'pick'
-                    ? 'HR enters leave on behalf of the employee.'
-                    : selectedEmployee
-                      ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
-                      : 'Enter leave details.'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeCreate}
-                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink"
-                aria-label="Close"
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2
+                id="create-leave-request-title"
+                className="text-lg font-semibold tracking-tight text-ink"
               >
-                <X className="h-4 w-4" />
-              </button>
+                {createStep === 'pick' ? 'Select employee' : 'Create leave request'}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                {createStep === 'pick'
+                  ? 'HR enters leave on behalf of the employee.'
+                  : selectedEmployee
+                    ? `${selectedEmployee.name || selectedEmployee.employeeId} · ${selectedEmployee.email || 'No email'}`
+                    : 'Enter leave details.'}
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={closeCreate}
+              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-ink"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              {createStep === 'pick' ? (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
-                    <input
-                      type="search"
-                      value={employeeSearch}
-                      onChange={(event) => setEmployeeSearch(event.target.value)}
-                      placeholder="Search employees…"
-                      className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {createStep === 'pick' ? (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/60" />
+                  <input
+                    type="search"
+                    value={employeeSearch}
+                    onChange={(event) => setEmployeeSearch(event.target.value)}
+                    placeholder="Search employees…"
+                    className="h-10 w-full rounded-lg border border-border bg-surface py-2 pl-10 pr-3 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                  />
+                </div>
+                {employeesLoading ? (
+                  <div className="flex items-center justify-center py-10 text-sm text-muted">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading employees…
+                  </div>
+                ) : filteredEmployees.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted">No employees found.</p>
+                ) : (
+                  <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                    {filteredEmployees.map((employee) => (
+                      <li key={employee.employeeId || employee.email}>
+                        <button
+                          type="button"
+                          onClick={() => selectEmployee(employee)}
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-ink">
+                              {employee.name || employee.employeeId}
+                            </span>
+                            <span className="block truncate text-xs text-muted">
+                              {employee.employeeId}
+                              {employee.email ? ` · ${employee.email}` : ''}
+                            </span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <label className="block text-xs font-medium text-muted">
+                  Leave type <span className="text-danger">*</span>
+                  <div className="mt-1.5">
+                    <CustomDropdown
+                      id="leave-type"
+                      name="leaveType"
+                      options={LEAVE_TYPE_OPTIONS}
+                      value={createForm.leaveType}
+                      onChange={(value) =>
+                        setCreateForm((current) => ({ ...current, leaveType: value }))
+                      }
+                      onBlur={() => { }}
                     />
                   </div>
-                  {employeesLoading ? (
-                    <div className="flex items-center justify-center py-10 text-sm text-muted">
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading employees…
-                    </div>
-                  ) : filteredEmployees.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted">No employees found.</p>
-                  ) : (
-                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                      {filteredEmployees.map((employee) => (
-                        <li key={employee.employeeId || employee.email}>
-                          <button
-                            type="button"
-                            onClick={() => selectEmployee(employee)}
-                            className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-medium text-ink">
-                                {employee.name || employee.employeeId}
-                              </span>
-                              <span className="block truncate text-xs text-muted">
-                                {employee.employeeId}
-                                {employee.email ? ` · ${employee.email}` : ''}
-                              </span>
-                            </span>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <label className="block text-xs font-medium text-muted">
-                    Leave type <span className="text-danger">*</span>
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-xs font-medium text-muted">
+                    Start date <span className="text-danger">*</span>
                     <div className="mt-1.5">
-                      <CustomDropdown
-                        id="leave-type"
-                        name="leaveType"
-                        options={LEAVE_TYPE_OPTIONS}
-                        value={createForm.leaveType}
-                        onChange={(value) =>
-                          setCreateForm((current) => ({ ...current, leaveType: value }))
-                        }
-                        onBlur={() => {}}
+                      <DatePicker
+                        ariaLabel="Start date"
+                        value={createForm.startDate}
+                        max={createForm.endDate || undefined}
+                        onChange={(next) => updateCreateDates('startDate', next)}
                       />
                     </div>
                   </label>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="text-xs font-medium text-muted">
-                      Start date <span className="text-danger">*</span>
-                      <div className="mt-1.5">
-                        <DatePicker
-                          ariaLabel="Start date"
-                          value={createForm.startDate}
-                          max={createForm.endDate || undefined}
-                          onChange={(next) => updateCreateDates('startDate', next)}
-                        />
-                      </div>
-                    </label>
-                    <label className="text-xs font-medium text-muted">
-                      End date <span className="text-danger">*</span>
-                      <div className="mt-1.5">
-                        <DatePicker
-                          ariaLabel="End date"
-                          value={createForm.endDate}
-                          min={createForm.startDate || undefined}
-                          onChange={(next) => updateCreateDates('endDate', next)}
-                        />
-                      </div>
-                    </label>
-                  </div>
-                  <label className="block text-xs font-medium text-muted">
-                    Days requested
-                    <input
-                      type="number"
-                      readOnly
-                      tabIndex={-1}
-                      value={createForm.daysRequested}
-                      className="mt-1.5 h-10 w-full cursor-not-allowed rounded-lg border border-border px-3 text-sm text-muted shadow-none focus:outline-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]"
-                      aria-readonly="true"
-                      title="Calculated from start and end dates"
-                    />
-                  </label>
-                  <label className="block text-xs font-medium text-muted">
-                    Reason
-                    <textarea
-                      rows={3}
-                      value={createForm.reason}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, reason: event.target.value }))
-                      }
-                      className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-                      placeholder="Optional note for the request"
-                    />
+                  <label className="text-xs font-medium text-muted">
+                    End date <span className="text-danger">*</span>
+                    <div className="mt-1.5">
+                      <DatePicker
+                        ariaLabel="End date"
+                        value={createForm.endDate}
+                        min={createForm.startDate || undefined}
+                        onChange={(next) => updateCreateDates('endDate', next)}
+                      />
+                    </div>
                   </label>
                 </div>
-              )}
-            </div>
+                <label className="block text-xs font-medium text-muted">
+                  Days requested
+                  <input
+                    type="number"
+                    readOnly
+                    tabIndex={-1}
+                    value={createForm.daysRequested}
+                    className="mt-1.5 h-10 w-full cursor-not-allowed rounded-lg border border-border px-3 text-sm text-muted shadow-none focus:outline-none focus:ring-0 [background:color-mix(in_oklab,var(--muted)_14%,var(--surface))] dark:[background:color-mix(in_oklab,var(--muted)_22%,var(--surface))]"
+                    aria-readonly="true"
+                    title="Calculated from start and end dates"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-muted">
+                  Reason
+                  <textarea
+                    rows={3}
+                    value={createForm.reason}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({ ...current, reason: event.target.value }))
+                    }
+                    className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                    placeholder="Optional note for the request"
+                  />
+                </label>
+                {createConflicts.length > 0 ? (
+                  <DepartmentConflictBanner
+                    department={selectedEmployee?.department || ''}
+                    conflicts={createConflicts}
+                    title="Team overlap"
+                    description="Someone else in this department already has pending or approved leave on these dates. You can still create the request; HR will see the warning at approval."
+                  />
+                ) : null}
+              </div>
+            )}
+          </div>
 
-            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
-              {createStep === 'form' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateStep('pick');
-                    setSelectedEmployee(null);
-                  }}
-                  className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-                >
-                  Back
-                </button>
-              )}
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-4">
+            {createStep === 'form' && (
               <button
                 type="button"
-                onClick={closeCreate}
+                onClick={() => {
+                  setCreateStep('pick');
+                  setSelectedEmployee(null);
+                }}
                 className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
               >
-                Cancel
+                Back
               </button>
-              {createStep === 'form' && (
-                <button
-                  type="button"
-                  disabled={savingCreate}
-                  onClick={() => void saveCreate()}
-                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-                >
-                  {savingCreate ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    'Create request'
-                  )}
-                </button>
-              )}
-            </div>
+            )}
+            <button
+              type="button"
+              onClick={closeCreate}
+              className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+            >
+              Cancel
+            </button>
+            {createStep === 'form' && (
+              <button
+                type="button"
+                disabled={savingCreate}
+                onClick={() => void saveCreate()}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+              >
+                {savingCreate ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  'Create request'
+                )}
+              </button>
+            )}
           </div>
-        </div>,
-        document.body
-      )
+        </div>
+      </div>,
+      document.body
+    )
     : null;
 
   const reasonModal = actionModal
     ? createPortal(
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+        onClick={() => {
+          if (!savingAction) setActionModal(null);
+        }}
+      >
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-          onClick={() => {
-            if (!savingAction) setActionModal(null);
-          }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => event.stopPropagation()}
+          className="w-full max-w-lg rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-          >
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-lg font-semibold tracking-tight text-ink">
-                {actionModal.action === 'reject' ? 'Reject leave request' : 'Request changes'}
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">
-                #{actionModal.request.requestId} ·{' '}
-                {actionModal.request.fullName || actionModal.request.employeeId}
-              </p>
-            </div>
-            <div className="p-5">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="text-lg font-semibold tracking-tight text-ink">
+              {actionModal.action === 'reject'
+                ? 'Reject leave request'
+                : actionModal.action === 'approve'
+                  ? 'Approve with team overlap'
+                  : 'Request changes'}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              {actionModal.request.fullName || actionModal.request.employeeId}
+            </p>
+          </div>
+          <div className="space-y-4 p-5">
+            {actionModal.action === 'approve' ? (
+              <DepartmentConflictBanner
+                department={actionModal.request.department || ''}
+                conflicts={actionModal.request.departmentConflicts || []}
+                title="Team overlap"
+                description="Approving this leave will put more than one person from the same department off on overlapping dates."
+              />
+            ) : (
               <label className="block text-xs font-medium text-muted">
                 {actionModal.action === 'reject' ? 'Rejection reason' : 'Feedback'}{' '}
                 <span className="text-danger">*</span>
@@ -697,203 +737,221 @@ export default function LeaveRequestsPage() {
                   }
                 />
               </label>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                type="button"
-                disabled={savingAction}
-                onClick={() => setActionModal(null)}
-                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={savingAction || !actionReason.trim()}
-                onClick={() => {
-                  setSavingAction(true);
-                  void runAction(actionModal.request, actionModal.action, actionReason.trim());
-                }}
-                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-              >
-                {savingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Confirm
-              </button>
-            </div>
+            )}
           </div>
-        </div>,
-        document.body
-      )
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+            <button
+              type="button"
+              disabled={savingAction}
+              onClick={() => setActionModal(null)}
+              className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={
+                savingAction ||
+                (actionModal.action !== 'approve' && !actionReason.trim())
+              }
+              onClick={() => {
+                setSavingAction(true);
+                void runAction(
+                  actionModal.request,
+                  actionModal.action,
+                  actionModal.action === 'approve' ? undefined : actionReason.trim()
+                );
+              }}
+              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+            >
+              {savingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {actionModal.action === 'approve' ? 'Approve anyway' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )
     : null;
 
   const detailModal = detailRequest
     ? createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
+        onClick={() => setDetailRequest(null)}
+      >
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm animate-fade-in"
-          onClick={() => setDetailRequest(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="leave-request-detail-title"
+          onClick={(event) => event.stopPropagation()}
+          className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="leave-request-detail-title"
-            onClick={(event) => event.stopPropagation()}
-            className="relative flex max-h-[min(92vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
-          >
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
-              <div className="min-w-0 flex-1">
-                <h2
-                  id="leave-request-detail-title"
-                  className="truncate text-lg font-semibold tracking-tight text-ink"
-                >
-                  {detailRequest.fullName || detailRequest.employeeId}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {detailRequest.employeeId}
-                  {detailRequest.department ? ` · ${detailRequest.department}` : ''}
-                </p>
-              </div>
-              <span
-                className={`inline-flex shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium ${statusClasses(detailRequest.status, detailRequest.changesRequested)}`}
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="min-w-0 flex-1">
+              <h2
+                id="leave-request-detail-title"
+                className="truncate text-lg font-semibold tracking-tight text-ink"
               >
-                {statusLabel(detailRequest)}
-              </span>
-              <button
-                type="button"
-                onClick={() => setDetailRequest(null)}
-                className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                {detailRequest.fullName || detailRequest.employeeId}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                {detailRequest.employeeId}
+                {detailRequest.department ? ` · ${detailRequest.department}` : ''}
+              </p>
             </div>
-
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-              <div className="rounded-lg border border-border bg-canvas/40 p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  Leave reason
-                </p>
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
-                  {detailRequest.reason?.trim() || 'No reason provided.'}
-                </p>
-              </div>
-
-              {detailRequest.rejectionReason?.trim() ? (
-                <div
-                  className={`rounded-lg border p-4 ${
-                    detailRequest.status === 'Rejected'
-                      ? 'border-danger-border bg-danger-bg'
-                      : 'border-border bg-canvas/40'
-                  }`}
-                >
-                  <p
-                    className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                      detailRequest.status === 'Rejected' ? 'text-danger' : 'text-muted'
-                    }`}
-                  >
-                    {detailRequest.status === 'Rejected' ? (
-                      <XCircle className="h-3.5 w-3.5" />
-                    ) : (
-                      <MessageSquareWarning className="h-3.5 w-3.5" />
-                    )}
-                    {detailRequest.status === 'Rejected'
-                      ? 'Rejection reason'
-                      : detailRequest.changesRequested
-                        ? 'Changes requested'
-                        : 'Review note'}
-                  </p>
-                  <p
-                    className={`mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed ${
-                      detailRequest.status === 'Rejected' ? 'text-danger' : 'text-ink'
-                    }`}
-                  >
-                    {detailRequest.rejectionReason}
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="overflow-hidden rounded-lg border border-border">
-                <div className="flex items-center gap-3 border-b border-border bg-canvas/40 px-4 py-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-muted">
-                    <CalendarDays className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">
-                      {displayDate(detailRequest.startDate)} — {displayDate(detailRequest.endDate)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {detailRequest.daysRequested}{' '}
-                      {Number(detailRequest.daysRequested) === 1 ? 'day' : 'days'}
-                      {detailRequest.leaveType ? ` · ${detailRequest.leaveType} leave` : ''}
-                    </p>
-                  </div>
-                </div>
-                <dl className="divide-y divide-border">
-                  <DetailRow label="Leave type" value={detailRequest.leaveType || '—'} />
-                  <DetailRow label="Days requested" value={String(detailRequest.daysRequested)} />
-                  <DetailRow label="Reviewed by" value={detailRequest.approvedBy?.trim() || '—'} />
-                  <DetailRow
-                    label="Reviewed on"
-                    value={
-                      detailRequest.approvalDate ? displayDate(detailRequest.approvalDate) : '—'
-                    }
-                  />
-                </dl>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setDetailRequest(null)}
-                className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-canvas"
-              >
-                Close
-              </button>
-              {canEdit && detailRequest.status === 'Pending' ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailRequest(null);
-                      setActionReason('');
-                      setActionModal({ request: detailRequest, action: 'request_changes' });
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-canvas"
-                  >
-                    <MessageSquareWarning className="h-4 w-4" />
-                    Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailRequest(null);
-                      setActionReason('');
-                      setActionModal({ request: detailRequest, action: 'reject' });
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-danger-border bg-danger-bg px-3.5 text-sm font-semibold text-danger transition-opacity hover:opacity-90"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Reject
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actingId === detailRequest.requestId}
-                    onClick={() => {
-                      setDetailRequest(null);
-                      void runAction(detailRequest, 'approve');
-                    }}
-                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Approve
-                  </button>
-                </>
-              ) : null}
-            </div>
+            <span
+              className={`inline-flex shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium ${statusClasses(detailRequest.status, detailRequest.changesRequested)}`}
+            >
+              {statusLabel(detailRequest)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDetailRequest(null)}
+              className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-canvas hover:text-ink"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-        </div>,
-        document.body
-      )
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <div className="rounded-lg border border-border bg-canvas/40 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                Leave reason
+              </p>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
+                {detailRequest.reason?.trim() || 'No reason provided.'}
+              </p>
+            </div>
+
+            {detailRequest.rejectionReason?.trim() ? (
+              <div
+                className={`rounded-lg border p-4 ${detailRequest.status === 'Rejected'
+                  ? 'border-danger-border bg-danger-bg'
+                  : 'border-border bg-canvas/40'
+                  }`}
+              >
+                <p
+                  className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${detailRequest.status === 'Rejected' ? 'text-danger' : 'text-muted'
+                    }`}
+                >
+                  {detailRequest.status === 'Rejected' ? (
+                    <XCircle className="h-3.5 w-3.5" />
+                  ) : (
+                    <MessageSquareWarning className="h-3.5 w-3.5" />
+                  )}
+                  {detailRequest.status === 'Rejected'
+                    ? 'Rejection reason'
+                    : detailRequest.changesRequested
+                      ? 'Changes requested'
+                      : 'Review note'}
+                </p>
+                <p
+                  className={`mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed ${detailRequest.status === 'Rejected' ? 'text-danger' : 'text-ink'
+                    }`}
+                >
+                  {detailRequest.rejectionReason}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-center gap-3 border-b border-border bg-canvas/40 px-4 py-3">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-muted">
+                  <CalendarDays className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {displayDate(detailRequest.startDate)} — {displayDate(detailRequest.endDate)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {detailRequest.daysRequested}{' '}
+                    {Number(detailRequest.daysRequested) === 1 ? 'day' : 'days'}
+                    {detailRequest.leaveType ? ` · ${detailRequest.leaveType} leave` : ''}
+                  </p>
+                </div>
+              </div>
+              <dl className="divide-y divide-border">
+                <DetailRow label="Leave type" value={detailRequest.leaveType || '—'} />
+                <DetailRow label="Days requested" value={String(detailRequest.daysRequested)} />
+                <DetailRow label="Reviewed by" value={detailRequest.approvedBy?.trim() || '—'} />
+                <DetailRow
+                  label="Reviewed on"
+                  value={
+                    detailRequest.approvalDate ? displayDate(detailRequest.approvalDate) : '—'
+                  }
+                />
+              </dl>
+            </div>
+
+            {(detailRequest.departmentConflicts?.length || 0) > 0 ? (
+              <DepartmentConflictBanner
+                department={detailRequest.department || ''}
+                conflicts={detailRequest.departmentConflicts || []}
+                title="Team overlap"
+                description="Another person in this department has pending or approved leave on overlapping dates. Review before approving."
+              />
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
+            <button
+              type="button"
+              onClick={() => setDetailRequest(null)}
+              className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              Close
+            </button>
+            {canEdit && detailRequest.status === 'Pending' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailRequest(null);
+                    setActionReason('');
+                    setActionModal({ request: detailRequest, action: 'request_changes' });
+                  }}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+                >
+                  <MessageSquareWarning className="h-4 w-4" />
+                  Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailRequest(null);
+                    setActionReason('');
+                    setActionModal({ request: detailRequest, action: 'reject' });
+                  }}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-danger-border bg-danger-bg px-3.5 text-sm font-semibold text-danger transition-opacity hover:opacity-90"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  disabled={actingId === detailRequest.requestId}
+                  onClick={() => {
+                    setDetailRequest(null);
+                    if ((detailRequest.departmentConflicts?.length || 0) > 0) {
+                      setActionModal({ request: detailRequest, action: 'approve' });
+                      return;
+                    }
+                    void runAction(detailRequest, 'approve');
+                  }}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Approve
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>,
+      document.body
+    )
     : null;
 
   return (
@@ -973,7 +1031,7 @@ export default function LeaveRequestsPage() {
                   setStatusFilter(value);
                   setPage(1);
                 }}
-                onBlur={() => {}}
+                onBlur={() => { }}
               />
             </div>
             <div className="sm:w-40">
@@ -986,7 +1044,7 @@ export default function LeaveRequestsPage() {
                   setTypeFilter(value);
                   setPage(1);
                 }}
-                onBlur={() => {}}
+                onBlur={() => { }}
               />
             </div>
             {hasActiveFilters && (
@@ -1025,6 +1083,7 @@ export default function LeaveRequestsPage() {
                         <th className="px-5 py-3.5">Days</th>
                         <th className="px-5 py-3.5">Status</th>
                         <th className="px-5 py-3.5">Reason</th>
+                        <th className="px-5 py-3.5">Overlap</th>
                         {canEdit && <th className="px-5 py-3.5 text-right">Actions</th>}
                       </tr>
                     </thead>
@@ -1073,6 +1132,16 @@ export default function LeaveRequestsPage() {
                                 <span className="text-muted">—</span>
                               )}
                             </td>
+                            <td className="px-5 py-3.5">
+                              {(row.departmentConflicts?.length || 0) > 0 ? (
+                                <span className="inline-flex items-center gap-1 rounded-md border border-danger-border bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger">
+                                  <TriangleAlert className="h-3 w-3" />
+                                  {row.departmentConflicts?.length}
+                                </span>
+                              ) : (
+                                <span className="text-muted">None</span>
+                              )}
+                            </td>
                             {canEdit && (
                               <td
                                 className="px-5 py-3.5"
@@ -1083,7 +1152,13 @@ export default function LeaveRequestsPage() {
                                     <button
                                       type="button"
                                       disabled={busy}
-                                      onClick={() => void runAction(row, 'approve')}
+                                      onClick={() => {
+                                        if ((row.departmentConflicts?.length || 0) > 0) {
+                                          setActionModal({ request: row, action: 'approve' });
+                                          return;
+                                        }
+                                        void runAction(row, 'approve');
+                                      }}
                                       className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border border-border bg-surface px-2.5 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50"
                                     >
                                       {busy ? (
@@ -1148,7 +1223,7 @@ export default function LeaveRequestsPage() {
                         setPageSize(value);
                         setPage(1);
                       }}
-                      onBlur={() => {}}
+                      onBlur={() => { }}
                     />
                   </div>
                   <button
@@ -1191,6 +1266,43 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between gap-4 px-4 py-2.5">
       <dt className="shrink-0 text-xs font-medium text-muted">{label}</dt>
       <dd className="min-w-0 break-words text-right text-sm text-ink">{value}</dd>
+    </div>
+  );
+}
+
+function DepartmentConflictBanner({
+  department,
+  conflicts,
+  title,
+  description,
+}: {
+  department: string;
+  conflicts: NonNullable<LeaveRequest['departmentConflicts']>;
+  title: string;
+  description: string;
+}) {
+  if (conflicts.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-danger-border bg-danger-bg px-4 py-3">
+      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-danger">
+        <TriangleAlert className="h-3.5 w-3.5" />
+        {title}
+      </p>
+      {department ? <p className="mt-1 text-xs font-medium text-ink">{department}</p> : null}
+      <p className="mt-1.5 text-sm leading-relaxed text-ink">{description}</p>
+      <ul className="mt-3 divide-y divide-danger-border/40 overflow-hidden rounded-md border border-danger-border/60 bg-surface">
+        {conflicts.map((conflict) => (
+          <li key={conflict.requestId} className="px-3 py-2.5">
+            <p className="text-sm font-medium text-ink">{conflict.fullName}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {conflict.leaveType} · {conflict.status}
+            </p>
+            <p className="mt-0.5 text-xs text-ink">
+              {displayDate(conflict.startDate)} – {displayDate(conflict.endDate)}
+            </p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

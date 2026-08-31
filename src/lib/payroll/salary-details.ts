@@ -9,6 +9,7 @@ import {
   upsertSalaryDbRow,
   type SalaryDbRow,
 } from '@/lib/db/salaries';
+import { writeSalaryHistoryDual } from '@/lib/sheets/salary-history';
 import { formatAmountWithCommas } from '@/lib/payroll/period';
 import { withholdingTaxFromSalaryFields } from '@/lib/payroll/withholding-tax';
 import { listEmployeeDbRows, dbRowToEmployeeRecord } from '@/lib/db/employees';
@@ -20,12 +21,12 @@ import type {
   SalaryDetailRecord,
   SalarySlipExtrasInput,
 } from '@/types/salary-slip';
-import { SALARY_DETAIL_FIELDS } from '@/types/salary-slip';
 
 /** Fields required before a salary slip can be generated. */
 const REQUIRED_FIELDS = ['Base Salary', 'Account Number', 'Account Name', 'Bank Name'] as const;
 
-const ALL_FORM_MISSING_LABELS = SALARY_DETAIL_FIELDS.map((field) => field.missing);
+/** Allowance and tax may legitimately be 0/blank, so only blocking fields are reported. */
+const ALL_FORM_MISSING_LABELS = [...REQUIRED_FIELDS];
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -222,13 +223,15 @@ export async function fetchSalaryDetails(employeeIds?: string[]): Promise<Salary
 
 /**
  * Dual-write salary rows: Supabase first, then n8n update-salary-detail.
- * If the sheet/webhook write fails, Supabase changes are rolled back.
- * Audit is best-effort after a successful dual-write.
+ * If the salary sheet write fails, Supabase salary changes are rolled back.
+ * Compensation history is dual-written after that (Supabase then n8n).
+ * If the history sheet write fails, the Supabase history row is deleted.
+ * Audit is best-effort after a successful salary dual-write.
  */
 export async function updateSalaryDetails(
   details: SalaryDetailInput[],
   options?: { actorEmail?: string }
-): Promise<{ message: string; auditLogged: boolean }> {
+): Promise<{ message: string; auditLogged: boolean; historyLogged: boolean }> {
   if (!details.length) {
     throw new Error('No salary details provided to update.');
   }
@@ -253,17 +256,19 @@ export async function updateSalaryDetails(
 
   const snapshots: Array<{
     previous: SalaryDbRow | null;
+    next: SalaryDbRow | null;
     employeeId: string;
   }> = [];
 
   try {
     for (const detail of writes) {
       const previous = await getSalaryDbRow(detail.employeeId);
+      const next = await upsertSalaryDbRow(detail);
       snapshots.push({
         previous,
+        next,
         employeeId: detail.employeeId.trim(),
       });
-      await upsertSalaryDbRow(detail);
     }
   } catch (dbError) {
     try {
@@ -278,6 +283,7 @@ export async function updateSalaryDetails(
     details: writes.map(toWebhookSalaryRow),
   };
 
+  let message = 'Salary details updated.';
   try {
     const response = await fetch(SHEETS_WEBHOOKS.updateSalaryDetail, {
       method: 'PUT',
@@ -296,7 +302,6 @@ export async function updateSalaryDetails(
       throw new Error(text || `update-salary-detail webhook returned status ${response.status}.`);
     }
 
-    let message = 'Salary details updated.';
     try {
       const parsed = text.trim() ? JSON.parse(text) : null;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -309,39 +314,6 @@ export async function updateSalaryDetails(
     } catch {
       if (text.trim()) message = text.trim();
     }
-
-    let auditLogged = true;
-    const employeeRows = await listEmployeeDbRows().catch(() => []);
-    const employeesById = new Map(
-      employeeRows.map((row) => {
-        const employee = dbRowToEmployeeRecord(row);
-        return [employee.employeeId.trim().toLowerCase(), employee] as const;
-      })
-    );
-
-    for (let i = 0; i < writes.length; i += 1) {
-      const detail = writes[i];
-      const previous = snapshots[i]?.previous ?? null;
-      const employee = employeesById.get(detail.employeeId.trim().toLowerCase()) || null;
-      const nextValue = salaryDetailToAuditValue(detail, employee);
-      const event = previous
-        ? {
-            action: AUDIT_ACTIONS.UPDATE,
-            recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
-            recordId: detail.employeeId,
-            ...diffAuditValues(salaryDetailToAuditValue(previous, employee), nextValue),
-          }
-        : {
-            action: AUDIT_ACTIONS.CREATE,
-            recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
-            recordId: detail.employeeId,
-            newValue: nextValue,
-          };
-      const ok = await logAuditBestEffort(options?.actorEmail, event, 'Salary detail audit');
-      if (!ok) auditLogged = false;
-    }
-
-    return { message, auditLogged };
   } catch (sheetError) {
     try {
       await rollbackSalaryDbWrites(snapshots);
@@ -353,6 +325,49 @@ export async function updateSalaryDetails(
     }
     throw sheetError;
   }
+
+  let auditLogged = true;
+  let historyLogged = true;
+  const employeeRows = await listEmployeeDbRows().catch(() => []);
+  const employeesById = new Map(
+    employeeRows.map((row) => {
+      const employee = dbRowToEmployeeRecord(row);
+      return [employee.employeeId.trim().toLowerCase(), employee] as const;
+    })
+  );
+
+  for (let i = 0; i < writes.length; i += 1) {
+    const detail = writes[i];
+    const previous = snapshots[i]?.previous ?? null;
+    const employee = employeesById.get(detail.employeeId.trim().toLowerCase()) || null;
+    const nextValue = salaryDetailToAuditValue(detail, employee);
+    const event = previous
+      ? {
+          action: AUDIT_ACTIONS.UPDATE,
+          recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
+          recordId: detail.employeeId,
+          ...diffAuditValues(salaryDetailToAuditValue(previous, employee), nextValue),
+        }
+      : {
+          action: AUDIT_ACTIONS.CREATE,
+          recordType: AUDIT_RECORD_TYPES.SALARY_DETAIL,
+          recordId: detail.employeeId,
+          newValue: nextValue,
+        };
+    const ok = await logAuditBestEffort(options?.actorEmail, event, 'Salary detail audit');
+    if (!ok) auditLogged = false;
+
+    const saved = snapshots[i]?.next;
+    if (saved) {
+      await writeSalaryHistoryDual({
+        previous,
+        next: saved,
+        changedBy: options?.actorEmail,
+      });
+    }
+  }
+
+  return { message, auditLogged, historyLogged };
 }
 
 /** Overlay user-provided rows onto fetched salary detail rows (stored fields only). */

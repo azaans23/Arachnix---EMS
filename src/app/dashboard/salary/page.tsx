@@ -10,6 +10,7 @@ import {
   Database,
   RefreshCw,
   Pencil,
+  History,
   ShieldAlert,
   Search,
   ArrowUpDown,
@@ -34,6 +35,7 @@ import {
   type SalaryDetailInput,
   type SalaryDetailRecord,
 } from '@/types/salary-slip';
+import SalaryHistoryModal from '@/components/salary/SalaryHistoryModal';
 
 type SortKey = 'fullName' | 'email' | 'designation' | 'department' | 'salary';
 type SortDir = 'asc' | 'desc';
@@ -222,6 +224,7 @@ export default function SalaryPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeOption | null>(null);
   const [createForm, setCreateForm] = useState<SalaryDetailInput | null>(null);
   const [savingCreate, setSavingCreate] = useState(false);
+  const [historyRow, setHistoryRow] = useState<SalaryDetailRecord | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -547,6 +550,9 @@ export default function SalaryPage() {
       }
 
       toast.success(result.message || 'Salary details updated.');
+      if (result.historyLogged === false) {
+        toast.warning('Salary saved, but the history log could not be written.');
+      }
       closeEdit();
       await fetchDetails();
     } catch (error: unknown) {
@@ -587,6 +593,9 @@ export default function SalaryPage() {
       }
 
       toast.success(result.message || 'Salary details created.');
+      if (result.historyLogged === false) {
+        toast.warning('Salary saved, but the history log could not be written.');
+      }
       closeCreate();
       await fetchDetails();
     } catch (error: unknown) {
@@ -730,6 +739,17 @@ export default function SalaryPage() {
                       Deduction {formatCurrency(editLiveTotals.totaldeduction)}
                     </p>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryRow(editing);
+                      closeEdit();
+                    }}
+                    className="mt-3 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-canvas px-2.5 text-xs font-medium text-ink hover:border-ink/30"
+                  >
+                    <History className="h-3.5 w-3.5" />
+                    View history
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1323,20 +1343,26 @@ export default function SalaryPage() {
                               {formatCurrency(netDisplay)}
                             </td>
                             <td className="px-5 py-3.5 text-right">
-                              {canEdit ? (
+                              <div className="inline-flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => openEdit(row)}
+                                  onClick={() => setHistoryRow(row)}
                                   className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
-                                  title="Edit salary details"
+                                  title="View salary history"
                                 >
-                                  <Pencil className="h-3.5 w-3.5" />
+                                  <History className="h-3.5 w-3.5" />
                                 </button>
-                              ) : (
-                                <span className="inline-flex items-center rounded-md border border-border bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
-                                  View only
-                                </span>
-                              )}
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEdit(row)}
+                                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors duration-150 hover:border-ink/30 hover:text-ink"
+                                    title="Edit salary details"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1394,6 +1420,17 @@ export default function SalaryPage() {
 
       {editModal}
       {createModal}
+      {mounted && historyRow
+        ? createPortal(
+            <SalaryHistoryModal
+              employeeId={historyRow.employeeId}
+              employeeName={historyRow.fullName}
+              token={token()}
+              onClose={() => setHistoryRow(null)}
+            />,
+            document.body
+          )
+        : null}
     </div>
   );
 }

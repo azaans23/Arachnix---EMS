@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   Banknote,
@@ -13,7 +14,9 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Send,
   ShieldAlert,
+  ShieldCheck,
   Users,
   X,
   XCircle,
@@ -23,7 +26,7 @@ import CustomDropdown from '@/components/ui/Dropdown';
 import EmptyState from '@/components/ui/EmptyState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
-import { canAccess, getTrustedRole } from '@/lib/rbac';
+import { canAccess, getTrustedRole, normalizeRole, ROLES } from '@/lib/rbac';
 import { syncSessionCookies } from '@/lib/session-cookies';
 import type { SalarySlipRun, SalarySlipRunDetail } from '@/types/salary-slip';
 
@@ -59,6 +62,9 @@ const PAGE_SIZE_OPTIONS = [
 
 function statusClasses(status: string) {
   switch (status.toLowerCase()) {
+    case 'awaiting approval':
+      return 'border-warning/30 bg-warning/10 text-warning';
+    case 'approved':
     case 'success':
     case 'completed':
     case 'sent':
@@ -68,6 +74,109 @@ function statusClasses(status: string) {
     default:
       return 'border-border bg-canvas text-ink';
   }
+}
+
+type ApprovalStage = {
+  tone: 'info' | 'warning' | 'success' | 'danger';
+  title: string;
+  description: string;
+  /** 0 generate · 1 review & approve · 2 send. */
+  step: number;
+};
+
+const APPROVAL_STEPS = ['Generated', 'Approved', 'Sent'];
+
+function stageClasses(tone: ApprovalStage['tone']) {
+  switch (tone) {
+    case 'warning':
+      return 'border-warning/30 bg-warning/10 text-warning';
+    case 'success':
+      return 'border-border bg-success/10 text-success';
+    case 'danger':
+      return 'border-danger-border bg-danger-bg text-danger';
+    default:
+      return 'border-border bg-canvas text-ink';
+  }
+}
+
+function buildApprovalStage(
+  run: SalarySlipRun,
+  options: { canApprove: boolean; generatedCount: number }
+): ApprovalStage {
+  const status = run.status.trim().toLowerCase();
+  const approved = Boolean(run.approvedAt || run.approvedBy);
+
+  if (status === 'processing') {
+    return {
+      tone: 'info',
+      step: 0,
+      title: 'Generating slips',
+      description:
+        'The workflow is building PDFs. The run moves to Awaiting approval once generation finishes — no employee has been emailed yet.',
+    };
+  }
+
+  if (status === 'failed') {
+    return {
+      tone: 'danger',
+      step: 0,
+      title: 'Generation failed',
+      description: 'Nothing was distributed. Fix the errors listed below and start a new run.',
+    };
+  }
+
+  if (status === 'awaiting approval') {
+    if (!options.canApprove) {
+      return {
+        tone: 'warning',
+        step: 1,
+        title: 'Waiting for Admin approval',
+        description:
+          'Slips are generated but not emailed yet. An Admin or Super Admin has to approve this run before employees receive anything.',
+      };
+    }
+    return {
+      tone: 'warning',
+      step: 1,
+      title: 'Waiting for your approval',
+      description:
+        options.generatedCount === 0
+          ? 'No PDF links are ready yet, so distribution cannot be approved.'
+          : `Open each of the ${options.generatedCount} generated ${
+              options.generatedCount === 1 ? 'slip' : 'slips'
+            } below, then use Approve & send to release the emails.`,
+    };
+  }
+
+  if (status === 'approved') {
+    return {
+      tone: 'info',
+      step: 2,
+      title: 'Approved — sending emails',
+      description: `${
+        run.approvedBy ? `Approved by ${run.approvedBy}. ` : ''
+      }The send workflow is emailing slips and will mark this run Completed.`,
+    };
+  }
+
+  if (approved) {
+    return {
+      tone: 'success',
+      step: 2,
+      title: 'Approved and distributed',
+      description: `Approved by ${run.approvedBy || 'an administrator'}${
+        run.approvedAt ? ` on ${displayDate(run.approvedAt)}` : ''
+      }. Slips have been emailed to employees.`,
+    };
+  }
+
+  return {
+    tone: 'warning',
+    step: 2,
+    title: 'Sent without recorded approval',
+    description:
+      'This run went straight to Completed, so it skipped the approval gate. The generate workflow in n8n is still emailing slips itself — it should stop after creating PDFs and set the run to Awaiting Approval instead.',
+  };
 }
 
 function displayDate(value: string) {
@@ -93,6 +202,9 @@ export default function SalarySlipRunDetailsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
+  const [actorRole, setActorRole] = useState('');
+  const [confirmApproval, setConfirmApproval] = useState(false);
+  const [approving, setApproving] = useState(false);
   const lastStatusRef = useRef('');
 
   const load = useCallback(
@@ -120,9 +232,9 @@ export default function SalarySlipRunDetailsPage() {
 
         if (
           options.silent &&
-          prevStatus === 'processing' &&
+          (prevStatus === 'processing' || prevStatus === 'approved') &&
           nextStatus &&
-          nextStatus !== 'processing'
+          nextStatus !== prevStatus
         ) {
           if (nextStatus === 'completed') {
             toast.success(
@@ -169,6 +281,7 @@ export default function SalarySlipRunDetailsPage() {
       } catch {
         /* keep JWT */
       }
+      setActorRole(role);
       const canRead = canAccess(role, 'salary_slip_run_details', flags);
       setAllowed(canRead);
       if (canRead) await load();
@@ -178,7 +291,7 @@ export default function SalarySlipRunDetailsPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!run || run.status.toLowerCase() !== 'processing') return;
+    if (!run || !['processing', 'approved'].includes(run.status.toLowerCase())) return;
     const timer = window.setInterval(() => void load({ silent: true }), 5000);
     return () => window.clearInterval(timer);
   }, [run, load]);
@@ -219,6 +332,35 @@ export default function SalarySlipRunDetailsPage() {
     setSearch('');
     setStatusFilter('all');
     setPage(1);
+  };
+
+  const approveRun = async () => {
+    if (!run) return;
+    setApproving(true);
+    try {
+      const response = await fetch(
+        `/api/salary-slip-runs/${encodeURIComponent(run.runId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({ action: 'approve' }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to approve payroll.');
+      }
+      setConfirmApproval(false);
+      toast.success(result.message || 'Payroll approved.');
+      await load();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to approve payroll.');
+    } finally {
+      setApproving(false);
+    }
   };
 
   if (allowed === null) {
@@ -298,6 +440,15 @@ export default function SalarySlipRunDetailsPage() {
       : hasActiveFilters
         ? `${filteredDetails.length} of ${details.length} employee${details.length === 1 ? '' : 's'}`
         : `${details.length} employee${details.length === 1 ? '' : 's'}`;
+  const normalizedActorRole = normalizeRole(actorRole);
+  const canApprove =
+    normalizedActorRole === ROLES.ADMIN || normalizedActorRole === ROLES.SUPER_ADMIN;
+  const awaitingApproval = run?.status.trim().toLowerCase() === 'awaiting approval';
+  const generatedCount = details.filter((detail) => {
+    const status = detail.status.trim().toLowerCase();
+    return (status === 'success' || status === 'completed') && Boolean(detail.pdfLink);
+  }).length;
+  const stage = run ? buildApprovalStage(run, { canApprove, generatedCount }) : null;
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
@@ -321,9 +472,31 @@ export default function SalarySlipRunDetailsPage() {
               ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${recordLabel}`
               : recordLabel}
           </p>
+          {run?.approvedBy ? (
+            <p className="mt-1 text-xs text-muted">
+              Approved by {run.approvedBy}
+              {run.approvedAt ? ` · ${displayDate(run.approvedAt)}` : ''}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {run && awaitingApproval && canApprove ? (
+            <button
+              type="button"
+              onClick={() => setConfirmApproval(true)}
+              disabled={loading || generatedCount === 0}
+              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                generatedCount === 0
+                  ? 'No generated PDF links are ready to distribute'
+                  : 'Approve and start employee email distribution'
+              }
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Approve &amp; send
+            </button>
+          ) : null}
           {run && (
             <span
               className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${statusClasses(run.status)}`}
@@ -349,6 +522,55 @@ export default function SalarySlipRunDetailsPage() {
           </button>
         </div>
       </div>
+
+      {stage ? (
+        <section
+          aria-label="Payroll approval status"
+          className="mb-6 rounded-lg border border-border bg-surface p-5 shadow-panel"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex gap-3">
+              <span
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${stageClasses(stage.tone)}`}
+              >
+                {stage.step === 2 && stage.tone === 'success' ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : stage.tone === 'danger' ? (
+                  <XCircle className="h-4 w-4" />
+                ) : stage.step === 0 || stage.tone === 'info' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-ink">{stage.title}</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
+                  {stage.description}
+                </p>
+              </div>
+            </div>
+            <ol className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium">
+              {APPROVAL_STEPS.map((label, index) => (
+                <li key={label} className="flex items-center gap-1.5">
+                  <span
+                    className={`rounded-md border px-2 py-1 ${
+                      index <= stage.step
+                        ? 'border-border bg-canvas text-ink'
+                        : 'border-border/60 bg-surface text-muted/60'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                  {index < APPROVAL_STEPS.length - 1 ? (
+                    <ChevronRight className="h-3 w-3 text-muted/50" />
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+      ) : null}
 
       {loading && details.length === 0 ? (
         <div className="space-y-4">
@@ -534,6 +756,64 @@ export default function SalarySlipRunDetailsPage() {
           )}
         </div>
       )}
+
+      {confirmApproval && run && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
+              <button
+                type="button"
+                aria-label="Close approval dialog"
+                className="absolute inset-0 cursor-default"
+                disabled={approving}
+                onClick={() => setConfirmApproval(false)}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="approve-payroll-title"
+                className="relative w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              >
+                <div className="border-b border-border px-5 py-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+                    Payroll approval
+                  </p>
+                  <h2 id="approve-payroll-title" className="mt-1 text-lg font-semibold text-ink">
+                    Approve {MONTH_NAMES[run.month - 1]} {run.year}?
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-muted">
+                    This starts email distribution for {generatedCount} generated salary{' '}
+                    {generatedCount === 1 ? 'slip' : 'slips'}. Review every PDF link before
+                    continuing. Approval cannot be edited after the send workflow starts.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={approving}
+                    onClick={() => setConfirmApproval(false)}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                  >
+                    Keep reviewing
+                  </button>
+                  <button
+                    type="button"
+                    disabled={approving}
+                    onClick={() => void approveRun()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {approving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Approve &amp; send
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

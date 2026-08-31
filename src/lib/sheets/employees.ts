@@ -2,6 +2,7 @@ import type { EmployeeRecord, EmployeeWriteInput } from '@/types/employee';
 import { formatToggle, parseToggle } from '@/types/employee';
 import { normalizeRole, ROLES } from '@/lib/rbac';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
+import { formatWebhookError, isWebhookAckBody } from '@/lib/sheets/webhook';
 import {
   dbRowToEmployeeRecord,
   findEmployeeDbRowByIdOrEmail,
@@ -13,6 +14,11 @@ import {
   upsertEmployeeDbRow,
 } from '@/lib/db/employees';
 import { deleteSalaryDbRow, getSalaryDbRow, restoreSalaryDbRow } from '@/lib/db/salaries';
+import {
+  deleteSalaryHistoryByEmployeeId,
+  restoreSalaryHistoryRows,
+  type SalaryHistoryDbRow,
+} from '@/lib/db/salary-history';
 import { deleteLeaveBalancesByEmployeeId, restoreLeaveBalanceRows } from '@/lib/db/leave-balances';
 import { deleteLeaveRequestsByEmployeeId, restoreLeaveRequestRows } from '@/lib/db/leave-requests';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
@@ -77,6 +83,12 @@ export function mapRawToEmployee(rawInput: unknown): EmployeeRecord {
     designation: pick(raw, 'Designation', 'designation'),
     employeeType: pick(raw, 'EmployeeType', 'employeeType', 'EmploymentType'),
     joiningDate: toDateInputValue(raw.JoiningDate ?? raw.joiningDate),
+    probationEndDate: toDateInputValue(
+      raw.ProbationEndDate ?? raw.probationEndDate ?? raw.probationenddate ?? raw.Probation
+    ),
+    contractEndDate: toDateInputValue(
+      raw.ContractEndDate ?? raw.contractEndDate ?? raw.contractenddate
+    ),
     role,
     supabaseUserId: pick(raw, 'SupabaseUserID', 'supabaseUserId', 'SupabaseUserId'),
     emsStatus: pick(raw, 'EMSStatus', 'emsStatus') || 'Inactive',
@@ -126,6 +138,8 @@ export function toSheetWritePayload(input: EmployeeWriteInput): Record<string, s
     Designation: input.designation.trim(),
     EmployeeType: input.employmentType.trim(),
     JoiningDate: toDateInputValue(input.joiningDate),
+    ProbationEndDate: toDateInputValue(input.probationEndDate),
+    ContractEndDate: toDateInputValue(input.contractEndDate),
     Role: input.role.trim(),
     IsDirector: formatToggle(Boolean(input.isDirector)),
     HasFinanceAccess: formatToggle(
@@ -149,6 +163,8 @@ export function mergeEmployeeWriteInput(
       ...input,
       dob: toDateInputValue(input.dob),
       joiningDate: toDateInputValue(input.joiningDate),
+      probationEndDate: toDateInputValue(input.probationEndDate),
+      contractEndDate: toDateInputValue(input.contractEndDate),
       emsStatus: input.emsStatus.trim() || 'Active',
       supabaseUserId: input.supabaseUserId || '',
       isDirector: Boolean(input.isDirector),
@@ -167,6 +183,15 @@ export function mergeEmployeeWriteInput(
     designation: prefer(input.designation, previous.designation),
     employmentType: prefer(input.employmentType, previous.employeeType),
     joiningDate: prefer(toDateInputValue(input.joiningDate), previous.joiningDate),
+    // An explicit blank clears a date; an omitted legacy-client field preserves it.
+    probationEndDate:
+      input.probationEndDate !== undefined
+        ? toDateInputValue(input.probationEndDate)
+        : previous.probationEndDate,
+    contractEndDate:
+      input.contractEndDate !== undefined
+        ? toDateInputValue(input.contractEndDate)
+        : previous.contractEndDate,
     role: prefer(input.role, previous.role),
     isDirector: input.isDirector ?? previous.isDirector,
     hasFinanceAccess: input.hasFinanceAccess ?? previous.hasFinanceAccess,
@@ -193,6 +218,8 @@ export function employeeRecordToAuditValue(employee: EmployeeRecord): Record<str
     Designation: employee.designation,
     EmployeeType: employee.employeeType,
     JoiningDate: employee.joiningDate,
+    ProbationEndDate: employee.probationEndDate,
+    ContractEndDate: employee.contractEndDate,
     Role: employee.role,
     IsDirector: formatToggle(employee.isDirector),
     HasFinanceAccess: formatToggle(employee.hasFinanceAccess),
@@ -251,40 +278,6 @@ export class SheetsError extends Error {
     this.name = 'SheetsError';
     this.status = status;
   }
-}
-
-/**
- * n8n answers with these when the workflow did run but its final node emitted
- * no items (e.g. a Sheets delete node), so they must not be treated as failures.
- */
-function isWebhookAckBody(text: string): boolean {
-  const body = text.toLowerCase();
-  return body.includes('no item to return was found') || body.includes('workflow was started');
-}
-
-function formatWebhookError(status: number, errText: string, fallback: string): string {
-  try {
-    const jsonErr = JSON.parse(errText);
-    if (jsonErr.message) {
-      const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
-      const message = String(jsonErr.message) + hint;
-      if (status === 404) {
-        return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
-      }
-      return message;
-    }
-  } catch {
-    /* keep text */
-  }
-
-  if (status === 404) {
-    return (
-      errText ||
-      'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
-    );
-  }
-
-  return errText || fallback;
 }
 
 /** Typed read of employees from Supabase (sheet remains write source-of-truth via dual-write). */
@@ -435,7 +428,8 @@ export async function upsertEmployee(
 
 /**
  * Permanently delete an employee from Supabase, then from the Sheet via n8n.
- * Related salary / leave rows are removed first so FKs do not block the delete.
+ * Related salary history / salary / leave rows are removed first so FKs do not
+ * block the delete.
  * On webhook failure the employee row (and related snapshots) are restored.
  */
 export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord> {
@@ -449,10 +443,12 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
 
   const employee = dbRowToEmployeeRecord(previousDbRow);
   const previousSalary = await getSalaryDbRow(id);
+  let previousHistory: SalaryHistoryDbRow[] = [];
   let previousBalances: Awaited<ReturnType<typeof deleteLeaveBalancesByEmployeeId>> = [];
   let previousRequests: Awaited<ReturnType<typeof deleteLeaveRequestsByEmployeeId>> = [];
 
   // Clear dependents before the employee row so FKs cannot block the delete.
+  previousHistory = await deleteSalaryHistoryByEmployeeId(id);
   if (previousSalary) {
     await deleteSalaryDbRow(id);
   }
@@ -487,6 +483,8 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
     try {
       await restoreEmployeeDbRow(previousDbRow);
       if (previousSalary) await restoreSalaryDbRow(previousSalary);
+      // History references both rows above, so it goes back last.
+      if (previousHistory.length > 0) await restoreSalaryHistoryRows(previousHistory);
       if (previousBalances.length > 0) await restoreLeaveBalanceRows(previousBalances);
       if (previousRequests.length > 0) await restoreLeaveRequestRows(previousRequests);
     } catch (rollbackError) {
@@ -513,6 +511,8 @@ export function employeeToFormValues(employee: EmployeeRecord): EmployeeWriteInp
     designation: employee.designation,
     employmentType: employee.employeeType,
     joiningDate: toDateInputValue(employee.joiningDate),
+    probationEndDate: toDateInputValue(employee.probationEndDate),
+    contractEndDate: toDateInputValue(employee.contractEndDate),
     role: employee.role || 'Employee',
     isDirector: employee.isDirector,
     hasFinanceAccess: employee.hasFinanceAccess,

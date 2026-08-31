@@ -35,6 +35,20 @@ const moneyOptional = Yup.string()
     return !Number.isNaN(Number(value)) && Number(value) >= 0;
   });
 
+const optionalExpiryDate = (label: string) =>
+  Yup.string()
+    .trim()
+    .matches(/^\d{4}-\d{2}-\d{2}$/, {
+      excludeEmptyString: true,
+      message: `${label} must be a valid date`,
+    })
+    .test('not-before-joining', `${label} cannot be before the joining date`, function (value) {
+      if (!value) return true;
+      const joiningDate = String(this.parent.joiningDate || '').trim();
+      return !joiningDate || value >= joiningDate;
+    })
+    .optional();
+
 /** Required fields + email format. Uniqueness is enforced via context when provided. */
 export const employeeValidationSchema = Yup.object({
   employeeId: Yup.string()
@@ -74,6 +88,8 @@ export const employeeValidationSchema = Yup.object({
   designation: Yup.string().trim().required('Designation is required'),
   employmentType: Yup.string().trim().required('Employment type is required'),
   joiningDate: Yup.string().trim().required('Joining date is required'),
+  probationEndDate: optionalExpiryDate('Probation end date'),
+  contractEndDate: optionalExpiryDate('Contract end date'),
   role: Yup.string()
     .trim()
     .required('Role is required')
@@ -93,11 +109,8 @@ export const employeeValidationSchema = Yup.object({
     otherwise: (schema) => schema.optional(),
   }),
   tax: moneyOptional,
-  allowance: moneyOptional.when('originalEmployeeId', {
-    is: (value: string | undefined) => !String(value || '').trim(),
-    then: (schema) => schema.required('Allowance is required'),
-    otherwise: (schema) => schema.optional(),
-  }),
+  /** Blank means no allowance; the salary row stores 0. */
+  allowance: moneyOptional.optional(),
   accountNumber: Yup.string()
     .trim()
     .when('originalEmployeeId', {

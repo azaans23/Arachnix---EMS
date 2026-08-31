@@ -146,6 +146,8 @@ export async function POST(request: Request) {
                 designation: '',
                 employmentType: '',
                 joiningDate: '',
+                probationEndDate: '',
+                contractEndDate: '',
                 role: assignedRoleLabel,
                 emsStatus: 'Active',
               }),
