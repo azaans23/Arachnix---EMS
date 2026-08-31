@@ -76,6 +76,109 @@ function statusClasses(status: string) {
   }
 }
 
+type ApprovalStage = {
+  tone: 'info' | 'warning' | 'success' | 'danger';
+  title: string;
+  description: string;
+  /** 0 generate · 1 review & approve · 2 send. */
+  step: number;
+};
+
+const APPROVAL_STEPS = ['Generated', 'Approved', 'Sent'];
+
+function stageClasses(tone: ApprovalStage['tone']) {
+  switch (tone) {
+    case 'warning':
+      return 'border-warning/30 bg-warning/10 text-warning';
+    case 'success':
+      return 'border-border bg-success/10 text-success';
+    case 'danger':
+      return 'border-danger-border bg-danger-bg text-danger';
+    default:
+      return 'border-border bg-canvas text-ink';
+  }
+}
+
+function buildApprovalStage(
+  run: SalarySlipRun,
+  options: { canApprove: boolean; generatedCount: number }
+): ApprovalStage {
+  const status = run.status.trim().toLowerCase();
+  const approved = Boolean(run.approvedAt || run.approvedBy);
+
+  if (status === 'processing') {
+    return {
+      tone: 'info',
+      step: 0,
+      title: 'Generating slips',
+      description:
+        'The workflow is building PDFs. The run moves to Awaiting approval once generation finishes — no employee has been emailed yet.',
+    };
+  }
+
+  if (status === 'failed') {
+    return {
+      tone: 'danger',
+      step: 0,
+      title: 'Generation failed',
+      description: 'Nothing was distributed. Fix the errors listed below and start a new run.',
+    };
+  }
+
+  if (status === 'awaiting approval') {
+    if (!options.canApprove) {
+      return {
+        tone: 'warning',
+        step: 1,
+        title: 'Waiting for Admin approval',
+        description:
+          'Slips are generated but not emailed yet. An Admin or Super Admin has to approve this run before employees receive anything.',
+      };
+    }
+    return {
+      tone: 'warning',
+      step: 1,
+      title: 'Waiting for your approval',
+      description:
+        options.generatedCount === 0
+          ? 'No PDF links are ready yet, so distribution cannot be approved.'
+          : `Open each of the ${options.generatedCount} generated ${
+              options.generatedCount === 1 ? 'slip' : 'slips'
+            } below, then use Approve & send to release the emails.`,
+    };
+  }
+
+  if (status === 'approved') {
+    return {
+      tone: 'info',
+      step: 2,
+      title: 'Approved — sending emails',
+      description: `${
+        run.approvedBy ? `Approved by ${run.approvedBy}. ` : ''
+      }The send workflow is emailing slips and will mark this run Completed.`,
+    };
+  }
+
+  if (approved) {
+    return {
+      tone: 'success',
+      step: 2,
+      title: 'Approved and distributed',
+      description: `Approved by ${run.approvedBy || 'an administrator'}${
+        run.approvedAt ? ` on ${displayDate(run.approvedAt)}` : ''
+      }. Slips have been emailed to employees.`,
+    };
+  }
+
+  return {
+    tone: 'warning',
+    step: 2,
+    title: 'Sent without recorded approval',
+    description:
+      'This run went straight to Completed, so it skipped the approval gate. The generate workflow in n8n is still emailing slips itself — it should stop after creating PDFs and set the run to Awaiting Approval instead.',
+  };
+}
+
 function displayDate(value: string) {
   if (!value) return 'N/A';
   const date = new Date(value);
@@ -345,6 +448,7 @@ export default function SalarySlipRunDetailsPage() {
     const status = detail.status.trim().toLowerCase();
     return (status === 'success' || status === 'completed') && Boolean(detail.pdfLink);
   }).length;
+  const stage = run ? buildApprovalStage(run, { canApprove, generatedCount }) : null;
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up">
@@ -418,6 +522,55 @@ export default function SalarySlipRunDetailsPage() {
           </button>
         </div>
       </div>
+
+      {stage ? (
+        <section
+          aria-label="Payroll approval status"
+          className="mb-6 rounded-lg border border-border bg-surface p-5 shadow-panel"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex gap-3">
+              <span
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${stageClasses(stage.tone)}`}
+              >
+                {stage.step === 2 && stage.tone === 'success' ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : stage.tone === 'danger' ? (
+                  <XCircle className="h-4 w-4" />
+                ) : stage.step === 0 || stage.tone === 'info' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-ink">{stage.title}</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
+                  {stage.description}
+                </p>
+              </div>
+            </div>
+            <ol className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium">
+              {APPROVAL_STEPS.map((label, index) => (
+                <li key={label} className="flex items-center gap-1.5">
+                  <span
+                    className={`rounded-md border px-2 py-1 ${
+                      index <= stage.step
+                        ? 'border-border bg-canvas text-ink'
+                        : 'border-border/60 bg-surface text-muted/60'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                  {index < APPROVAL_STEPS.length - 1 ? (
+                    <ChevronRight className="h-3 w-3 text-muted/50" />
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+      ) : null}
 
       {loading && details.length === 0 ? (
         <div className="space-y-4">

@@ -68,6 +68,8 @@ const MONTH_OPTIONS = [
 const STATUS_FILTER_OPTIONS = [
   { label: 'All statuses', value: 'all' },
   { label: 'Processing', value: 'processing' },
+  { label: 'Awaiting Approval', value: 'awaiting approval' },
+  { label: 'Approved', value: 'approved' },
   { label: 'Completed', value: 'completed' },
   { label: 'Partial', value: 'partial' },
   { label: 'Failed', value: 'failed' },
@@ -93,6 +95,9 @@ function currentYearOptions() {
 
 function statusClasses(status: string) {
   switch (status.toLowerCase()) {
+    case 'awaiting approval':
+      return 'border-warning/30 bg-warning/10 text-warning';
+    case 'approved':
     case 'completed':
       return 'border-border bg-success/10 text-success';
     case 'failed':
@@ -347,7 +352,7 @@ export default function SalarySlipRunsPage() {
   }, [load]);
 
   const hasProcessingRuns = useMemo(
-    () => runs.some((run) => run.status.toLowerCase() === 'processing'),
+    () => runs.some((run) => ['processing', 'approved'].includes(run.status.toLowerCase())),
     [runs]
   );
 
@@ -612,7 +617,8 @@ export default function SalarySlipRunsPage() {
                     Generate salary slips
                   </h2>
                   <p className="mt-0.5 text-xs text-muted">
-                    Choose the period and who should receive slips.
+                    Choose the period and who should receive slips. Generating only builds the
+                    PDFs — an Admin approves the run before employees are emailed.
                   </p>
                 </div>
                 <button
