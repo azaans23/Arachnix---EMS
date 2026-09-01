@@ -1092,6 +1092,10 @@ export default function SalarySlipRunsPage() {
                               {' '}
                               · {run.failCount} failed
                             </span>
+                            <span className={run.rejectedCount > 0 ? ' text-danger' : ''}>
+                              {' '}
+                              · {run.rejectedCount} rejected
+                            </span>
                           </td>
                           <td className="px-5 py-3.5 text-right">
                             <Link

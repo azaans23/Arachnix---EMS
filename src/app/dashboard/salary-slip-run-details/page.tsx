@@ -158,7 +158,7 @@ function buildApprovalStage(
           ? 'No PDF links are ready yet, so distribution cannot be approved.'
           : `Open each of the ${options.generatedCount} generated ${
               options.generatedCount === 1 ? 'slip' : 'slips'
-            } below, then use Approve & send to release the emails.`,
+            } below, then use Approve all to release every email, or approve them one employee at a time.`,
     };
   }
 
@@ -217,7 +217,7 @@ export default function SalarySlipRunDetailsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
   const [actorRole, setActorRole] = useState('');
-  const [confirmApproval, setConfirmApproval] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<SalarySlipRunDetail | 'run' | null>(null);
   const [approving, setApproving] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<SalarySlipRunDetail | 'run' | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -351,8 +351,8 @@ export default function SalarySlipRunDetailsPage() {
     setPage(1);
   };
 
-  const approveRun = async () => {
-    if (!run) return;
+  const approveSalarySlip = async () => {
+    if (!run || !approveTarget) return;
     setApproving(true);
     try {
       const response = await fetch(
@@ -363,14 +363,18 @@ export default function SalarySlipRunDetailsPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
-          body: JSON.stringify({ action: 'approve' }),
+          body: JSON.stringify({
+            action: 'approve',
+            scope: approveTarget === 'run' ? 'run' : 'employee',
+            employeeId: approveTarget === 'run' ? undefined : approveTarget.employeeId,
+          }),
         }
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to approve payroll.');
       }
-      setConfirmApproval(false);
+      setApproveTarget(null);
       toast.success(result.message || 'Payroll approved.');
       await load();
     } catch (error: unknown) {
@@ -527,7 +531,7 @@ export default function SalarySlipRunDetailsPage() {
           </h1>
           <p className="mt-1.5 text-sm text-muted">
             {run
-              ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${recordLabel}`
+              ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${run.rejectedCount} rejected · ${recordLabel}`
               : recordLabel}
           </p>
           {run?.approvedBy ? (
@@ -555,7 +559,7 @@ export default function SalarySlipRunDetailsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setConfirmApproval(true)}
+                onClick={() => setApproveTarget('run')}
                 disabled={loading || generatedCount === 0}
                 className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                 title={
@@ -565,7 +569,7 @@ export default function SalarySlipRunDetailsPage() {
                 }
               >
                 <ShieldCheck className="h-4 w-4" />
-                Approve &amp; send
+                Approve all
               </button>
             </>
           ) : null}
@@ -784,17 +788,33 @@ export default function SalarySlipRunDetailsPage() {
                               detail.status.trim().toLowerCase()
                             ) &&
                             detail.emailStatus.trim().toLowerCase() !== 'sent' ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRejectTarget(detail);
-                                  setRejectionReason('');
-                                }}
-                                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-danger-border bg-danger-bg px-2.5 text-xs font-semibold text-danger transition-opacity hover:opacity-80"
-                              >
-                                <Ban className="h-3.5 w-3.5" />
-                                Reject
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setApproveTarget(detail)}
+                                  disabled={!detail.pdfLink}
+                                  title={
+                                    detail.pdfLink
+                                      ? 'Approve and email only this slip'
+                                      : 'No PDF link is ready for this employee'
+                                  }
+                                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-accent px-2.5 text-xs font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRejectTarget(detail);
+                                    setRejectionReason('');
+                                  }}
+                                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-danger-border bg-danger-bg px-2.5 text-xs font-semibold text-danger transition-opacity hover:opacity-80"
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Reject
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-xs text-muted">—</span>
                             )}
@@ -852,7 +872,7 @@ export default function SalarySlipRunDetailsPage() {
         </div>
       )}
 
-      {confirmApproval && run && typeof document !== 'undefined'
+      {approveTarget && run && typeof document !== 'undefined'
         ? createPortal(
             <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
               <button
@@ -860,7 +880,7 @@ export default function SalarySlipRunDetailsPage() {
                 aria-label="Close approval dialog"
                 className="absolute inset-0 cursor-default"
                 disabled={approving}
-                onClick={() => setConfirmApproval(false)}
+                onClick={() => setApproveTarget(null)}
               />
               <div
                 role="dialog"
@@ -873,19 +893,23 @@ export default function SalarySlipRunDetailsPage() {
                     Payroll approval
                   </p>
                   <h2 id="approve-payroll-title" className="mt-1 text-lg font-semibold text-ink">
-                    Approve {MONTH_NAMES[run.month - 1]} {run.year}?
+                    {approveTarget === 'run'
+                      ? `Approve all ${MONTH_NAMES[run.month - 1]} ${run.year} slips?`
+                      : `Approve ${approveTarget.employeeName || approveTarget.employeeId}'s slip?`}
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-muted">
-                    This starts email distribution for {generatedCount} generated salary{' '}
-                    {generatedCount === 1 ? 'slip' : 'slips'}. Review every PDF link before
-                    continuing. Approval cannot be edited after the send workflow starts.
+                    {approveTarget === 'run'
+                      ? `This starts email distribution for ${generatedCount} generated salary ${
+                          generatedCount === 1 ? 'slip' : 'slips'
+                        }. Review every PDF link before continuing. Approval cannot be edited after the send workflow starts.`
+                      : 'Only this employee is emailed now. The run stays awaiting approval so the remaining slips can still be approved or rejected.'}
                   </p>
                 </div>
                 <div className="flex items-center justify-end gap-2 px-5 py-4">
                   <button
                     type="button"
                     disabled={approving}
-                    onClick={() => setConfirmApproval(false)}
+                    onClick={() => setApproveTarget(null)}
                     className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
                   >
                     Keep reviewing
@@ -893,7 +917,7 @@ export default function SalarySlipRunDetailsPage() {
                   <button
                     type="button"
                     disabled={approving}
-                    onClick={() => void approveRun()}
+                    onClick={() => void approveSalarySlip()}
                     className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                   >
                     {approving ? (
@@ -901,7 +925,7 @@ export default function SalarySlipRunDetailsPage() {
                     ) : (
                       <Send className="h-4 w-4" />
                     )}
-                    Approve &amp; send
+                    {approveTarget === 'run' ? 'Approve all' : 'Approve & send'}
                   </button>
                 </div>
               </div>

@@ -84,23 +84,24 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const { runId } = await context.params;
-    if (action === 'reject') {
-      const scope = String(body.scope || 'employee').trim().toLowerCase();
-      if (scope !== 'employee' && scope !== 'run') {
-        return NextResponse.json(
-          { success: false, error: 'Rejection scope must be employee or run.' },
-          { status: 400 }
-        );
-      }
-      const employeeId =
-        scope === 'employee' ? String(body.employeeId || '').trim() : undefined;
-      if (scope === 'employee' && !employeeId) {
-        return NextResponse.json(
-          { success: false, error: 'employeeId is required for employee rejection.' },
-          { status: 400 }
-        );
-      }
+    const scope = String(body.scope || (action === 'reject' ? 'employee' : 'run'))
+      .trim()
+      .toLowerCase();
+    if (scope !== 'employee' && scope !== 'run') {
+      return NextResponse.json(
+        { success: false, error: `${action === 'reject' ? 'Rejection' : 'Approval'} scope must be employee or run.` },
+        { status: 400 }
+      );
+    }
+    const employeeId = scope === 'employee' ? String(body.employeeId || '').trim() : undefined;
+    if (scope === 'employee' && !employeeId) {
+      return NextResponse.json(
+        { success: false, error: `employeeId is required for employee ${action}.` },
+        { status: 400 }
+      );
+    }
 
+    if (action === 'reject') {
       const data = await rejectSalarySlipDistribution({
         runId,
         employeeId,
@@ -119,13 +120,17 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const data = await approveSalarySlipDistribution({
       runId,
+      employeeId,
       approvedBy: auth.user?.email || '',
     });
 
     return NextResponse.json({
       success: true,
       data,
-      message: 'Payroll approved. Salary slip email distribution has started.',
+      message:
+        scope === 'run'
+          ? 'Payroll approved. Salary slip email distribution has started.'
+          : 'The employee salary slip was approved and queued for sending.',
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to approve payroll.';

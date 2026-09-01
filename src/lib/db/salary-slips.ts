@@ -48,17 +48,36 @@ function isFailedStatus(status: string): boolean {
   return value === 'failed' || value === 'fail' || value === 'error';
 }
 
+/** Generated but not emailed yet — still waiting on an approve / reject decision. */
+export function isSendableDetail(detail: { status: string; emailStatus: string }): boolean {
+  const status = detail.status.trim().toLowerCase();
+  return (
+    (status === 'success' || status === 'completed') &&
+    detail.emailStatus.trim().toLowerCase() !== 'sent'
+  );
+}
+
 export function countDetailsByStatus(details: Array<{ status: string }>): {
   successCount: number;
   failCount: number;
+  rejectedCount: number;
+  employeeCount: number;
 } {
   let successCount = 0;
   let failCount = 0;
+  let rejectedCount = 0;
   for (const detail of details) {
-    if (isSuccessStatus(detail.status)) successCount += 1;
-    else if (isFailedStatus(detail.status)) failCount += 1;
+    const status = detail.status.trim().toLowerCase();
+    if (isSuccessStatus(status)) successCount += 1;
+    else if (isFailedStatus(status)) failCount += 1;
+    else if (status === 'rejected') rejectedCount += 1;
   }
-  return { successCount, failCount };
+  return {
+    successCount,
+    failCount,
+    rejectedCount,
+    employeeCount: details.length,
+  };
 }
 
 export function mapRunRow(row: RunRow): SalarySlipRun {
@@ -71,6 +90,7 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
     status: row.status,
     successCount: Number(row.successcount ?? 0),
     failCount: Number(row.failcount ?? 0),
+    rejectedCount: 0,
     approvedBy: row.approvedby || '',
     approvedAt: row.approvedat || '',
     rejectedBy: row.rejectedby || '',
@@ -113,21 +133,23 @@ async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]
     return runs;
   }
 
-  const byRun = new Map<string, { successCount: number; failCount: number; total: number }>();
+  const byRun = new Map<string, ReturnType<typeof countDetailsByStatus>>();
+  const rowsByRun = new Map<string, Array<{ status: string }>>();
   for (const row of (data as Array<{ runid: number; status: string }>) || []) {
     const key = String(row.runid);
-    const current = byRun.get(key) || { successCount: 0, failCount: 0, total: 0 };
-    current.total += 1;
-    if (isSuccessStatus(row.status)) current.successCount += 1;
-    else if (isFailedStatus(row.status)) current.failCount += 1;
-    byRun.set(key, current);
+    const rows = rowsByRun.get(key) || [];
+    rows.push({ status: row.status });
+    rowsByRun.set(key, rows);
+  }
+  for (const [key, rows] of rowsByRun) {
+    byRun.set(key, countDetailsByStatus(rows));
   }
 
   const healed: SalarySlipRun[] = [];
 
   for (const run of runs) {
     const tallies = byRun.get(run.runId);
-    if (!tallies || tallies.total === 0) {
+    if (!tallies || tallies.employeeCount === 0) {
       healed.push(run);
       continue;
     }
@@ -136,6 +158,7 @@ async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]
       ...run,
       successCount: tallies.successCount,
       failCount: tallies.failCount,
+      rejectedCount: tallies.rejectedCount,
     };
 
     // Heal stale aggregates so future reads and Sheets stay aligned.
@@ -363,11 +386,7 @@ export async function rejectSalarySlipDb(options: {
     ? previousDetails.filter(
         (detail) => detail.employeeId.trim().toLowerCase() === employeeId.toLowerCase()
       )
-    : previousDetails.filter(
-        (detail) =>
-          ['success', 'completed'].includes(detail.status.trim().toLowerCase()) &&
-          detail.emailStatus.trim().toLowerCase() !== 'sent'
-      );
+    : previousDetails.filter(isSendableDetail);
 
   if (targets.length === 0) {
     throw new Error(employeeId ? 'Employee salary slip not found in this run.' : 'No slips to reject.');
@@ -401,12 +420,7 @@ export async function rejectSalarySlipDb(options: {
   if (detailError) throw new Error(`Failed to reject salary slip details: ${detailError.message}`);
 
   const details = await listSalarySlipRunDetails(options.runId);
-  const hasSendableSlip = details.some(
-    (detail) =>
-      ['success', 'completed'].includes(detail.status.trim().toLowerCase()) &&
-      detail.emailStatus.trim().toLowerCase() !== 'sent'
-  );
-  const rejectRun = !employeeId || !hasSendableSlip;
+  const rejectRun = !employeeId || !details.some(isSendableDetail);
   let run = previousRun;
 
   if (rejectRun) {

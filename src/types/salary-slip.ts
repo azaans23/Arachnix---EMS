@@ -30,6 +30,8 @@ export interface SalarySlipRun {
   status: SalarySlipRunStatus;
   successCount: number;
   failCount: number;
+  /** Derived from detail rows — the runs table has no rejected column. */
+  rejectedCount: number;
   approvedBy: string;
   approvedAt: string;
   rejectedBy: string;

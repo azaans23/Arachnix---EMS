@@ -1,4 +1,6 @@
 import {
+  countDetailsByStatus,
+  isSendableDetail,
   rejectSalarySlipDb,
   rollbackSalarySlipRejection,
   type SalarySlipRejectionDbResult,
@@ -62,6 +64,11 @@ export async function rejectSalarySlipDistribution(options: {
     // the run's payroll month rather than today's date.
     const monthName = formatMonthName(run.month);
     const period = formatSalaryPeriod(run.month, run.year);
+    const counts = countDetailsByStatus(dbResult.details);
+    // Tells n8n whether this run is finished or still has slips awaiting a
+    // decision, so it can set the status without recomputing anything.
+    const remaining = dbResult.details.filter(isSendableDetail);
+    const runCompletion = remaining.length === 0 ? 'All Completed' : 'Remaining';
 
     await postSheetWebhook({
       url: SHEETS_WEBHOOKS.sendSalarySlip,
@@ -69,13 +76,34 @@ export async function rejectSalarySlipDistribution(options: {
       payload: {
         action: 'reject',
         scope,
+        TargetFolder: 'Rejected',
+        RunCompletion: runCompletion,
+        NextRunStatus: run.status,
+        counts: {
+          SuccessCount: counts.successCount,
+          FailedCount: counts.failCount,
+          EmployeeCount: counts.employeeCount,
+          RejectedCount: counts.rejectedCount,
+          RejectedThisAction: rejected.length,
+          RemainingCount: remaining.length,
+        },
         run: {
           RunID: run.runId,
+          RunDate: run.runDate,
           Month: run.month,
           Year: run.year,
           MonthName: monthName,
           Period: period,
           Status: run.status,
+          SuccessCount: counts.successCount,
+          FailedCount: counts.failCount,
+          EmployeeCount: counts.employeeCount,
+          RejectedCount: counts.rejectedCount,
+          RejectedThisAction: rejected.length,
+          RemainingCount: remaining.length,
+          RunCompletion: runCompletion,
+          NextRunStatus: run.status,
+          TargetFolder: 'Rejected',
           RejectedBy: options.rejectedBy,
           RejectedAt: rejectedAt,
           RejectionReason: reason,
@@ -92,6 +120,9 @@ export async function rejectSalarySlipDistribution(options: {
             Year: run.year,
             MonthName: monthName,
             Period: period,
+            TargetFolder: 'Rejected',
+            RunCompletion: runCompletion,
+            NextRunStatus: run.status,
             Status: detail.status,
             EmailStatus: detail.emailStatus,
             RejectedBy: detail.rejectedBy,
