@@ -12,6 +12,9 @@ type RunRow = {
   failcount: number;
   approvedby: string | null;
   approvedat: string | null;
+  rejectedby: string | null;
+  rejectedat: string | null;
+  rejectionreason: string | null;
 };
 
 type DetailRow = {
@@ -22,6 +25,9 @@ type DetailRow = {
   pdflink: string | null;
   emailstatus: string | null;
   errorreason: string | null;
+  rejectedby: string | null;
+  rejectedat: string | null;
+  rejectionreason: string | null;
 };
 
 const RUNS_TABLE = 'salaryslipruns';
@@ -67,6 +73,9 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
     failCount: Number(row.failcount ?? 0),
     approvedBy: row.approvedby || '',
     approvedAt: row.approvedat || '',
+    rejectedBy: row.rejectedby || '',
+    rejectedAt: row.rejectedat || '',
+    rejectionReason: row.rejectionreason || '',
   };
 }
 
@@ -81,6 +90,9 @@ export function mapDetailRow(row: DetailRow): SalarySlipRunDetail {
     pdfLink: row.pdflink || '',
     emailStatus: row.emailstatus || 'Pending',
     errorReason: row.errorreason || '',
+    rejectedBy: row.rejectedby || '',
+    rejectedAt: row.rejectedat || '',
+    rejectionReason: row.rejectionreason || '',
   };
 }
 
@@ -232,6 +244,9 @@ export async function updateSalarySlipRun(
     failCount?: number;
     approvedBy?: string | null;
     approvedAt?: string | null;
+    rejectedBy?: string | null;
+    rejectedAt?: string | null;
+    rejectionReason?: string | null;
   }
 ): Promise<SalarySlipRun> {
   const id = Number(runId);
@@ -241,6 +256,9 @@ export async function updateSalarySlipRun(
   if (patch.failCount !== undefined) payload.failcount = patch.failCount;
   if (patch.approvedBy !== undefined) payload.approvedby = patch.approvedBy;
   if (patch.approvedAt !== undefined) payload.approvedat = patch.approvedAt;
+  if (patch.rejectedBy !== undefined) payload.rejectedby = patch.rejectedBy;
+  if (patch.rejectedAt !== undefined) payload.rejectedat = patch.rejectedAt;
+  if (patch.rejectionReason !== undefined) payload.rejectionreason = patch.rejectionReason;
 
   const { data, error } = await getSupabaseAdmin()
     .from(RUNS_TABLE)
@@ -296,6 +314,166 @@ export async function rollbackSalarySlipRunApproval(runId: string): Promise<void
 
   if (error) {
     throw new Error(`Failed to roll back salary slip approval: ${error.message}`);
+  }
+}
+
+export type SalarySlipRejectionDbResult = {
+  run: SalarySlipRun;
+  details: SalarySlipRunDetail[];
+  previousRun: SalarySlipRun;
+  previousDetails: SalarySlipRunDetail[];
+};
+
+function detailToDbPatch(detail: SalarySlipRunDetail) {
+  return {
+    status: detail.status,
+    pdflink: detail.pdfLink || null,
+    emailstatus: detail.emailStatus || 'Pending',
+    errorreason: detail.errorReason || null,
+    rejectedby: detail.rejectedBy || null,
+    rejectedat: detail.rejectedAt || null,
+    rejectionreason: detail.rejectionReason || null,
+  };
+}
+
+/**
+ * Reject one generated employee slip or the whole awaiting run.
+ * The run status guard prevents rejection after approval has started.
+ */
+export async function rejectSalarySlipDb(options: {
+  runId: string;
+  employeeId?: string;
+  rejectedBy: string;
+  reason: string;
+}): Promise<SalarySlipRejectionDbResult> {
+  const id = Number(options.runId);
+  if (!Number.isFinite(id)) throw new Error('Invalid salary slip run ID.');
+
+  const previousRun = await getSalarySlipRun(options.runId);
+  if (!previousRun) throw new Error('Salary slip run not found.');
+  if (previousRun.status.trim().toLowerCase() !== 'awaiting approval') {
+    throw new Error(
+      `Only runs awaiting approval can be rejected. Current status: ${previousRun.status}.`
+    );
+  }
+
+  const previousDetails = await listSalarySlipRunDetails(options.runId);
+  const employeeId = options.employeeId?.trim();
+  const targets = employeeId
+    ? previousDetails.filter(
+        (detail) => detail.employeeId.trim().toLowerCase() === employeeId.toLowerCase()
+      )
+    : previousDetails.filter(
+        (detail) =>
+          ['success', 'completed'].includes(detail.status.trim().toLowerCase()) &&
+          detail.emailStatus.trim().toLowerCase() !== 'sent'
+      );
+
+  if (targets.length === 0) {
+    throw new Error(employeeId ? 'Employee salary slip not found in this run.' : 'No slips to reject.');
+  }
+  if (
+    targets.some(
+      (detail) =>
+        !['success', 'completed'].includes(detail.status.trim().toLowerCase()) ||
+        detail.emailStatus.trim().toLowerCase() === 'sent'
+    )
+  ) {
+    throw new Error('Only generated, unsent salary slips can be rejected.');
+  }
+
+  const rejectedAt = new Date().toISOString();
+  const rejectedBy = options.rejectedBy.trim().toLowerCase();
+  const targetIds = targets.map((detail) => detail.employeeId);
+  const { error: detailError } = await getSupabaseAdmin()
+    .from(DETAILS_TABLE)
+    .update({
+      status: 'Rejected',
+      emailstatus: 'Rejected',
+      rejectedby: rejectedBy,
+      rejectedat: rejectedAt,
+      rejectionreason: options.reason,
+    })
+    .eq('runid', id)
+    .in('employeeid', targetIds)
+    .in('status', ['Success', 'Completed']);
+
+  if (detailError) throw new Error(`Failed to reject salary slip details: ${detailError.message}`);
+
+  const details = await listSalarySlipRunDetails(options.runId);
+  const hasSendableSlip = details.some(
+    (detail) =>
+      ['success', 'completed'].includes(detail.status.trim().toLowerCase()) &&
+      detail.emailStatus.trim().toLowerCase() !== 'sent'
+  );
+  const rejectRun = !employeeId || !hasSendableSlip;
+  let run = previousRun;
+
+  if (rejectRun) {
+    const { data, error } = await getSupabaseAdmin()
+      .from(RUNS_TABLE)
+      .update({
+        status: 'Rejected',
+        rejectedby: rejectedBy,
+        rejectedat: rejectedAt,
+        rejectionreason: options.reason,
+      })
+      .eq('runid', id)
+      .eq('status', 'Awaiting Approval')
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      await Promise.all(
+        targets.map((detail) =>
+          getSupabaseAdmin()
+            .from(DETAILS_TABLE)
+            .update(detailToDbPatch(detail))
+            .eq('runid', id)
+            .eq('employeeid', detail.employeeId)
+        )
+      );
+      throw new Error(
+        error
+          ? `Failed to reject salary slip run: ${error.message}`
+          : 'The run status changed before rejection completed.'
+      );
+    }
+    run = mapRunRow(data as RunRow);
+  }
+
+  return { run, details, previousRun, previousDetails: targets };
+}
+
+/** Compensating rollback when n8n/Sheet rejection synchronization fails. */
+export async function rollbackSalarySlipRejection(
+  result: SalarySlipRejectionDbResult
+): Promise<void> {
+  const id = Number(result.run.runId);
+  await Promise.all(
+    result.previousDetails.map(async (detail) => {
+      const { error } = await getSupabaseAdmin()
+        .from(DETAILS_TABLE)
+        .update(detailToDbPatch(detail))
+        .eq('runid', id)
+        .eq('employeeid', detail.employeeId)
+        .eq('status', 'Rejected');
+      if (error) throw new Error(`Failed to restore rejected salary slip: ${error.message}`);
+    })
+  );
+
+  if (result.run.status.trim().toLowerCase() === 'rejected') {
+    const { error } = await getSupabaseAdmin()
+      .from(RUNS_TABLE)
+      .update({
+        status: result.previousRun.status,
+        rejectedby: result.previousRun.rejectedBy || null,
+        rejectedat: result.previousRun.rejectedAt || null,
+        rejectionreason: result.previousRun.rejectionReason || null,
+      })
+      .eq('runid', id)
+      .eq('status', 'Rejected');
+    if (error) throw new Error(`Failed to restore rejected salary slip run: ${error.message}`);
   }
 }
 

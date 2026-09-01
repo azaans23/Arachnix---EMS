@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { formatMonthName } from '@/lib/payroll/period';
@@ -10,27 +10,11 @@ import { syncSessionCookies } from '@/lib/session-cookies';
 import { SALARY_SLIP_RUN_STATUSES, type SalarySlipRun } from '@/types/salary-slip';
 
 const TOAST_ID = 'payroll-awaiting-approval';
-const STORAGE_KEY = 'arachnix.payrollAwaitingToast';
 const POLL_MS = 30_000;
 
 function canApprovePayroll(role: string): boolean {
   const normalized = normalizeRole(role);
   return normalized === ROLES.ADMIN || normalized === ROLES.SUPER_ADMIN;
-}
-
-function readToastedIds(): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(parsed) ? parsed.map((id) => String(id)) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeToastedIds(ids: Set<string>) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
 }
 
 function isAwaitingApproval(run: SalarySlipRun): boolean {
@@ -39,9 +23,7 @@ function isAwaitingApproval(run: SalarySlipRun): boolean {
 
 export default function PayrollApprovalNotifier() {
   const router = useRouter();
-  const pathname = usePathname();
-  const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  const notifiedRunIds = useRef(new Set<string>());
 
   const notify = useCallback(async () => {
     const token = localStorage.getItem('token');
@@ -55,27 +37,14 @@ export default function PayrollApprovalNotifier() {
     if (!response.ok || !result?.success || !Array.isArray(result.data)) return;
 
     const awaiting = (result.data as SalarySlipRun[]).filter(isAwaitingApproval);
-    const awaitingIds = awaiting.map((run) => String(run.runId));
-    const toasted = readToastedIds();
-    const stillOpen = new Set(awaitingIds.filter((id) => toasted.has(id)));
-    const fresh = awaiting.filter((run) => !toasted.has(String(run.runId)));
+    const awaitingIds = new Set(awaiting.map((run) => String(run.runId)));
+    for (const id of notifiedRunIds.current) {
+      if (!awaitingIds.has(id)) notifiedRunIds.current.delete(id);
+    }
+    const fresh = awaiting.filter((run) => !notifiedRunIds.current.has(String(run.runId)));
 
     if (fresh.length === 0) {
-      writeToastedIds(stillOpen);
       if (awaiting.length === 0) toast.dismiss(TOAST_ID);
-      return;
-    }
-
-    const path = pathnameRef.current || '';
-    const onlyFresh = fresh.length === 1 ? fresh[0] : null;
-    if (
-      onlyFresh &&
-      awaiting.length === 1 &&
-      path.startsWith('/dashboard/salary-slip-run-details') &&
-      new URLSearchParams(window.location.search).get('runId') === String(onlyFresh.runId)
-    ) {
-      stillOpen.add(String(onlyFresh.runId));
-      writeToastedIds(stillOpen);
       return;
     }
 
@@ -105,13 +74,12 @@ export default function PayrollApprovalNotifier() {
       }
     );
 
-    for (const run of fresh) stillOpen.add(String(run.runId));
-    writeToastedIds(stillOpen);
+    for (const run of fresh) notifiedRunIds.current.add(String(run.runId));
   }, [router]);
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let timer: number | null = null;
 
     const boot = async () => {
       const {
@@ -140,7 +108,7 @@ export default function PayrollApprovalNotifier() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
-        sessionStorage.removeItem(STORAGE_KEY);
+        notifiedRunIds.current.clear();
         toast.dismiss(TOAST_ID);
       }
     });

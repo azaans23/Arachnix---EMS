@@ -5,6 +5,7 @@ import {
   rollbackSalarySlipRunApproval,
 } from '@/lib/db/salary-slips';
 import { fetchEmployees } from '@/lib/sheets/employees';
+import { formatMonthName, formatSalaryPeriod } from '@/lib/payroll/period';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import { postSheetWebhook } from '@/lib/sheets/webhook';
 import { logAuditBestEffort } from '@/lib/sheets/audit';
@@ -53,6 +54,11 @@ export async function approveSalarySlipDistribution(options: {
     throw new Error('This run was already approved or its status changed. Refresh and try again.');
   }
 
+  // Repeated on every employee item so nodes after a Split Out still address the
+  // run's payroll month rather than today's date.
+  const monthName = formatMonthName(approved.month);
+  const period = formatSalaryPeriod(approved.month, approved.year);
+
   try {
     await postSheetWebhook({
       url: SHEETS_WEBHOOKS.sendSalarySlip,
@@ -63,6 +69,8 @@ export async function approveSalarySlipDistribution(options: {
           RunID: approved.runId,
           Month: approved.month,
           Year: approved.year,
+          MonthName: monthName,
+          Period: period,
           Status: approved.status,
           ApprovedBy: approved.approvedBy,
           ApprovedAt: approved.approvedAt,
@@ -75,6 +83,10 @@ export async function approveSalarySlipDistribution(options: {
             FullName: employee.fullName,
             Email: employee.email,
             PdfLink: detail.pdfLink,
+            Month: approved.month,
+            Year: approved.year,
+            MonthName: monthName,
+            Period: period,
           };
         }),
       },

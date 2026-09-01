@@ -11,7 +11,7 @@ export const SHEETS_WEBHOOKS = {
   createSalaryHistory: `${N8N_BASE_URL}/webhook/create-salary-history`,
   upsertOffboarding: `${N8N_BASE_URL}/webhook/upsert-offboarding`,
   generateSalarySlip: `${N8N_BASE_URL}/webhook/generate-salary-slip`,
-  sendSalarySlip: `${N8N_BASE_URL}/webhook/send-salary-slip`,
+  sendSalarySlip: `${N8N_BASE_URL}/webhook-test/send-salary-slip`,
   generateOfferLetter: `${N8N_BASE_URL}/webhook/generate-offer-letter`,
   updateSalaryDetail: `${N8N_BASE_URL}/webhook/update-salary-detail`,
   updateLeave: `${N8N_BASE_URL}/webhook/update-leave`,

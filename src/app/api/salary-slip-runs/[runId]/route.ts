@@ -4,6 +4,7 @@ import { reconcileSalarySlipRunAudits } from '@/lib/audit/run-completion';
 import { getSalarySlipRun, listSalarySlipRunDetails } from '@/lib/db/salary-slips';
 import { fetchEmployees } from '@/lib/sheets/employees';
 import { approveSalarySlipDistribution } from '@/lib/payroll/approve';
+import { rejectSalarySlipDistribution } from '@/lib/payroll/reject';
 import { normalizeRole, ROLES } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -68,17 +69,54 @@ export async function PATCH(request: Request, context: RouteContext) {
     const role = normalizeRole(auth.role || '');
     if (role !== ROLES.ADMIN && role !== ROLES.SUPER_ADMIN) {
       return NextResponse.json(
-        { success: false, error: 'Only Admin or Super Admin can approve payroll distribution.' },
+        {
+          success: false,
+          error: 'Only Admin or Super Admin can approve or reject payroll distribution.',
+        },
         { status: 403 }
       );
     }
 
     const body = (await request.json()) as Record<string, unknown>;
-    if (String(body.action || '').trim().toLowerCase() !== 'approve') {
+    const action = String(body.action || '').trim().toLowerCase();
+    if (action !== 'approve' && action !== 'reject') {
       return NextResponse.json({ success: false, error: 'Unsupported action.' }, { status: 400 });
     }
 
     const { runId } = await context.params;
+    if (action === 'reject') {
+      const scope = String(body.scope || 'employee').trim().toLowerCase();
+      if (scope !== 'employee' && scope !== 'run') {
+        return NextResponse.json(
+          { success: false, error: 'Rejection scope must be employee or run.' },
+          { status: 400 }
+        );
+      }
+      const employeeId =
+        scope === 'employee' ? String(body.employeeId || '').trim() : undefined;
+      if (scope === 'employee' && !employeeId) {
+        return NextResponse.json(
+          { success: false, error: 'employeeId is required for employee rejection.' },
+          { status: 400 }
+        );
+      }
+
+      const data = await rejectSalarySlipDistribution({
+        runId,
+        employeeId,
+        rejectedBy: auth.user?.email || '',
+        reason: String(body.reason || '').trim(),
+      });
+      return NextResponse.json({
+        success: true,
+        data,
+        message:
+          scope === 'run'
+            ? 'The salary slip run was rejected.'
+            : 'The employee salary slip was rejected.',
+      });
+    }
+
     const data = await approveSalarySlipDistribution({
       runId,
       approvedBy: auth.user?.email || '',

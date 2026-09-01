@@ -5,6 +5,7 @@ export const SALARY_SLIP_RUN_STATUSES = {
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   PARTIAL: 'Partial',
+  REJECTED: 'Rejected',
 } as const;
 
 export type SalarySlipRunStatus =
@@ -14,6 +15,7 @@ export const SALARY_SLIP_DETAIL_STATUSES = {
   PENDING: 'Pending',
   SUCCESS: 'Success',
   FAILED: 'Failed',
+  REJECTED: 'Rejected',
 } as const;
 
 export type SalarySlipDetailStatus =
@@ -30,6 +32,9 @@ export interface SalarySlipRun {
   failCount: number;
   approvedBy: string;
   approvedAt: string;
+  rejectedBy: string;
+  rejectedAt: string;
+  rejectionReason: string;
 }
 
 export interface SalarySlipRunDetail {
@@ -42,6 +47,9 @@ export interface SalarySlipRunDetail {
   pdfLink: string;
   emailStatus: string;
   errorReason: string;
+  rejectedBy: string;
+  rejectedAt: string;
+  rejectionReason: string;
 }
 
 /**

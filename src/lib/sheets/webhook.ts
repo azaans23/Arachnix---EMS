@@ -8,26 +8,33 @@ export function isWebhookAckBody(text: string): boolean {
   return body.includes('no item to return was found') || body.includes('workflow was started');
 }
 
-export function formatWebhookError(status: number, errText: string, fallback: string): string {
+/** Advice that matches the URL actually called, so test vs production is unambiguous. */
+function notRegisteredAdvice(url?: string): string {
+  if (url?.includes('/webhook-test/')) {
+    return `Called ${url} — click "Execute workflow" in n8n first; the test URL accepts one call per click.`;
+  }
+  return `Called ${url || 'the production webhook'} — activate the workflow in n8n, or point the app at /webhook-test/ while building it.`;
+}
+
+export function formatWebhookError(
+  status: number,
+  errText: string,
+  fallback: string,
+  url?: string
+): string {
   try {
     const jsonErr = JSON.parse(errText);
     if (jsonErr.message) {
       const hint = jsonErr.hint ? ` ${jsonErr.hint}` : '';
       const message = String(jsonErr.message) + hint;
-      if (status === 404) {
-        return `${message} Ensure the n8n workflow is Active and using the production /webhook/ URL (not webhook-test).`;
-      }
-      return message;
+      return status === 404 ? `${message} ${notRegisteredAdvice(url)}` : message;
     }
   } catch {
     /* keep text */
   }
 
   if (status === 404) {
-    return (
-      errText ||
-      'n8n webhook not found (404). Activate the workflow and use /webhook/ (not /webhook-test/).'
-    );
+    return errText || `n8n webhook not found (404). ${notRegisteredAdvice(url)}`;
   }
 
   return errText || fallback;
@@ -58,7 +65,8 @@ export async function postSheetWebhook(options: {
     formatWebhookError(
       response.status,
       text,
-      `n8n ${options.label} webhook returned status ${response.status}.`
+      `n8n ${options.label} webhook returned status ${response.status}.`,
+      options.url
     )
   );
 }
