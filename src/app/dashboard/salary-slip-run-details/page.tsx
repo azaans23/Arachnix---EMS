@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   Banknote,
+  Ban,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -49,6 +50,7 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'All statuses', value: 'all' },
   { label: 'Pending', value: 'pending' },
   { label: 'Success', value: 'success' },
+  { label: 'Rejected', value: 'rejected' },
   { label: 'Failed', value: 'failed' },
 ];
 
@@ -69,6 +71,7 @@ function statusClasses(status: string) {
     case 'completed':
     case 'sent':
       return 'border-border bg-success/10 text-success';
+    case 'rejected':
     case 'failed':
       return 'border-danger-border bg-danger-bg text-danger';
     default:
@@ -125,6 +128,17 @@ function buildApprovalStage(
     };
   }
 
+  if (status === 'rejected') {
+    return {
+      tone: 'danger',
+      step: 1,
+      title: 'Payroll run rejected',
+      description: `${run.rejectedBy ? `Rejected by ${run.rejectedBy}. ` : ''}${
+        run.rejectionReason || 'No salary slips from this run will be emailed.'
+      }`,
+    };
+  }
+
   if (status === 'awaiting approval') {
     if (!options.canApprove) {
       return {
@@ -144,7 +158,7 @@ function buildApprovalStage(
           ? 'No PDF links are ready yet, so distribution cannot be approved.'
           : `Open each of the ${options.generatedCount} generated ${
               options.generatedCount === 1 ? 'slip' : 'slips'
-            } below, then use Approve & send to release the emails.`,
+            } below, then use Approve all to release every email, or approve them one employee at a time.`,
     };
   }
 
@@ -203,8 +217,11 @@ export default function SalarySlipRunDetailsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState('10');
   const [actorRole, setActorRole] = useState('');
-  const [confirmApproval, setConfirmApproval] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<SalarySlipRunDetail | 'run' | null>(null);
   const [approving, setApproving] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<SalarySlipRunDetail | 'run' | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
   const lastStatusRef = useRef('');
 
   const load = useCallback(
@@ -334,8 +351,8 @@ export default function SalarySlipRunDetailsPage() {
     setPage(1);
   };
 
-  const approveRun = async () => {
-    if (!run) return;
+  const approveSalarySlip = async () => {
+    if (!run || !approveTarget) return;
     setApproving(true);
     try {
       const response = await fetch(
@@ -346,20 +363,65 @@ export default function SalarySlipRunDetailsPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
-          body: JSON.stringify({ action: 'approve' }),
+          body: JSON.stringify({
+            action: 'approve',
+            scope: approveTarget === 'run' ? 'run' : 'employee',
+            employeeId: approveTarget === 'run' ? undefined : approveTarget.employeeId,
+          }),
         }
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to approve payroll.');
       }
-      setConfirmApproval(false);
+      setApproveTarget(null);
       toast.success(result.message || 'Payroll approved.');
       await load();
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to approve payroll.');
     } finally {
       setApproving(false);
+    }
+  };
+
+  const rejectSalarySlip = async () => {
+    if (!run || !rejectTarget) return;
+    const reason = rejectionReason.trim();
+    if (!reason) {
+      toast.error('Enter a reason for rejecting the salary slip.');
+      return;
+    }
+
+    setRejecting(true);
+    try {
+      const response = await fetch(
+        `/api/salary-slip-runs/${encodeURIComponent(run.runId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            action: 'reject',
+            scope: rejectTarget === 'run' ? 'run' : 'employee',
+            employeeId: rejectTarget === 'run' ? undefined : rejectTarget.employeeId,
+            reason,
+          }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to reject salary slip.');
+      }
+      setRejectTarget(null);
+      setRejectionReason('');
+      toast.success(result.message || 'Salary slip rejected.');
+      await load();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to reject salary slip.');
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -469,7 +531,7 @@ export default function SalarySlipRunDetailsPage() {
           </h1>
           <p className="mt-1.5 text-sm text-muted">
             {run
-              ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${recordLabel}`
+              ? `${displayDate(run.runDate)} · ${run.successCount} ok · ${run.failCount} failed · ${run.rejectedCount} rejected · ${recordLabel}`
               : recordLabel}
           </p>
           {run?.approvedBy ? (
@@ -482,20 +544,34 @@ export default function SalarySlipRunDetailsPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {run && awaitingApproval && canApprove ? (
-            <button
-              type="button"
-              onClick={() => setConfirmApproval(true)}
-              disabled={loading || generatedCount === 0}
-              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-              title={
-                generatedCount === 0
-                  ? 'No generated PDF links are ready to distribute'
-                  : 'Approve and start employee email distribution'
-              }
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Approve &amp; send
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectTarget('run');
+                  setRejectionReason('');
+                }}
+                disabled={loading || generatedCount === 0}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-danger-border bg-danger-bg px-3.5 text-sm font-semibold text-danger transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Ban className="h-4 w-4" />
+                Reject all
+              </button>
+              <button
+                type="button"
+                onClick={() => setApproveTarget('run')}
+                disabled={loading || generatedCount === 0}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  generatedCount === 0
+                    ? 'No generated PDF links are ready to distribute'
+                    : 'Approve and start employee email distribution'
+                }
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Approve all
+              </button>
+            </>
           ) : null}
           {run && (
             <span
@@ -503,7 +579,7 @@ export default function SalarySlipRunDetailsPage() {
             >
               {run.status.toLowerCase() === 'processing' ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : run.status.toLowerCase() === 'failed' ? (
+              ) : ['failed', 'rejected'].includes(run.status.toLowerCase()) ? (
                 <XCircle className="h-3.5 w-3.5" />
               ) : (
                 <CheckCircle2 className="h-3.5 w-3.5" />
@@ -645,14 +721,15 @@ export default function SalarySlipRunDetailsPage() {
             <>
               <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-panel">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[800px] border-collapse text-left">
+                  <table className="w-full min-w-[900px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-canvas/80 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                         <th className="px-5 py-3.5 font-semibold">Employee</th>
                         <th className="px-5 py-3.5 font-semibold">Status</th>
                         <th className="px-5 py-3.5 font-semibold">Email</th>
                         <th className="px-5 py-3.5 font-semibold">PDF</th>
-                        <th className="px-5 py-3.5 font-semibold">Error</th>
+                        <th className="px-5 py-3.5 font-semibold">Reason / error</th>
+                        <th className="px-5 py-3.5 text-right font-semibold">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm text-ink">
@@ -700,9 +777,47 @@ export default function SalarySlipRunDetailsPage() {
                           </td>
                           <td
                             className="max-w-xs truncate px-5 py-3.5 text-xs text-danger"
-                            title={detail.errorReason}
+                            title={detail.rejectionReason || detail.errorReason}
                           >
-                            {detail.errorReason || '—'}
+                            {detail.rejectionReason || detail.errorReason || '—'}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            {awaitingApproval &&
+                            canApprove &&
+                            ['success', 'completed'].includes(
+                              detail.status.trim().toLowerCase()
+                            ) &&
+                            detail.emailStatus.trim().toLowerCase() !== 'sent' ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setApproveTarget(detail)}
+                                  disabled={!detail.pdfLink}
+                                  title={
+                                    detail.pdfLink
+                                      ? 'Approve and email only this slip'
+                                      : 'No PDF link is ready for this employee'
+                                  }
+                                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-accent px-2.5 text-xs font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRejectTarget(detail);
+                                    setRejectionReason('');
+                                  }}
+                                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-danger-border bg-danger-bg px-2.5 text-xs font-semibold text-danger transition-opacity hover:opacity-80"
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -757,7 +872,7 @@ export default function SalarySlipRunDetailsPage() {
         </div>
       )}
 
-      {confirmApproval && run && typeof document !== 'undefined'
+      {approveTarget && run && typeof document !== 'undefined'
         ? createPortal(
             <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
               <button
@@ -765,7 +880,7 @@ export default function SalarySlipRunDetailsPage() {
                 aria-label="Close approval dialog"
                 className="absolute inset-0 cursor-default"
                 disabled={approving}
-                onClick={() => setConfirmApproval(false)}
+                onClick={() => setApproveTarget(null)}
               />
               <div
                 role="dialog"
@@ -778,19 +893,23 @@ export default function SalarySlipRunDetailsPage() {
                     Payroll approval
                   </p>
                   <h2 id="approve-payroll-title" className="mt-1 text-lg font-semibold text-ink">
-                    Approve {MONTH_NAMES[run.month - 1]} {run.year}?
+                    {approveTarget === 'run'
+                      ? `Approve all ${MONTH_NAMES[run.month - 1]} ${run.year} slips?`
+                      : `Approve ${approveTarget.employeeName || approveTarget.employeeId}'s slip?`}
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-muted">
-                    This starts email distribution for {generatedCount} generated salary{' '}
-                    {generatedCount === 1 ? 'slip' : 'slips'}. Review every PDF link before
-                    continuing. Approval cannot be edited after the send workflow starts.
+                    {approveTarget === 'run'
+                      ? `This starts email distribution for ${generatedCount} generated salary ${
+                          generatedCount === 1 ? 'slip' : 'slips'
+                        }. Review every PDF link before continuing. Approval cannot be edited after the send workflow starts.`
+                      : 'Only this employee is emailed now. The run stays awaiting approval so the remaining slips can still be approved or rejected.'}
                   </p>
                 </div>
                 <div className="flex items-center justify-end gap-2 px-5 py-4">
                   <button
                     type="button"
                     disabled={approving}
-                    onClick={() => setConfirmApproval(false)}
+                    onClick={() => setApproveTarget(null)}
                     className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
                   >
                     Keep reviewing
@@ -798,7 +917,7 @@ export default function SalarySlipRunDetailsPage() {
                   <button
                     type="button"
                     disabled={approving}
-                    onClick={() => void approveRun()}
+                    onClick={() => void approveSalarySlip()}
                     className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-50"
                   >
                     {approving ? (
@@ -806,7 +925,85 @@ export default function SalarySlipRunDetailsPage() {
                     ) : (
                       <Send className="h-4 w-4" />
                     )}
-                    Approve &amp; send
+                    {approveTarget === 'run' ? 'Approve all' : 'Approve & send'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {rejectTarget && run && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ink/40 p-4">
+              <button
+                type="button"
+                aria-label="Close rejection dialog"
+                className="absolute inset-0 cursor-default"
+                disabled={rejecting}
+                onClick={() => setRejectTarget(null)}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reject-payroll-title"
+                className="relative w-full max-w-md rounded-xl border border-border bg-surface shadow-panel animate-scale-up"
+              >
+                <div className="border-b border-border px-5 py-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-danger">
+                    Payroll rejection
+                  </p>
+                  <h2 id="reject-payroll-title" className="mt-1 text-lg font-semibold text-ink">
+                    {rejectTarget === 'run'
+                      ? `Reject all ${generatedCount} salary slips?`
+                      : `Reject ${rejectTarget.employeeName || rejectTarget.employeeId}'s slip?`}
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-muted">
+                    {rejectTarget === 'run'
+                      ? 'No employee in this run will receive a salary slip. This run cannot be approved afterward.'
+                      : 'This employee will be excluded when the remaining salary slips are approved and sent.'}
+                  </p>
+                </div>
+                <div className="space-y-2 px-5 py-4">
+                  <label htmlFor="salary-slip-rejection-reason" className="text-xs font-medium text-ink">
+                    Rejection reason
+                  </label>
+                  <textarea
+                    id="salary-slip-rejection-reason"
+                    rows={3}
+                    maxLength={500}
+                    autoFocus
+                    value={rejectionReason}
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                    placeholder="Explain what must be corrected…"
+                    className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/50 focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+                  />
+                  <p className="text-right text-[11px] text-muted">
+                    {rejectionReason.length}/500
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+                  <button
+                    type="button"
+                    disabled={rejecting}
+                    onClick={() => setRejectTarget(null)}
+                    className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={rejecting || !rejectionReason.trim()}
+                    onClick={() => void rejectSalarySlip()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-danger px-3.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rejecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Ban className="h-4 w-4" />
+                    )}
+                    Confirm rejection
                   </button>
                 </div>
               </div>

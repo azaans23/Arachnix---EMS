@@ -12,6 +12,9 @@ type RunRow = {
   failcount: number;
   approvedby: string | null;
   approvedat: string | null;
+  rejectedby: string | null;
+  rejectedat: string | null;
+  rejectionreason: string | null;
 };
 
 type DetailRow = {
@@ -22,6 +25,9 @@ type DetailRow = {
   pdflink: string | null;
   emailstatus: string | null;
   errorreason: string | null;
+  rejectedby: string | null;
+  rejectedat: string | null;
+  rejectionreason: string | null;
 };
 
 const RUNS_TABLE = 'salaryslipruns';
@@ -42,17 +48,36 @@ function isFailedStatus(status: string): boolean {
   return value === 'failed' || value === 'fail' || value === 'error';
 }
 
+/** Generated but not emailed yet — still waiting on an approve / reject decision. */
+export function isSendableDetail(detail: { status: string; emailStatus: string }): boolean {
+  const status = detail.status.trim().toLowerCase();
+  return (
+    (status === 'success' || status === 'completed') &&
+    detail.emailStatus.trim().toLowerCase() !== 'sent'
+  );
+}
+
 export function countDetailsByStatus(details: Array<{ status: string }>): {
   successCount: number;
   failCount: number;
+  rejectedCount: number;
+  employeeCount: number;
 } {
   let successCount = 0;
   let failCount = 0;
+  let rejectedCount = 0;
   for (const detail of details) {
-    if (isSuccessStatus(detail.status)) successCount += 1;
-    else if (isFailedStatus(detail.status)) failCount += 1;
+    const status = detail.status.trim().toLowerCase();
+    if (isSuccessStatus(status)) successCount += 1;
+    else if (isFailedStatus(status)) failCount += 1;
+    else if (status === 'rejected') rejectedCount += 1;
   }
-  return { successCount, failCount };
+  return {
+    successCount,
+    failCount,
+    rejectedCount,
+    employeeCount: details.length,
+  };
 }
 
 export function mapRunRow(row: RunRow): SalarySlipRun {
@@ -65,8 +90,12 @@ export function mapRunRow(row: RunRow): SalarySlipRun {
     status: row.status,
     successCount: Number(row.successcount ?? 0),
     failCount: Number(row.failcount ?? 0),
+    rejectedCount: 0,
     approvedBy: row.approvedby || '',
     approvedAt: row.approvedat || '',
+    rejectedBy: row.rejectedby || '',
+    rejectedAt: row.rejectedat || '',
+    rejectionReason: row.rejectionreason || '',
   };
 }
 
@@ -81,6 +110,9 @@ export function mapDetailRow(row: DetailRow): SalarySlipRunDetail {
     pdfLink: row.pdflink || '',
     emailStatus: row.emailstatus || 'Pending',
     errorReason: row.errorreason || '',
+    rejectedBy: row.rejectedby || '',
+    rejectedAt: row.rejectedat || '',
+    rejectionReason: row.rejectionreason || '',
   };
 }
 
@@ -101,21 +133,23 @@ async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]
     return runs;
   }
 
-  const byRun = new Map<string, { successCount: number; failCount: number; total: number }>();
+  const byRun = new Map<string, ReturnType<typeof countDetailsByStatus>>();
+  const rowsByRun = new Map<string, Array<{ status: string }>>();
   for (const row of (data as Array<{ runid: number; status: string }>) || []) {
     const key = String(row.runid);
-    const current = byRun.get(key) || { successCount: 0, failCount: 0, total: 0 };
-    current.total += 1;
-    if (isSuccessStatus(row.status)) current.successCount += 1;
-    else if (isFailedStatus(row.status)) current.failCount += 1;
-    byRun.set(key, current);
+    const rows = rowsByRun.get(key) || [];
+    rows.push({ status: row.status });
+    rowsByRun.set(key, rows);
+  }
+  for (const [key, rows] of rowsByRun) {
+    byRun.set(key, countDetailsByStatus(rows));
   }
 
   const healed: SalarySlipRun[] = [];
 
   for (const run of runs) {
     const tallies = byRun.get(run.runId);
-    if (!tallies || tallies.total === 0) {
+    if (!tallies || tallies.employeeCount === 0) {
       healed.push(run);
       continue;
     }
@@ -124,6 +158,7 @@ async function applyDetailCounts(runs: SalarySlipRun[]): Promise<SalarySlipRun[]
       ...run,
       successCount: tallies.successCount,
       failCount: tallies.failCount,
+      rejectedCount: tallies.rejectedCount,
     };
 
     // Heal stale aggregates so future reads and Sheets stay aligned.
@@ -232,6 +267,9 @@ export async function updateSalarySlipRun(
     failCount?: number;
     approvedBy?: string | null;
     approvedAt?: string | null;
+    rejectedBy?: string | null;
+    rejectedAt?: string | null;
+    rejectionReason?: string | null;
   }
 ): Promise<SalarySlipRun> {
   const id = Number(runId);
@@ -241,6 +279,9 @@ export async function updateSalarySlipRun(
   if (patch.failCount !== undefined) payload.failcount = patch.failCount;
   if (patch.approvedBy !== undefined) payload.approvedby = patch.approvedBy;
   if (patch.approvedAt !== undefined) payload.approvedat = patch.approvedAt;
+  if (patch.rejectedBy !== undefined) payload.rejectedby = patch.rejectedBy;
+  if (patch.rejectedAt !== undefined) payload.rejectedat = patch.rejectedAt;
+  if (patch.rejectionReason !== undefined) payload.rejectionreason = patch.rejectionReason;
 
   const { data, error } = await getSupabaseAdmin()
     .from(RUNS_TABLE)
@@ -296,6 +337,157 @@ export async function rollbackSalarySlipRunApproval(runId: string): Promise<void
 
   if (error) {
     throw new Error(`Failed to roll back salary slip approval: ${error.message}`);
+  }
+}
+
+export type SalarySlipRejectionDbResult = {
+  run: SalarySlipRun;
+  details: SalarySlipRunDetail[];
+  previousRun: SalarySlipRun;
+  previousDetails: SalarySlipRunDetail[];
+};
+
+function detailToDbPatch(detail: SalarySlipRunDetail) {
+  return {
+    status: detail.status,
+    pdflink: detail.pdfLink || null,
+    emailstatus: detail.emailStatus || 'Pending',
+    errorreason: detail.errorReason || null,
+    rejectedby: detail.rejectedBy || null,
+    rejectedat: detail.rejectedAt || null,
+    rejectionreason: detail.rejectionReason || null,
+  };
+}
+
+/**
+ * Reject one generated employee slip or the whole awaiting run.
+ * The run status guard prevents rejection after approval has started.
+ */
+export async function rejectSalarySlipDb(options: {
+  runId: string;
+  employeeId?: string;
+  rejectedBy: string;
+  reason: string;
+}): Promise<SalarySlipRejectionDbResult> {
+  const id = Number(options.runId);
+  if (!Number.isFinite(id)) throw new Error('Invalid salary slip run ID.');
+
+  const previousRun = await getSalarySlipRun(options.runId);
+  if (!previousRun) throw new Error('Salary slip run not found.');
+  if (previousRun.status.trim().toLowerCase() !== 'awaiting approval') {
+    throw new Error(
+      `Only runs awaiting approval can be rejected. Current status: ${previousRun.status}.`
+    );
+  }
+
+  const previousDetails = await listSalarySlipRunDetails(options.runId);
+  const employeeId = options.employeeId?.trim();
+  const targets = employeeId
+    ? previousDetails.filter(
+        (detail) => detail.employeeId.trim().toLowerCase() === employeeId.toLowerCase()
+      )
+    : previousDetails.filter(isSendableDetail);
+
+  if (targets.length === 0) {
+    throw new Error(employeeId ? 'Employee salary slip not found in this run.' : 'No slips to reject.');
+  }
+  if (
+    targets.some(
+      (detail) =>
+        !['success', 'completed'].includes(detail.status.trim().toLowerCase()) ||
+        detail.emailStatus.trim().toLowerCase() === 'sent'
+    )
+  ) {
+    throw new Error('Only generated, unsent salary slips can be rejected.');
+  }
+
+  const rejectedAt = new Date().toISOString();
+  const rejectedBy = options.rejectedBy.trim().toLowerCase();
+  const targetIds = targets.map((detail) => detail.employeeId);
+  const { error: detailError } = await getSupabaseAdmin()
+    .from(DETAILS_TABLE)
+    .update({
+      status: 'Rejected',
+      emailstatus: 'Rejected',
+      rejectedby: rejectedBy,
+      rejectedat: rejectedAt,
+      rejectionreason: options.reason,
+    })
+    .eq('runid', id)
+    .in('employeeid', targetIds)
+    .in('status', ['Success', 'Completed']);
+
+  if (detailError) throw new Error(`Failed to reject salary slip details: ${detailError.message}`);
+
+  const details = await listSalarySlipRunDetails(options.runId);
+  const rejectRun = !employeeId || !details.some(isSendableDetail);
+  let run = previousRun;
+
+  if (rejectRun) {
+    const { data, error } = await getSupabaseAdmin()
+      .from(RUNS_TABLE)
+      .update({
+        status: 'Rejected',
+        rejectedby: rejectedBy,
+        rejectedat: rejectedAt,
+        rejectionreason: options.reason,
+      })
+      .eq('runid', id)
+      .eq('status', 'Awaiting Approval')
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      await Promise.all(
+        targets.map((detail) =>
+          getSupabaseAdmin()
+            .from(DETAILS_TABLE)
+            .update(detailToDbPatch(detail))
+            .eq('runid', id)
+            .eq('employeeid', detail.employeeId)
+        )
+      );
+      throw new Error(
+        error
+          ? `Failed to reject salary slip run: ${error.message}`
+          : 'The run status changed before rejection completed.'
+      );
+    }
+    run = mapRunRow(data as RunRow);
+  }
+
+  return { run, details, previousRun, previousDetails: targets };
+}
+
+/** Compensating rollback when n8n/Sheet rejection synchronization fails. */
+export async function rollbackSalarySlipRejection(
+  result: SalarySlipRejectionDbResult
+): Promise<void> {
+  const id = Number(result.run.runId);
+  await Promise.all(
+    result.previousDetails.map(async (detail) => {
+      const { error } = await getSupabaseAdmin()
+        .from(DETAILS_TABLE)
+        .update(detailToDbPatch(detail))
+        .eq('runid', id)
+        .eq('employeeid', detail.employeeId)
+        .eq('status', 'Rejected');
+      if (error) throw new Error(`Failed to restore rejected salary slip: ${error.message}`);
+    })
+  );
+
+  if (result.run.status.trim().toLowerCase() === 'rejected') {
+    const { error } = await getSupabaseAdmin()
+      .from(RUNS_TABLE)
+      .update({
+        status: result.previousRun.status,
+        rejectedby: result.previousRun.rejectedBy || null,
+        rejectedat: result.previousRun.rejectedAt || null,
+        rejectionreason: result.previousRun.rejectionReason || null,
+      })
+      .eq('runid', id)
+      .eq('status', 'Rejected');
+    if (error) throw new Error(`Failed to restore rejected salary slip run: ${error.message}`);
   }
 }
 

@@ -1,24 +1,24 @@
 import {
   approveSalarySlipRunDb,
+  countDetailsByStatus,
   getSalarySlipRun,
+  isSendableDetail,
   listSalarySlipRunDetails,
   rollbackSalarySlipRunApproval,
 } from '@/lib/db/salary-slips';
 import { fetchEmployees } from '@/lib/sheets/employees';
+import { formatMonthName, formatSalaryPeriod } from '@/lib/payroll/period';
 import { SHEETS_WEBHOOKS } from '@/lib/sheets/config';
 import { postSheetWebhook } from '@/lib/sheets/webhook';
 import { logAuditBestEffort } from '@/lib/sheets/audit';
 import { AUDIT_ACTIONS, AUDIT_RECORD_TYPES } from '@/types/audit';
 import type { SalarySlipRun } from '@/types/salary-slip';
 
-function isGenerated(status: string): boolean {
-  const normalized = status.trim().toLowerCase();
-  return normalized === 'success' || normalized === 'completed';
-}
-
 export async function approveSalarySlipDistribution(options: {
   runId: string;
   approvedBy: string;
+  /** Approve a single employee's slip; omit to approve every pending slip. */
+  employeeId?: string;
 }): Promise<SalarySlipRun> {
   const current = await getSalarySlipRun(options.runId);
   if (!current) throw new Error('Salary slip run not found.');
@@ -33,12 +33,30 @@ export async function approveSalarySlipDistribution(options: {
   const employeeById = new Map(
     employees.map((employee) => [employee.employeeId.trim().toLowerCase(), employee])
   );
-  const generated = details.filter((detail) => isGenerated(detail.status));
-  if (generated.length === 0) {
+  const sendable = details.filter(isSendableDetail);
+
+  const employeeId = options.employeeId?.trim();
+  const scope: 'employee' | 'run' = employeeId ? 'employee' : 'run';
+  let selected = sendable;
+
+  if (employeeId) {
+    const key = employeeId.toLowerCase();
+    selected = sendable.filter((detail) => detail.employeeId.trim().toLowerCase() === key);
+    if (selected.length === 0) {
+      const detail = details.find((row) => row.employeeId.trim().toLowerCase() === key);
+      if (!detail) throw new Error('Employee salary slip not found in this run.');
+      if (detail.emailStatus.trim().toLowerCase() === 'sent') {
+        throw new Error('This salary slip was already emailed.');
+      }
+      throw new Error(`Only generated slips can be approved. Current status: ${detail.status}.`);
+    }
+  }
+
+  if (selected.length === 0) {
     throw new Error('No generated salary slips are ready to send.');
   }
 
-  const missing = generated.filter((detail) => {
+  const missing = selected.filter((detail) => {
     const employee = employeeById.get(detail.employeeId.trim().toLowerCase());
     return !detail.pdfLink || !employee?.email;
   });
@@ -48,10 +66,26 @@ export async function approveSalarySlipDistribution(options: {
     );
   }
 
-  const approved = await approveSalarySlipRunDb(options.runId, options.approvedBy);
+  const selectedIds = new Set(selected.map((detail) => detail.employeeId));
+  const remaining = sendable.filter((detail) => !selectedIds.has(detail.employeeId));
+
+  // A partial approval leaves the run open so the remaining slips can still be
+  // approved or rejected; only the last one closes the approval gate.
+  const approved =
+    remaining.length === 0
+      ? await approveSalarySlipRunDb(options.runId, options.approvedBy)
+      : current;
   if (!approved) {
     throw new Error('This run was already approved or its status changed. Refresh and try again.');
   }
+
+  // Repeated on every employee item so nodes after a Split Out still address the
+  // run's payroll month rather than today's date.
+  const monthName = formatMonthName(approved.month);
+  const period = formatSalaryPeriod(approved.month, approved.year);
+  const counts = countDetailsByStatus(details);
+  const runCompletion = remaining.length === 0 ? 'All Completed' : 'Remaining';
+  const nextRunStatus = remaining.length === 0 ? 'Completed' : 'Awaiting Approval';
 
   try {
     await postSheetWebhook({
@@ -59,15 +93,39 @@ export async function approveSalarySlipDistribution(options: {
       label: 'send-salary-slip',
       payload: {
         action: 'send',
+        scope,
+        // Tells n8n whether this send finishes the run or more slips are still
+        // awaiting a decision, so it can set the status without recomputing.
+        RunCompletion: runCompletion,
+        NextRunStatus: nextRunStatus,
+        counts: {
+          SuccessCount: counts.successCount,
+          FailedCount: counts.failCount,
+          EmployeeCount: counts.employeeCount,
+          RejectedCount: counts.rejectedCount,
+          SendCount: selected.length,
+          RemainingCount: remaining.length,
+        },
         run: {
           RunID: approved.runId,
+          RunDate: approved.runDate,
           Month: approved.month,
           Year: approved.year,
+          MonthName: monthName,
+          Period: period,
           Status: approved.status,
+          SuccessCount: counts.successCount,
+          FailedCount: counts.failCount,
+          EmployeeCount: counts.employeeCount,
+          RejectedCount: counts.rejectedCount,
+          SendCount: selected.length,
+          RemainingCount: remaining.length,
+          RunCompletion: runCompletion,
+          NextRunStatus: nextRunStatus,
           ApprovedBy: approved.approvedBy,
           ApprovedAt: approved.approvedAt,
         },
-        employees: generated.map((detail) => {
+        employees: selected.map((detail) => {
           const employee = employeeById.get(detail.employeeId.trim().toLowerCase())!;
           return {
             RunDetailID: detail.runDetailId,
@@ -75,15 +133,23 @@ export async function approveSalarySlipDistribution(options: {
             FullName: employee.fullName,
             Email: employee.email,
             PdfLink: detail.pdfLink,
+            Month: approved.month,
+            Year: approved.year,
+            MonthName: monthName,
+            Period: period,
+            RunCompletion: runCompletion,
+            NextRunStatus: nextRunStatus,
           };
         }),
       },
     });
   } catch (error) {
-    try {
-      await rollbackSalarySlipRunApproval(options.runId);
-    } catch (rollbackError) {
-      console.error('Failed to roll back salary slip approval:', rollbackError);
+    if (remaining.length === 0) {
+      try {
+        await rollbackSalarySlipRunApproval(options.runId);
+      } catch (rollbackError) {
+        console.error('Failed to roll back salary slip approval:', rollbackError);
+      }
     }
     throw error;
   }
@@ -99,7 +165,10 @@ export async function approveSalarySlipDistribution(options: {
         status: approved.status,
         approvedBy: approved.approvedBy,
         approvedAt: approved.approvedAt,
-        sendCount: generated.length,
+        scope,
+        employeeId: employeeId || null,
+        sendCount: selected.length,
+        remainingCount: remaining.length,
       },
     },
     'Salary slip approval audit'

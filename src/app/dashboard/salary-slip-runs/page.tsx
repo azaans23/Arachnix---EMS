@@ -72,6 +72,7 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'Approved', value: 'approved' },
   { label: 'Completed', value: 'completed' },
   { label: 'Partial', value: 'partial' },
+  { label: 'Rejected', value: 'rejected' },
   { label: 'Failed', value: 'failed' },
 ];
 
@@ -100,6 +101,7 @@ function statusClasses(status: string) {
     case 'approved':
     case 'completed':
       return 'border-border bg-success/10 text-success';
+    case 'rejected':
     case 'failed':
       return 'border-danger-border bg-danger-bg text-danger';
     default:
@@ -1089,6 +1091,10 @@ export default function SalarySlipRunsPage() {
                             <span className={run.failCount > 0 ? ' text-danger' : ''}>
                               {' '}
                               · {run.failCount} failed
+                            </span>
+                            <span className={run.rejectedCount > 0 ? ' text-danger' : ''}>
+                              {' '}
+                              · {run.rejectedCount} rejected
                             </span>
                           </td>
                           <td className="px-5 py-3.5 text-right">
