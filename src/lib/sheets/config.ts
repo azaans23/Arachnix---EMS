@@ -18,7 +18,7 @@ export const SHEETS_WEBHOOKS = {
   createLeaveRequest: `${N8N_BASE_URL}/webhook/create-leave-request`,
   createHoliday: `${N8N_BASE_URL}/webhook/create-holiday`,
   uploadAccountingRecord: `${N8N_BASE_URL}/webhook/create-transaction`,
-  upsertFinancialStatements: `${N8N_BASE_URL}/webhook-test/upsert-financial-statements`,
-  upsertAccountingBalances: `${N8N_BASE_URL}/webhook-test/upsert-accounting-balances`,
+  upsertFinancialStatements: `${N8N_BASE_URL}/webhook/upsert-financial-statements`,
+  upsertAccountingBalances: `${N8N_BASE_URL}/webhook/upsert-accounting-balances`,
   deleteEmployee: `${N8N_BASE_URL}/webhook/delete-employee`,
 } as const;
