@@ -16,16 +16,28 @@ function dayOfMonth(isoDate: string): number {
   return Number.isFinite(day) && day > 0 ? day : 1;
 }
 
+/** Same year-month as the last working date? Then pay starts on the joining day, not the 1st. */
+function firstPaidDay(joiningDate: string | undefined, lastWorkingDate: string): number {
+  const joined = String(joiningDate || '').trim().slice(0, 10);
+  if (joined.length === 10 && joined.slice(0, 7) === lastWorkingDate.slice(0, 7)) {
+    return dayOfMonth(joined);
+  }
+  return 1;
+}
+
 /**
  * Pakistan-style exit settlement snapshot.
  * Daily rate = monthly salary / 30.
  * Unused annual leave is encashed at that daily rate.
- * Salary in the exit month is pro-rated by calendar days through last working date.
+ * Salary in the exit month is pro-rated by calendar days from the first paid day
+ * (the 1st, or the joining day when they joined that same month) through the
+ * last working date.
  */
 export function calculateOffboardingSettlement(input: {
   monthlySalary: number;
   unusedLeaveDays: number;
   lastWorkingDate: string;
+  joiningDate?: string;
   unpaidDays?: number;
   otherAdditions?: number;
   otherDeductions?: number;
@@ -37,7 +49,10 @@ export function calculateOffboardingSettlement(input: {
   const otherAdditions = money(input.otherAdditions || 0);
   const otherDeductions = money(input.otherDeductions || 0);
   const daysInMonth = lastWorkingDate ? daysInMonthUtc(lastWorkingDate) : 30;
-  const daysWorked = lastWorkingDate ? Math.min(dayOfMonth(lastWorkingDate), daysInMonth) : 0;
+  const lastDay = lastWorkingDate ? Math.min(dayOfMonth(lastWorkingDate), daysInMonth) : 0;
+  const daysWorked = lastDay
+    ? Math.max(0, lastDay - firstPaidDay(input.joiningDate, lastWorkingDate) + 1)
+    : 0;
   const dailyRate = money(monthlySalary / 30);
   const leaveEncashment = money(unusedLeaveDays * dailyRate);
   const proratedSalary = daysInMonth > 0 ? money((monthlySalary * daysWorked) / daysInMonth) : 0;

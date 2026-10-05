@@ -65,7 +65,10 @@ export async function previewOffboardingSettlement(options: {
   otherAdditions?: number;
   otherDeductions?: number;
 }) {
-  const salary = await getSalaryDbRow(options.employeeId);
+  const [salary, employee] = await Promise.all([
+    getSalaryDbRow(options.employeeId),
+    getEmployeeDbRow(options.employeeId),
+  ]);
   const unusedLeaveDays = await unusedAnnualLeaveDays(
     options.employeeId,
     options.lastWorkingDate || new Date().toISOString().slice(0, 10)
@@ -74,6 +77,7 @@ export async function previewOffboardingSettlement(options: {
     monthlySalary: money(salary?.basesalary),
     unusedLeaveDays,
     lastWorkingDate: options.lastWorkingDate,
+    joiningDate: employee?.joiningdate ? String(employee.joiningdate) : undefined,
     unpaidDays: options.unpaidDays,
     otherAdditions: options.otherAdditions,
     otherDeductions: options.otherDeductions,
