@@ -177,11 +177,12 @@ export default function EmployeeOffboardPage({ params }: PageProps) {
       monthlySalary: display.monthlySalary,
       unusedLeaveDays: display.unusedLeaveDays,
       lastWorkingDate,
+      joiningDate: employee?.joiningDate,
       unpaidDays: Number(unpaidDays) || 0,
       otherAdditions: Number(otherAdditions) || 0,
       otherDeductions: Number(otherDeductions) || 0,
     });
-  }, [display, open, lastWorkingDate, unpaidDays, otherAdditions, otherDeductions]);
+  }, [display, open, employee?.joiningDate, lastWorkingDate, unpaidDays, otherAdditions, otherDeductions]);
 
   const patch = async (action: 'save' | 'complete' | 'cancel') => {
     if (!open) return;
