@@ -21,6 +21,7 @@ import {
 } from '@/lib/db/salary-history';
 import { deleteLeaveBalancesByEmployeeId, restoreLeaveBalanceRows } from '@/lib/db/leave-balances';
 import { deleteLeaveRequestsByEmployeeId, restoreLeaveRequestRows } from '@/lib/db/leave-requests';
+import { deleteEmptySalarySlipRuns, getEmployeeSlipFootprint } from '@/lib/db/salary-slips';
 import { buildEmployeeUniquenessContext, employeeValidationSchema } from '@/utils/validation';
 
 function pick(raw: Record<string, unknown>, ...keys: string[]): string {
@@ -442,6 +443,18 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
   }
 
   const employee = dbRowToEmployeeRecord(previousDbRow);
+
+  // Every dependent table cascades off the employee row, so deleting would also
+  // erase payslips that were already emailed. Those are payroll records.
+  const slips = await getEmployeeSlipFootprint(id);
+  if (slips.sentCount > 0) {
+    throw new SheetsError(
+      `${employee.fullName} has ${slips.sentCount} emailed salary slip${slips.sentCount === 1 ? '' : 's'}. ` +
+        'Deleting would permanently erase that payroll history. Use Offboard to close the employee instead.',
+      409
+    );
+  }
+
   const previousSalary = await getSalaryDbRow(id);
   let previousHistory: SalaryHistoryDbRow[] = [];
   let previousBalances: Awaited<ReturnType<typeof deleteLeaveBalancesByEmployeeId>> = [];
@@ -495,6 +508,12 @@ export async function deleteEmployee(employeeId: string): Promise<EmployeeRecord
     }
     throw sheetError;
   }
+
+  // Runs this employee was the only slip in are now empty; remove them so they
+  // do not sit in "Awaiting Approval" forever. Best effort: the delete is done.
+  await deleteEmptySalarySlipRuns(slips.runIds).catch((cleanupError) => {
+    console.error('Employee deleted but empty salary slip run cleanup failed:', cleanupError);
+  });
 
   return employee;
 }

@@ -526,3 +526,53 @@ export async function countProcessingRuns(): Promise<number> {
   if (error) throw new Error(`Failed to count processing runs: ${error.message}`);
   return count || 0;
 }
+
+/**
+ * Which runs hold a slip for this employee, and how many of those slips were
+ * actually emailed. Emailed slips are payroll records, so callers use the count
+ * to refuse a delete that would cascade them away.
+ */
+export async function getEmployeeSlipFootprint(
+  employeeId: string
+): Promise<{ runIds: number[]; sentCount: number }> {
+  const { data, error } = await getSupabaseAdmin()
+    .from(DETAILS_TABLE)
+    .select('runid, emailstatus')
+    .eq('employeeid', employeeId);
+
+  if (error) throw new Error(`Failed to read salary slip history: ${error.message}`);
+
+  const rows = (data as Array<{ runid: number; emailstatus: string | null }>) || [];
+  return {
+    runIds: [...new Set(rows.map((row) => row.runid))],
+    sentCount: rows.filter((row) => String(row.emailstatus || '').trim().toLowerCase() === 'sent')
+      .length,
+  };
+}
+
+/**
+ * After an employee is deleted, drop any of their runs that are now empty so
+ * they cannot linger as "Awaiting Approval" with nothing to approve. Runs still
+ * being generated are left alone because their slips arrive later.
+ */
+export async function deleteEmptySalarySlipRuns(runIds: number[]): Promise<number[]> {
+  const removed: number[] = [];
+  for (const runId of runIds) {
+    const { count, error: countError } = await getSupabaseAdmin()
+      .from(DETAILS_TABLE)
+      .select('*', { count: 'exact', head: true })
+      .eq('runid', runId);
+    if (countError) throw new Error(`Failed to check run ${runId}: ${countError.message}`);
+    if (count) continue;
+
+    const { data, error } = await getSupabaseAdmin()
+      .from(RUNS_TABLE)
+      .delete()
+      .eq('runid', runId)
+      .neq('status', 'Processing')
+      .select('runid');
+    if (error) throw new Error(`Failed to delete empty run ${runId}: ${error.message}`);
+    if (data?.length) removed.push(runId);
+  }
+  return removed;
+}
